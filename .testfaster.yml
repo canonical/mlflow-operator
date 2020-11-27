@@ -28,7 +28,8 @@ base:
     docker run -d nginx:1.19.5
 
   # Need kube 1.17 for kubeflow last time I checked (1.18 doesn't work).
-  kubernetes_version: v1.17.14
+  # https://github.com/kubeflow/kubeflow/issues/5246#issuecomment-682013220
+  kubernetes_version: v1.17.11
 
 runtime:
   cpus: 4
