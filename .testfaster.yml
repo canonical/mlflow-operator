@@ -26,7 +26,9 @@ base:
     # already running when you testctl get
     #!/bin/bash
     set -euo pipefail
-    docker run -d nginx:1.19.5
+    snap install juju
+    juju add-k8s testfaster
+    juju bootstrap testfaster
 
   # Need kube 1.17 for kubeflow last time I checked (1.18 doesn't work).
   # https://github.com/kubeflow/kubeflow/issues/5246#issuecomment-682013220
