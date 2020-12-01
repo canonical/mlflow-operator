@@ -4,6 +4,7 @@ base:
   os_dockerfile: |-
     # This dockerfile defines the base disk image for your VMs
     FROM quay.io/testfaster/kube-ubuntu
+    ENV cache-bust 5
     RUN touch /root/hello-world.txt
 
   docker_bake_script: |-
