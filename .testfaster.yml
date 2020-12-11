@@ -31,8 +31,12 @@ base:
     # already running when you testctl get
     #!/bin/bash
     set -euo pipefail
-    #juju add-k8s testfaster
-    #juju bootstrap testfaster
+    # juju uses the hostname in the kubeconfig to try and connect _from_ the
+    # pod to the apiserver. so give it an ip address that resolves to the host
+    # from inside the pods.
+    sed -i 's/localhost/172.17.0.1/' .kube/config
+    juju add-k8s testfaster
+    juju bootstrap testfaster
 
   # Need kube 1.17 for kubeflow last time I checked (1.18 doesn't work).
   # https://github.com/kubeflow/kubeflow/issues/5246#issuecomment-682013220
