@@ -37,6 +37,8 @@ base:
     sed -i 's/localhost/172.17.0.1/' .kube/config
     juju add-k8s testfaster
     juju bootstrap testfaster
+    juju add-model kf
+    juju deploy kubeflow
 
   # Need kube 1.17 for kubeflow last time I checked (1.18 doesn't work).
   # https://github.com/kubeflow/kubeflow/issues/5246#issuecomment-682013220
