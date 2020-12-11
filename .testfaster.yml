@@ -6,6 +6,11 @@ base:
     FROM quay.io/testfaster/kube-ubuntu
     ENV cache-bust 5
     RUN touch /root/hello-world.txt
+    # Snap is complicated in here (SELinux stuff). Just download and install
+    # the juju binary.
+    RUN cd /tmp && \
+        wget -q -O /usr/local/bin/juju https://storage.googleapis.com/juju-hacking/juju && \
+        chmod +x /usr/local/bin/juju
 
   docker_bake_script: |-
     # Do things that cache docker images for faster builds,
@@ -26,9 +31,8 @@ base:
     # already running when you testctl get
     #!/bin/bash
     set -euo pipefail
-    snap install juju
-    juju add-k8s testfaster
-    juju bootstrap testfaster
+    #juju add-k8s testfaster
+    #juju bootstrap testfaster
 
   # Need kube 1.17 for kubeflow last time I checked (1.18 doesn't work).
   # https://github.com/kubeflow/kubeflow/issues/5246#issuecomment-682013220
