@@ -6,11 +6,9 @@ base:
     FROM quay.io/testfaster/kube-ubuntu
     ENV cache-bust 5
     RUN touch /root/hello-world.txt
-    # Snap is complicated in here (SELinux stuff). Just download and install
-    # the juju binary.
-    RUN cd /tmp && \
-        wget -q -O /usr/local/bin/juju https://storage.googleapis.com/juju-hacking/juju && \
-        chmod +x /usr/local/bin/juju
+    # https://github.com/PowerShell/PowerShell/issues/9252#issuecomment-486954264
+    RUN apt-get install -y snapd selinux-utils selinux-policy-default
+    RUN echo "SELINUX=disabled" > /etc/selinux/config
 
   docker_bake_script: |-
     # Do things that cache docker images for faster builds,
@@ -35,6 +33,7 @@ base:
     # pod to the apiserver. so give it an ip address that resolves to the host
     # from inside the pods.
     cd /root
+    snap install juju --classic
     sed -i 's/localhost/172.17.0.1/' .kube/config
     juju add-k8s --client testfaster
     juju bootstrap testfaster
