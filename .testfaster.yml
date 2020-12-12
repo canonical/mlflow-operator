@@ -29,6 +29,8 @@ base:
     # already running when you testctl get
     #!/bin/bash
     set -xeuo pipefail
+    # snappity snaps
+    export PATH="/snap/bin:$PATH"
     # juju uses the hostname in the kubeconfig to try and connect _from_ the
     # pod to the apiserver. so give it an ip address that resolves to the host
     # from inside the pods.
