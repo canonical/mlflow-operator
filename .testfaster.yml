@@ -7,7 +7,7 @@ base:
     ENV cache-bust 5
     RUN touch /root/hello-world.txt
     # https://github.com/PowerShell/PowerShell/issues/9252#issuecomment-486954264
-    RUN apt-get install -y snapd selinux-utils selinux-policy-default
+    RUN apt-get install -y snapd selinux-utils selinux-policy-default rsync
     RUN echo "SELINUX=disabled" > /etc/selinux/config
 
   docker_bake_script: |-
@@ -36,13 +36,24 @@ base:
     # from inside the pods.
     cd /root
     snap install juju --classic
+    # Set kubeconfig to point to k8s apiserver on an address that's routable
+    # from inside the pods, so jujud can access it.  In this case the docker
+    # bridge.
     sed -i 's/localhost/172.17.0.1/' .kube/config
     juju add-k8s --client testfaster
     juju bootstrap testfaster
     juju add-model kf
     juju deploy kubeflow
+    # wait for the role we need to patch to get created
+    roles=0
+    while [ "$roles" -eq "0" ] ; do
+        roles=$(set +o pipefail; kubectl get roles --all-namespaces --no-headers |grep 'istio-ingressgateway-operator' |wc -l)
+        echo $roles roles matching istio-ingressgateway-operator
+        sleep 1
+    done
     # from https://charmed-kubeflow.io/docs/install
     kubectl patch role -n kf istio-ingressgateway-operator -p '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"istio-ingressgateway-operator"},"rules":[{"apiGroups":["*"],"resources":["*"],"verbs":["*"]}]}'
+    # TODO: wait for kubeflow to be fully up
 
   # Need kube 1.17 for kubeflow last time I checked (1.18 doesn't work).
   # https://github.com/kubeflow/kubeflow/issues/5246#issuecomment-682013220
