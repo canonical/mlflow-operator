@@ -1,1 +1,2 @@
 ops
+git+git://github.com/johnsca/resource-oci-image.git#oci_image

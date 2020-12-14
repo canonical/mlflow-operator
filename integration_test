@@ -5,4 +5,5 @@ testctl get
 export KUBECONFIG=$(pwd)/kubeconfig
 (cd mlflow && charmcraft build)
 ./testctl-rsync.sh mlflow/mlflow.charm /root
-./testctl-ssh.sh -- juju deploy ./mlflow.charm
+./testctl-ssh.sh -- /snap/bin/juju deploy --resource oci-image=gcr.io/kubeflow-images-public/admission-webhook:vmaster-gaf96e4e3 ./mlflow.charm
+echo "Try: testctl ssh -- /snap/bin/juju debug-log --include mlflow"
