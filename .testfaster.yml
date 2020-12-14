@@ -35,7 +35,7 @@ base:
     # pod to the apiserver. so give it an ip address that resolves to the host
     # from inside the pods.
     cd /root
-    snap install juju --classic --channel=2.9/edge
+    snap install juju --classic
     sed -i 's/localhost/172.17.0.1/' .kube/config
     juju add-k8s --client testfaster
     juju bootstrap testfaster
