@@ -9,7 +9,7 @@ base:
     # Snap is complicated in here (SELinux stuff). Just download and install
     # the juju binary.
     RUN cd /tmp && \
-        wget -q -O /usr/local/bin/juju https://storage.googleapis.com/juju-hacking/juju && \
+        wget -q -O /usr/local/bin/juju https://storage.googleapis.com/juju-hacking/develop-c46fd98/juju && \
         chmod +x /usr/local/bin/juju
 
   docker_bake_script: |-
