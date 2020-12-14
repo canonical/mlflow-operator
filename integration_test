@@ -1,0 +1,8 @@
+#!/bin/bash
+set -xeuo pipefail
+
+testctl get
+export KUBECONFIG=$(pwd)/kubeconfig
+(cd mlflow && charmcraft build)
+./testctl-rsync.sh mlflow/mlflow.charm /root
+./testctl-ssh.sh -- juju deploy ./mlflow.charm
