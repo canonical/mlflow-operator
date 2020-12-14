@@ -6,8 +6,8 @@ description: |
 summary: |
   A charm which provides a Kubernetes installation of the MLflow (https://mlflow.org/) server.
 series: [kubernetes]
-resources:
-  oci-image:
-    type: oci-image
-    description: Backing OCI image
-    auto-fetch: true
+#resources:
+#  oci-image:
+#    type: oci-image
+#    description: Backing OCI image
+#    auto-fetch: true

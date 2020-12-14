@@ -8,7 +8,7 @@ from ops.charm import CharmBase
 from ops.main import main
 from ops.framework import StoredState
 from ops.model import ActiveStatus, MaintenanceStatus
-from oci_image import OCIImageResource
+#from oci_image import OCIImageResource
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class MlflowCharm(CharmBase):
         logger.info("================================")
         super().__init__(*args)
 
-        self.image = OCIImageResource(self, 'oci-image')
+        #self.image = OCIImageResource(self, 'oci-image')
         self.framework.observe(self.on.install, self.set_pod_spec)
         self.framework.observe(self.on.upgrade_charm, self.set_pod_spec)
 
@@ -36,26 +36,23 @@ class MlflowCharm(CharmBase):
             return
 
         self.model.unit.status = MaintenanceStatus('Setting pod spec')
-        image_details = self.image.fetch()
-        logger.info("================================")
-        logger.info(image_details)
-        logger.info("================================")
+        #image_details = self.image.fetch()
+        #logger.info("================================")
+        #logger.info(image_details)
+        #logger.info("================================")
 
-        """
         self.model.pod.set_spec(
             {
                 'version': 3,
                 'containers': [
                     {
                         'name': 'admission-webhook',
-                        'imageDetails': {...},
-                        'ports': [{'name': 'webhook', 'containerPort': 443}],
+                        'imageDetails': {'imagePath': 'nginx:latest'},
+                        'ports': [{'name': 'http', 'containerPort': 80}],
                     }
                 ],
             },
         )
-        """
-
         self.model.unit.status = ActiveStatus()
 
 
