@@ -35,7 +35,7 @@ base:
     # pod to the apiserver. so give it an ip address that resolves to the host
     # from inside the pods.
     cd /root
-    snap install juju --classic
+    snap install juju --classic --channel=latest/edge
     # Set kubeconfig to point to k8s apiserver on an address that's routable
     # from inside the pods, so jujud can access it.  In this case the docker
     # bridge.
@@ -43,7 +43,9 @@ base:
     juju add-k8s --client testfaster
     juju bootstrap testfaster
     juju add-model kf
-    juju deploy kubeflow
+    # cs: means "charm store", which is the "old place".
+    # ch: means "charm hub", which is the "new place".
+    juju deploy cs:kubeflow
     # wait for the role we need to patch to get created
     roles=0
     while [ "$roles" -eq "0" ] ; do
