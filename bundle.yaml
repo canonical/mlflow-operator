@@ -1,0 +1,13 @@
+---
+applications:
+  mlflow:
+    charm: "./mlflow.charm"
+    scale: 1
+  postgres:
+    charm: "cs:~postgresql-charmers/postgresql-k8s"
+    scale: 1
+bundle: kubernetes
+description: "MLflow"
+relations:
+  - - mlflow:db
+    - postgres:db

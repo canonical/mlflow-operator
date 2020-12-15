@@ -11,3 +11,8 @@ series: [kubernetes]
 #    type: oci-image
 #    description: Backing OCI image
 #    auto-fetch: true
+requires:
+  db:
+    interface: pgsql
+    limit: 1  # Most charms only handle a single PostgreSQL Application.
+
