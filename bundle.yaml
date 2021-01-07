@@ -4,7 +4,7 @@ applications:
     charm: "./mlflow.charm"
     scale: 1
   postgres:
-    charm: "cs:~postgresql-charmers/postgresql-k8s"
+    charm: "cs:~postgresql-charmers/postgresql-k8s-7"
     scale: 1
 bundle: kubernetes
 description: "MLflow"
