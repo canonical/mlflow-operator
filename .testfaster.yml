@@ -24,6 +24,35 @@ base:
     - nginx:1.19.5
     - jujusolutions/juju-db:4.0
     - jujusolutions/jujud-operator:2.9-rc3
+    # Get these from `ag upstream-source |cut -d ':' -f 4-` in bundle-kubeflow
+    - gcr.io/kubeflow-images-public/katib/v1alpha3/katib-ui:v0.9.0
+    - gcr.io/kubeflow-images-public/metadata-frontend:v0.1.8
+    - gcr.io/tfx-oss-public/ml_metadata_store_server:v0.21.1
+    - gcr.io/kubeflow-images-public/notebook-controller:v20191007-v0.6.0-rc.0-134-g6ddf28cc-dirty-560d95
+    - gcr.io/kubeflow-images-public/katib/v1alpha3/katib-db-manager:v0.9.0
+    - rocks.canonical.com:5000/kubeflow/katib-controller:latest
+    - gcr.io/ml-pipeline/frontend:0.2.5
+    - docker.io/seldonio/seldon-core-operator:1.2.1
+    - gcr.io/ml-pipeline/viewer-crd-controller:0.2.5
+    - gcr.io/ml-pipeline/persistenceagent:0.2.5
+    - gcr.io/ml-pipeline/scheduledworkflow:0.2.5
+    - gcr.io/ml-pipeline/visualization-server:0.2.5
+    - gcr.io/kubeflow-images-public/profile-controller:v1.1.0-ga49f658f
+    - gcr.io/kubeflow-images-public/kfam:v1.1.0-g9f3bfd00
+    - gcr.io/kubeflow-images-public/pytorch-operator:v1.1.0-gd596e904
+    - gcr.io/kubeflow-images-public/jupyter-web-app:9419d4d
+    - gcr.io/kubeflow-images-public/tf_operator:v1.1.0-g92389064
+    - argoproj/argoui:v2.3.0
+    - argoproj/workflow-controller:v2.3.0
+    - gcr.io/ml-pipeline/envoy:metadata-grpc
+    - gcr.io/kubeflow-images-public/metadata:v0.1.11
+    - minio/minio:RELEASE.2018-02-09T22-40-05Z
+    - gcr.io/kubeflow-images-public/centraldashboard:v1.1.0-g35d7484a
+    - gcr.io/ml-pipeline/api-server:0.2.5
+    - metacontroller/metacontroller:v0.3.0
+    - quay.io/dexidp/dex:v2.22.0
+    - gcr.io/arrikto/kubeflow/oidc-authservice:fef11c3
+
 
   prewarm_script: |-
     # This gets run after each individual VM starts up, so
@@ -45,7 +74,7 @@ base:
 
     juju add-k8s --client testfaster
     juju bootstrap testfaster
-    
+
     # default service account has registry credentials, but juju needs them too
     # (testfaster created the secret regcred already.)
     kubectl patch serviceaccount -n controller-testfaster default -p '{"imagePullSecrets": [{"name": "regcred"}]}'
