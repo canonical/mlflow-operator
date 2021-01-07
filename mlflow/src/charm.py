@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 import ops.lib
 pgsql = ops.lib.use("pgsql", 1, "postgresql-charmers@lists.launchpad.net")
 
+DB_NAME = "mlflow"
+
 class MlflowCharm(CharmBase):
     _stored = StoredState()
 
@@ -59,16 +61,16 @@ class MlflowCharm(CharmBase):
     def _on_database_relation_joined(self, event: pgsql.DatabaseRelationJoinedEvent):
         if self.model.unit.is_leader():
             # Provide requirements to the PostgreSQL server.
-            event.database = 'mydbname'  # Request database named mydbname
+            event.database = DB_NAME  # Request database named mydbname
             event.extensions = ['citext']  # Request the citext extension installed
-        elif event.database != 'mydbname':
+        elif event.database != DB_NAME:
             # Leader has not yet set requirements. Defer, incase this unit
             # becomes leader and needs to perform that operation.
             event.defer()
             return
 
     def _on_master_changed(self, event: pgsql.MasterChangedEvent):
-        if event.database != 'mydbname':
+        if event.database != DB_NAME:
             # Leader has not yet set requirements. Wait until next event,
             # or risk connecting to an incorrect database.
             return
@@ -86,7 +88,7 @@ class MlflowCharm(CharmBase):
         # are available.
 
     def _on_standby_changed(self, event: pgsql.StandbyChangedEvent):
-        if event.database != 'mydbname':
+        if event.database != DB_NAME:
             # Leader has not yet set requirements. Wait until next event,
             # or risk connecting to an incorrect database.
             return
