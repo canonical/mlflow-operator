@@ -11,7 +11,7 @@ from ops.model import ActiveStatus, MaintenanceStatus
 logger = logging.getLogger(__name__)
 
 import ops.lib
-pgsql = ops.lib.use("pgsql", 1, "postgresql-charmers@lists.launchpad.net")
+from opslib.mysql import MySQLClient, MySQLRelationEvent
 
 DB_NAME = "mlflow"
 
@@ -24,14 +24,25 @@ class MlflowCharm(CharmBase):
         logger.info("================================")
         super().__init__(*args)
 
-        self._stored.set_default(db_conn_str=None, db_uri=None, db_ro_uris=[])
-        self.db = pgsql.PostgreSQLClient(self, 'db')  # 'db' relation in metadata.yaml
-        self.framework.observe(self.db.on.database_relation_joined, self._on_database_relation_joined)
-        self.framework.observe(self.db.on.master_changed, self._on_master_changed)
-        self.framework.observe(self.db.on.standby_changed, self._on_standby_changed)
+        self._state.set_default(
+            db_available=False, db_conn_str=None, db_host=None, db_port=None, db_name=None,
+            db_user=None, db_password=None, db_root_password=None,
+        )
+        self.db = MySQLClient(self, 'db')  # 'db' relation in metadata.yaml
+        self.framework.observe(self.db.on.database_changed, self._on_database_changed)
 
         self.framework.observe(self.on.install, self.set_pod_spec)
         self.framework.observe(self.on.upgrade_charm, self.set_pod_spec)
+
+    def _on_database_changed(self, event: MySQLRelationEvent):
+        self._state.db_available = event.is_available  # Boolean flag
+        self._state.db_conn_str = event.connection_string  # host={host} port={port} ...
+        self._state.db_host = event.host
+        self._state.db_port = event.port
+        self._state.db_name = event.database
+        self._state.db_user = event.user
+        self._state.db_password = event.password
+        self._state.db_root_password = event.root_password
 
     def set_pod_spec(self, event):
         logger.info("================================")
@@ -45,6 +56,7 @@ class MlflowCharm(CharmBase):
         self.model.unit.status = MaintenanceStatus('Setting pod spec')
 
         self.model.pod.set_spec(
+            # TODO: put mysql connection details in here, as env vars for mlflow
             {
                 'version': 3,
                 'containers': [
@@ -57,49 +69,6 @@ class MlflowCharm(CharmBase):
             },
         )
         self.model.unit.status = ActiveStatus()
-
-    def _on_database_relation_joined(self, event: pgsql.DatabaseRelationJoinedEvent):
-        if self.model.unit.is_leader():
-            # Provide requirements to the PostgreSQL server.
-            event.database = DB_NAME  # Request database named mydbname
-            event.extensions = ['citext']  # Request the citext extension installed
-        elif event.database != DB_NAME:
-            # Leader has not yet set requirements. Defer, incase this unit
-            # becomes leader and needs to perform that operation.
-            event.defer()
-            return
-
-    def _on_master_changed(self, event: pgsql.MasterChangedEvent):
-        if event.database != DB_NAME:
-            # Leader has not yet set requirements. Wait until next event,
-            # or risk connecting to an incorrect database.
-            return
-        
-        # The connection to the primary database has been created,
-        # changed or removed. More specific events are available, but
-        # most charms will find it easier to just handle the Changed
-        # events. event.master is None if the master database is not
-        # available, or a pgsql.ConnectionString instance.
-        self._stored.db_conn_str = None if event.master is None else event.master.conn_str
-        self._stored.db_uri = None if event.master is None else event.master.uri
-
-        # You probably want to emit an event here or call a setup routine to
-        # do something useful with the libpq connection string or URI now they
-        # are available.
-
-    def _on_standby_changed(self, event: pgsql.StandbyChangedEvent):
-        if event.database != DB_NAME:
-            # Leader has not yet set requirements. Wait until next event,
-            # or risk connecting to an incorrect database.
-            return
-
-        # Charms needing access to the hot standby databases can get
-        # their connection details here. Applications can scale out
-        # horizontally if they can make use of the read only hot
-        # standby replica databases, rather than only use the single
-        # master. event.stanbys will be an empty list if no hot standby
-        # databases are available.
-        self._stored.db_ro_uris = [c.uri for c in event.standbys]
 
 if __name__ == "__main__":
     main(MlflowCharm)

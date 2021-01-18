@@ -13,6 +13,6 @@ series: [kubernetes]
 #    auto-fetch: true
 requires:
   db:
-    interface: pgsql
-    limit: 1  # Most charms only handle a single PostgreSQL Application.
+    interface: mysql
+    limit: 1  # Most charms only handle a single MySQL Application.
 

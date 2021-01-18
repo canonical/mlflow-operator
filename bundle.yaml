@@ -3,11 +3,11 @@ applications:
   mlflow:
     charm: "./mlflow.charm"
     scale: 1
-  postgres:
-    charm: "cs:~postgresql-charmers/postgresql-k8s-7"
+  mysql:
+    charm: "cs:~charmed-osm/mariadb-k8s-34"
     scale: 1
 bundle: kubernetes
 description: "MLflow"
 relations:
   - - mlflow:db
-    - postgres:db
+    - mysql:db
