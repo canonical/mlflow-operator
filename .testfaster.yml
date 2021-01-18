@@ -82,7 +82,7 @@ base:
     juju add-model kf
     # cs: means "charm store", which is the "old place".
     # ch: means "charm hub", which is the "new place".
-    juju deploy cs:bundle/kubeflow-239
+    juju deploy cs:bundle/kubeflow-241
     # wait for the role we need to patch to get created
     roles=0
     while [ "$roles" -eq "0" ] ; do
