@@ -66,13 +66,15 @@ base:
     # pod to the apiserver. so give it an ip address that resolves to the host
     # from inside the pods.
     cd /root
-    snap install juju --classic --channel=2.9/edge
+    snap install juju --classic --channel=2.9/candidate
     # Set kubeconfig to point to k8s apiserver on an address that's routable
     # from inside the pods, so jujud can access it.  In this case the docker
     # bridge.
     sed -i 's/localhost/172.17.0.1/' .kube/config
 
+    echo "Running juju add-k8s"
     juju add-k8s --client testfaster
+    echo "Running juju bootstrap"
     juju bootstrap testfaster
 
     # default service account has registry credentials, but juju needs them too

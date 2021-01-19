@@ -15,7 +15,7 @@ from opslib.mysql import MySQLClient, MySQLRelationEvent
 DB_NAME = "mlflow"
 
 class MlflowCharm(CharmBase):
-    _stored = StoredState()
+    _state = StoredState()
 
     def __init__(self, *args):
         logger.info("================================")
@@ -45,7 +45,7 @@ class MlflowCharm(CharmBase):
         self._state.db_user = event.user
         self._state.db_password = event.password
         self._state.db_root_password = event.root_password
-        # TODO: set_pod_spec?
+        self.set_pod_spec(event)
 
     def set_pod_spec(self, event):
         logger.info("================================")
