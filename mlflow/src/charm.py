@@ -65,9 +65,9 @@ class MlflowCharm(CharmBase):
                 'version': 3,
                 'containers': [
                     {
-                        'name': 'nginx',
-                        'imageDetails': {'imagePath': 'nginx:latest'},
-                        'ports': [{'name': 'http', 'containerPort': 80}],
+                        'name': 'mlflow',
+                        'imageDetails': {'imagePath': 'quay.io/helix-ml/mlflow:1.13.1'},
+                        'ports': [{'name': 'http', 'containerPort': 5000}],
                     }
                 ],
             },

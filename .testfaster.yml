@@ -53,7 +53,6 @@ base:
     - quay.io/dexidp/dex:v2.22.0
     - gcr.io/arrikto/kubeflow/oidc-authservice:fef11c3
 
-
   prewarm_script: |-
     # This gets run after each individual VM starts up, so
     # start services you need in your tests here and they'll be
