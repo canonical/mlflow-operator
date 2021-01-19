@@ -14,6 +14,25 @@ export KUBECONFIG=$(pwd)/kubeconfig
 
 ./testctl-ssh.sh -- /snap/bin/juju deploy ./bundle.yaml
 
+# TODO adjust this to fit, exposing nodeport on 31380
+echo <<EOF | ./testctl-ssh.sh -- kubectl apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  type: NodePort
+  selector:
+    app: MyApp
+  ports:
+      # By default and for convenience, the targetPort is set to the same value as the port field.
+    - port: 80
+      targetPort: 80
+      # Optional field
+      # By default and for convenience, the Kubernetes control plane will allocate a port from a range (default: 30000-32767)
+      nodePort: 30007
+EOF
+
 echo "Try: testctl ssh -- /snap/bin/juju debug-log --include mlflow"
 #echo "Try: testctl ssh -- kubectl logs mlflow-operator-0 -n kf"
 
