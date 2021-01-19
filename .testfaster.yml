@@ -7,7 +7,7 @@ base:
     ENV cache-bust 5
     RUN touch /root/hello-world.txt
     # https://github.com/PowerShell/PowerShell/issues/9252#issuecomment-486954264
-    RUN apt-get install -y snapd selinux-utils selinux-policy-default rsync
+    RUN apt-get install -y snapd selinux-utils selinux-policy-default rsync socat
     RUN echo "SELINUX=disabled" > /etc/selinux/config
 
   docker_bake_script: |-
@@ -66,7 +66,7 @@ base:
     # pod to the apiserver. so give it an ip address that resolves to the host
     # from inside the pods.
     cd /root
-    snap install juju --classic --channel=2.9/candidate
+    snap install juju --classic --channel=2.9/edge
     # Set kubeconfig to point to k8s apiserver on an address that's routable
     # from inside the pods, so jujud can access it.  In this case the docker
     # bridge.
@@ -75,7 +75,7 @@ base:
     echo "Running juju add-k8s"
     juju add-k8s --client testfaster
     echo "Running juju bootstrap"
-    juju bootstrap testfaster
+    juju bootstrap testfaster --debug
 
     # default service account has registry credentials, but juju needs them too
     # (testfaster created the secret regcred already.)
