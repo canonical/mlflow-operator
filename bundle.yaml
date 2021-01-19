@@ -10,4 +10,4 @@ bundle: kubernetes
 description: "MLflow"
 relations:
   - - mlflow:db
-    - mysql:db
+    - mysql

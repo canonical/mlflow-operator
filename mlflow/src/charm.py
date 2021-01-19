@@ -10,7 +10,6 @@ from ops.framework import StoredState
 from ops.model import ActiveStatus, MaintenanceStatus
 logger = logging.getLogger(__name__)
 
-import ops.lib
 from opslib.mysql import MySQLClient, MySQLRelationEvent
 
 DB_NAME = "mlflow"
@@ -35,6 +34,9 @@ class MlflowCharm(CharmBase):
         self.framework.observe(self.on.upgrade_charm, self.set_pod_spec)
 
     def _on_database_changed(self, event: MySQLRelationEvent):
+        logger.info("================================")
+        logger.info(f"_on_database_changed is running; {event}")
+        logger.info("================================")
         self._state.db_available = event.is_available  # Boolean flag
         self._state.db_conn_str = event.connection_string  # host={host} port={port} ...
         self._state.db_host = event.host
@@ -43,6 +45,7 @@ class MlflowCharm(CharmBase):
         self._state.db_user = event.user
         self._state.db_password = event.password
         self._state.db_root_password = event.root_password
+        # TODO: set_pod_spec?
 
     def set_pod_spec(self, event):
         logger.info("================================")
@@ -57,6 +60,7 @@ class MlflowCharm(CharmBase):
 
         self.model.pod.set_spec(
             # TODO: put mysql connection details in here, as env vars for mlflow
+            # TODO: actually start mlflow
             {
                 'version': 3,
                 'containers': [
