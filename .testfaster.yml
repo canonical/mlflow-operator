@@ -74,7 +74,7 @@ base:
     echo "Running juju add-k8s"
     juju add-k8s --client testfaster
     echo "Running juju bootstrap"
-    juju bootstrap testfaster --debug
+    juju bootstrap testfaster
 
     # default service account has registry credentials, but juju needs them too
     # (testfaster created the secret regcred already.)
