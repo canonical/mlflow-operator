@@ -114,3 +114,5 @@ max_pool_size: 5
 # the VMs for long running development purposes rather than
 # short-lived CI.
 default_lease_timeout: ""
+
+pool_sleep_timeout: "2d"
