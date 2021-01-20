@@ -68,8 +68,26 @@ class MlflowCharm(CharmBase):
                         'name': 'mlflow',
                         'imageDetails': {'imagePath': 'quay.io/helix-ml/mlflow:1.13.1'},
                         'ports': [{'name': 'http', 'containerPort': 5000}],
+                        'args': ['--host', '0.0.0.0'],
                     }
                 ],
+                'kubernetesResources': {
+                    # TODO: make nodeport configurable
+                    'services': {
+                        'name': 'mlflow-external',
+                        'spec': {
+                          'type': 'NodePort',
+                          'selector': {
+                            'app.kubernetes.io/name': 'mlflow',
+                          },
+                          'ports': [{
+                              'port': 5000,
+                              'targetPort': 5000,
+                              'nodePort': 31380
+                          }],
+                        },
+                    },
+                },
             },
         )
         self.model.unit.status = ActiveStatus()
