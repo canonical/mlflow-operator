@@ -89,7 +89,22 @@ class MlflowCharm(CharmBase):
                                   'nodePort': 31380
                               }],
                             },
+                        },{
+                            'name': 'kubeflow-external',
+                            'spec': {
+                              'type': 'NodePort',
+                              'selector': {
+                                'app.kubernetes.io/name': 'kubeflow-dashboard',
+                              },
+                              'ports': [{
+                                  'protocol': 'TCP',
+                                  'port': 8082,
+                                  'targetPort': 8082,
+                                  'nodePort': 30600
+                              }],
+                            },
                         }
+                              
                     ],
                 },
             },
