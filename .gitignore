@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+*.swp
+*.swo
+id_rsa
+kubeconfig
+*.charm

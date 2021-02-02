@@ -1,0 +1,20 @@
+#!/bin/bash
+set -xeuo pipefail
+
+testctl get
+export KUBECONFIG=$(pwd)/kubeconfig
+(cd mlflow && charmcraft build)
+./testctl-rsync.sh mlflow/mlflow.charm /root
+./testctl-rsync.sh bundle.yaml /root
+
+# How to iterate quickly without getting a new VM every time:
+#./testctl-ssh.sh -- /snap/bin/juju destroy model kf
+#./testctl-ssh.sh -- /snap/bin/juju destroy controller
+#./testctl-ssh.sh -- /snap/bin/juju unregister controller
+
+./testctl-ssh.sh -- /snap/bin/juju deploy ./bundle.yaml
+
+echo "Try: testctl ssh -- /snap/bin/juju debug-log --include mlflow"
+#echo "Try: testctl ssh -- kubectl logs mlflow-operator-0 -n kf"
+
+#./testctl-ssh.sh -- /snap/bin/juju deploy --resource oci-image=gcr.io/kubeflow-images-public/admission-webhook:vmaster-gaf96e4e3 ./mlflow.charm

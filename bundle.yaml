@@ -1,0 +1,13 @@
+---
+applications:
+  mlflow:
+    charm: "./mlflow.charm"
+    scale: 1
+  mysql:
+    charm: "cs:~charmed-osm/mariadb-k8s-34"
+    scale: 1
+bundle: kubernetes
+description: "MLflow"
+relations:
+  - - mlflow:db
+    - mysql
