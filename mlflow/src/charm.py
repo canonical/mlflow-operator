@@ -74,20 +74,23 @@ class MlflowCharm(CharmBase):
                 ],
                 'kubernetesResources': {
                     # TODO: make nodeport configurable
-                    'services': {
-                        'name': 'mlflow-external',
-                        'spec': {
-                          'type': 'NodePort',
-                          'selector': {
-                            'app.kubernetes.io/name': 'mlflow',
-                          },
-                          'ports': [{
-                              'port': 5000,
-                              'targetPort': 5000,
-                              'nodePort': 31380
-                          }],
-                        },
-                    },
+                    'services': [
+                        {
+                            'name': 'mlflow-external',
+                            'spec': {
+                              'type': 'NodePort',
+                              'selector': {
+                                'app.kubernetes.io/name': 'mlflow',
+                              },
+                              'ports': [{
+                                  'protocol': 'TCP',
+                                  'port': 5000,
+                                  'targetPort': 5000,
+                                  'nodePort': 31380
+                              }],
+                            },
+                        }
+                    ],
                 },
             },
         )
