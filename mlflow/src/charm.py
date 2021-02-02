@@ -59,8 +59,9 @@ class MlflowCharm(CharmBase):
         self.model.unit.status = MaintenanceStatus('Setting pod spec')
 
         self.model.pod.set_spec(
-            # TODO: put mysql connection details in here, as env vars for mlflow
-            # TODO: actually start mlflow
+            # TODO: put mysql connection details in here, as env vars for
+            # mlflow
+            # TODO: connect mlflow to minio
             {
                 'version': 3,
                 'containers': [
