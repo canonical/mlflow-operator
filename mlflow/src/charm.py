@@ -7,7 +7,7 @@ import logging
 from ops.charm import CharmBase
 from ops.main import main
 from ops.framework import StoredState
-from ops.model import ActiveStatus, MaintenanceStatus
+from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
 logger = logging.getLogger(__name__)
 
 from opslib.mysql import MySQLClient, MySQLRelationEvent
@@ -33,6 +33,10 @@ class MlflowCharm(CharmBase):
         self.framework.observe(self.on.install, self.set_pod_spec)
         self.framework.observe(self.on.upgrade_charm, self.set_pod_spec)
 
+        # Register relation events
+        self.framework.observe(self.on.db_relation_changed, self._on_db_relation_changed)
+
+
     def _on_database_changed(self, event: MySQLRelationEvent):
         logger.info("================================")
         logger.info(f"_on_database_changed is running; {event}")
@@ -47,10 +51,27 @@ class MlflowCharm(CharmBase):
         self._state.db_root_password = event.root_password
         self.set_pod_spec(event)
 
+    def _on_db_relation_changed(self, event):
+        logger.info("================================")
+        logger.info(f"_on_db_relation_changed is running; {event}")
+        logger.info("================================")
+        self._state.db_host = event.relation.data[event.unit].get("host")
+        self._state.db_port = event.relation.data[event.unit].get("port", 3306)
+        self._state.db_user = event.relation.data[event.unit].get("user")
+        self._state.db_password = event.relation.data[event.unit].get("root_password")
+        if self._state.db_host:
+            self.set_pod_spec(event)
+
     def set_pod_spec(self, event):
         logger.info("================================")
         logger.info(f"in set_pod_spec; {event}")
         logger.info("================================")
+
+        if not self._state.db_host:
+            self.unit.status = WaitingStatus("Waiting for database relation")
+            event.defer()
+            return
+
         if not self.model.unit.is_leader():
             logger.info('Not a leader, skipping set_pod_spec')
             self.model.unit.status = ActiveStatus()
@@ -75,12 +96,7 @@ class MlflowCharm(CharmBase):
                                                                       self._state.db_password,
                                                                       self._state.db_host,
                                                                       self._state.db_port,
-                                                                      self._state.db_name) \
-                                                                      if (self._state.db_user is not None and
-                                                                         self._state.db_password is not None and
-                                                                         self._state.db_host is not None and
-                                                                         self._state.db_port is not None and
-                                                                         self._state.db_name is not None) else ""}
+                                                                      self._state.db_name)}
                     }
                 ],
                 'kubernetesResources': {
@@ -115,7 +131,6 @@ class MlflowCharm(CharmBase):
                               }],
                             },
                         }
-                              
                     ],
                 },
             },
