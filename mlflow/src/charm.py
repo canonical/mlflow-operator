@@ -49,7 +49,7 @@ class MlflowCharm(CharmBase):
 
     def set_pod_spec(self, event):
         logger.info("================================")
-        logger.info("in set_pod_spec")
+        logger.info(f"in set_pod_spec; {event}")
         logger.info("================================")
         if not self.model.unit.is_leader():
             logger.info('Not a leader, skipping set_pod_spec')
@@ -70,6 +70,17 @@ class MlflowCharm(CharmBase):
                         'imageDetails': {'imagePath': 'quay.io/helix-ml/mlflow:1.13.1'},
                         'ports': [{'name': 'http', 'containerPort': 5000}],
                         'args': ['--host', '0.0.0.0'],
+                        'envConfig': {'MLFLOW_TRACKING_URI':
+                                        'mysql://{}:{}@{}:{}/{}'.format(self._state.db_user,
+                                                                      self._state.db_password,
+                                                                      self._state.db_host,
+                                                                      self._state.db_port,
+                                                                      self._state.db_name) \
+                                                                      if (self._state.db_user is not None and
+                                                                         self._state.db_password is not None and
+                                                                         self._state.db_host is not None and
+                                                                         self._state.db_port is not None and
+                                                                         self._state.db_name is not None) else ""}
                     }
                 ],
                 'kubernetesResources': {
