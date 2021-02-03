@@ -6,8 +6,13 @@ applications:
   mysql:
     charm: "cs:~charmed-osm/mariadb-k8s-34"
     scale: 1
+  minio:
+    charm: "cs:~kubeflow-charmers/minio-146"
+    scale: 1
 bundle: kubernetes
 description: "MLflow"
 relations:
   - - mlflow:db
     - mysql
+  - - mlflow:minio
+    - minio

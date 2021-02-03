@@ -15,4 +15,5 @@ requires:
   db:
     interface: mysql
     limit: 1  # Most charms only handle a single MySQL Application.
-
+  minio:
+    interface: generic-ip-port-user-pass
