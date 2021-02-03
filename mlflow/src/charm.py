@@ -56,9 +56,10 @@ class MlflowCharm(CharmBase):
         logger.info(f"_on_db_relation_changed is running; {event}")
         logger.info("================================")
         self._state.db_host = event.relation.data[event.unit].get("host")
-        self._state.db_port = event.relation.data[event.unit].get("port", 3306)
+        self._state.db_port = event.relation.data[event.unit].get("port")
         self._state.db_user = event.relation.data[event.unit].get("user")
-        self._state.db_password = event.relation.data[event.unit].get("root_password")
+        self._state.db_password = event.relation.data[event.unit].get("password")
+        self._state.db_root_password = event.relation.data[event.unit].get("root_password")
         if self._state.db_host:
             self.set_pod_spec(event)
 
