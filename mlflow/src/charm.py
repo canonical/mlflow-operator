@@ -53,6 +53,8 @@ class MlflowCharm(CharmBase):
         self._state.minio_port = event.relation.data[event.unit].get("port")
         self._state.minio_private_address = event.relation.data[event.unit].get("private-address")
         self._state.minio_user = event.relation.data[event.unit].get("user")
+        if self._state.minio_ingress_address:
+            self.set_pod_spec(event)
 
     def _on_database_changed(self, event: MySQLRelationEvent):
         logger.info("================================")
@@ -110,7 +112,8 @@ class MlflowCharm(CharmBase):
                         'imageDetails': {'imagePath': 'quay.io/helix-ml/mlflow:1.13.1'},
                         'ports': [{'name': 'http', 'containerPort': 5000}],
                         'args': ['--host', '0.0.0.0',
-                                 '--backend-store-uri', 'mysql+pymysql://{}:{}@{}:{}/{}'.format(self._state.db_user,
+                                 '--backend-store-uri',
+                                 'mysql+pymysql://{}:{}@{}:{}/{}'.format(self._state.db_user,
                                                                       self._state.db_password,
                                                                       self._state.db_host,
                                                                       self._state.db_port,
@@ -121,7 +124,12 @@ class MlflowCharm(CharmBase):
                                                                       self._state.db_password,
                                                                       self._state.db_host,
                                                                       self._state.db_port,
-                                                                      self._state.db_name)}
+                                                                      self._state.db_name),
+                                      'AWS_ACCESS_KEY_ID': self._state.minio_user,
+                                      'AWS_SECRET_ACCESS_KEY': self._state.minio_password,
+                                      'MLFLOW_S3_ENDPOINT_URL': '{}:{}'.format(
+                                        self._state.minio_ingress_address,
+                                        self._state.minio_port)}
                     }
                 ],
                 'kubernetesResources': {
