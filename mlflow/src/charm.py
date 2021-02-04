@@ -11,6 +11,7 @@ from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
 logger = logging.getLogger(__name__)
 
 from opslib.mysql import MySQLClient, MySQLRelationEvent
+from base64 import b64encode
 
 DB_NAME = "mlflow"
 BUCKET_NAME = "mlflow"
@@ -42,6 +43,14 @@ class MlflowCharm(CharmBase):
         self.framework.observe(self.on.minio_relation_joined, self._on_minio_relation_changed)
         self.framework.observe(self.on.minio_relation_changed, self._on_minio_relation_changed)
 
+    def dequote(self, string):
+        """
+        If a string has single or double quotes around it, remove them.
+        """
+        if (string[0] == string[-1]) and string.startswith(("'", '"')):
+            return string[1:-1]
+        return string
+
     def _on_minio_relation_changed(self, event):
         logger.info("================================")
         logger.info(f"_on_minio_relation_changed is running; {event}")
@@ -49,10 +58,12 @@ class MlflowCharm(CharmBase):
         self._state.minio_egress_subnet = event.relation.data[event.unit].get("egress-subnets")
         self._state.minio_ingress_address = event.relation.data[event.unit].get("ingress-address")
         self._state.minio_ip = event.relation.data[event.unit].get("ip")
-        self._state.minio_password = event.relation.data[event.unit].get("password")
         self._state.minio_port = event.relation.data[event.unit].get("port")
         self._state.minio_private_address = event.relation.data[event.unit].get("private-address")
-        self._state.minio_user = event.relation.data[event.unit].get("user")
+        self._state.minio_password = b64encode(
+          self.dequote(event.relation.data[event.unit].get("password")).encode("utf-8")).decode("utf-8")
+        self._state.minio_user = b64encode(
+          self.dequote(event.relation.data[event.unit].get("user")).encode("utf-8")).decode("utf-8")
         if self._state.minio_ingress_address:
             self.set_pod_spec(event)
 
@@ -127,7 +138,8 @@ class MlflowCharm(CharmBase):
                                                                       self._state.db_name),
                                       'AWS_ACCESS_KEY_ID': self._state.minio_user,
                                       'AWS_SECRET_ACCESS_KEY': self._state.minio_password,
-                                      'MLFLOW_S3_ENDPOINT_URL': '{}:{}'.format(
+                                      'AWS_DEFAULT_REGION': 'us-east-1',
+                                      'MLFLOW_S3_ENDPOINT_URL': 'http://{}:{}'.format(
                                         self._state.minio_ingress_address,
                                         self._state.minio_port)}
                     }
