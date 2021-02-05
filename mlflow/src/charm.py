@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 from opslib.mysql import MySQLClient, MySQLRelationEvent
 from base64 import b64encode
+from minio import Minio
+from minio.error import S3Error
+from datetime import datetime
+import json
 
 DB_NAME = "mlflow"
 BUCKET_NAME = "mlflow"
@@ -51,6 +55,51 @@ class MlflowCharm(CharmBase):
             return string[1:-1]
         return string
 
+    def create_bucket(self, bucket):
+        """
+        Create the bucket in minio to store the MLFlow artifacts
+        """
+
+        try:
+            self.minio.make_bucket(bucket)
+        except S3Error as err:
+            logger.error(err)
+            return
+
+        # Set the bucket policy
+        policy = {
+            "Version": datetime.today().strftime('%Y-%m-%d'),
+            "Statement":[
+                {
+                    "Sid": "",
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "*"},
+                    "Action": "s3:GetBucketLocation",
+                    "Resource": "arn:aws:s3:::{}".format(bucket)
+                },{
+                    "Sid":"",
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "*"},
+                    "Action": "s3:ListBucket",
+                    "Resource": "arn:aws:s3:::{}".format(bucket)
+                },{
+                    "Sid": "",
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "*"},
+                    "Action": "s3:GetObject",
+                    "Resource": "arn:aws:s3:::{}/*".format(bucket)
+                },{
+                    "Sid": "",
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "*"},
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::{}/*".format(bucket)
+                }
+            ]
+        }
+
+        self.minio.set_bucket_policy(bucket, json.dumps(policy))
+
     def _on_minio_relation_changed(self, event):
         logger.info("================================")
         logger.info(f"_on_minio_relation_changed is running; {event}")
@@ -61,10 +110,17 @@ class MlflowCharm(CharmBase):
         self._state.minio_port = event.relation.data[event.unit].get("port")
         self._state.minio_private_address = event.relation.data[event.unit].get("private-address")
         self._state.minio_password = b64encode(
-          self.dequote(event.relation.data[event.unit].get("password")).encode("utf-8")).decode("utf-8")
+            self.dequote(event.relation.data[event.unit].get("password")).encode("utf-8")).decode("utf-8")
         self._state.minio_user = b64encode(
-          self.dequote(event.relation.data[event.unit].get("user")).encode("utf-8")).decode("utf-8")
+            self.dequote(event.relation.data[event.unit].get("user")).encode("utf-8")).decode("utf-8")
         if self._state.minio_ingress_address:
+            self.minio = Minio('{}:{}'.format(self._state.minio_ingress_address,self._state.minio_port),
+                  access_key = self._state.minio_user,
+                  secret_key = self._state.minio_password,
+                  secure = False,
+                  region = "us-east-1")
+
+            self.create_bucket(BUCKET_NAME)
             self.set_pod_spec(event)
 
     def _on_database_changed(self, event: MySQLRelationEvent):
@@ -101,6 +157,11 @@ class MlflowCharm(CharmBase):
 
         if not self._state.db_host:
             self.unit.status = WaitingStatus("Waiting for database relation")
+            event.defer()
+            return
+
+        if not self._state.minio_ingress_address:
+            self.unit.status = WaitingStatus("Waiting for minio relation")
             event.defer()
             return
 
