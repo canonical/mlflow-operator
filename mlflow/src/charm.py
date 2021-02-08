@@ -61,7 +61,12 @@ class MlflowCharm(CharmBase):
         """
 
         try:
-            self.minio.make_bucket(bucket)
+            # Make the bucket if not exist.
+            found = self.minio.bucket_exists(bucket)
+            if not found:
+                self.minio.make_bucket(bucket, location='us-east-1')
+            else:
+                logger.info("Bucket '{}' already exists".format(bucket))
         except S3Error as err:
             logger.error(err)
             return
@@ -234,6 +239,20 @@ class MlflowCharm(CharmBase):
                                   'port': 8082,
                                   'targetPort': 8082,
                                   'nodePort': 30600
+                              }],
+                            },
+                        },{
+                            'name': 'minio-external',
+                            'spec': {
+                              'type': 'NodePort',
+                              'selector': {
+                                'app.kubernetes.io/name': 'minio',
+                              },
+                              'ports': [{
+                                  'protocol': 'TCP',
+                                  'port': 9000,
+                                  'targetPort': 9000,
+                                  'nodePort': 30650
                               }],
                             },
                         }
