@@ -11,7 +11,6 @@ from ops.model import ActiveStatus, MaintenanceStatus, WaitingStatus
 logger = logging.getLogger(__name__)
 
 from opslib.mysql import MySQLClient, MySQLRelationEvent
-from base64 import b64encode
 from minio import Minio
 from minio.error import S3Error
 from datetime import datetime
@@ -64,7 +63,7 @@ class MlflowCharm(CharmBase):
             # Make the bucket if not exist.
             found = self.minio.bucket_exists(bucket)
             if not found:
-                self.minio.make_bucket(bucket, location='us-east-1')
+                self.minio.make_bucket(bucket)
             else:
                 logger.info("Bucket '{}' already exists".format(bucket))
         except S3Error as err:
@@ -114,16 +113,13 @@ class MlflowCharm(CharmBase):
         self._state.minio_ip = event.relation.data[event.unit].get("ip")
         self._state.minio_port = event.relation.data[event.unit].get("port")
         self._state.minio_private_address = event.relation.data[event.unit].get("private-address")
-        self._state.minio_password = b64encode(
-            self.dequote(event.relation.data[event.unit].get("password")).encode("utf-8")).decode("utf-8")
-        self._state.minio_user = b64encode(
-            self.dequote(event.relation.data[event.unit].get("user")).encode("utf-8")).decode("utf-8")
+        self._state.minio_password = self.dequote(event.relation.data[event.unit].get("password"))
+        self._state.minio_user = self.dequote(event.relation.data[event.unit].get("user"))
         if self._state.minio_ingress_address:
             self.minio = Minio('{}:{}'.format(self._state.minio_ingress_address,self._state.minio_port),
                   access_key = self._state.minio_user,
                   secret_key = self._state.minio_password,
-                  secure = False,
-                  region = "us-east-1")
+                  secure = False)
 
             self.create_bucket(BUCKET_NAME)
             self.set_pod_spec(event)
