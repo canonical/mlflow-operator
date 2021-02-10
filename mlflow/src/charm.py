@@ -37,6 +37,7 @@ class MlflowCharm(CharmBase):
         self.db = MySQLClient(self, 'db')  # 'db' relation in metadata.yaml
         self.framework.observe(self.db.on.database_changed, self._on_database_changed)
 
+        self.framework.observe(self.on.config_changed, self.set_pod_spec)
         self.framework.observe(self.on.install, self.set_pod_spec)
         self.framework.observe(self.on.upgrade_charm, self.set_pod_spec)
 
@@ -45,6 +46,8 @@ class MlflowCharm(CharmBase):
         self.framework.observe(self.on.db_relation_changed, self._on_db_relation_changed)
         self.framework.observe(self.on.minio_relation_joined, self._on_minio_relation_changed)
         self.framework.observe(self.on.minio_relation_changed, self._on_minio_relation_changed)
+        self.framework.observe(self.on.mlflow_relation_joined, self._on_mlflow_relation_changed)
+        self.framework.observe(self.on.mlflow_relation_changed, self._on_mlflow_relation_changed)
 
     def dequote(self, string):
         """
@@ -64,8 +67,9 @@ class MlflowCharm(CharmBase):
             found = self.minio.bucket_exists(bucket)
             if not found:
                 self.minio.make_bucket(bucket)
+                logger.info("Bucket '{}' created.".format(bucket))
             else:
-                logger.info("Bucket '{}' already exists".format(bucket))
+                logger.info("Bucket '{}' already exists.".format(bucket))
         except S3Error as err:
             logger.error(err)
             return
@@ -103,6 +107,25 @@ class MlflowCharm(CharmBase):
         }
 
         self.minio.set_bucket_policy(bucket, json.dumps(policy))
+
+    def _on_mlflow_relation_changed(self, event):
+        logger.info("================================")
+        logger.info(f"_on_mlflow_relation_changed is running; {event}")
+        logger.info("================================")
+
+        config = self.model.config
+        environment = {
+            'AWS_ACCESS_KEY_ID': self._state.minio_user,
+            'AWS_SECRET_ACCESS_KEY': self._state.minio_password,
+            'MLFLOW_S3_ENDPOINT_URL': 'http://{}:{}'.format(
+                                        self._state.minio_ingress_address,
+                                        self._state.minio_port),
+            'MLFLOW_TRACKING_URI': 'mlflow:{}'.format(config['mlflow_port'])}
+
+        requirements = []
+
+        event.relation.data[self.unit]["environment"] = str(environment)
+        event.relation.data[self.unit]["requirements"] = str(requirements)
 
     def _on_minio_relation_changed(self, event):
         logger.info("================================")
@@ -201,8 +224,7 @@ class MlflowCharm(CharmBase):
                                       'AWS_DEFAULT_REGION': 'us-east-1',
                                       'MLFLOW_S3_ENDPOINT_URL': 'http://{}:{}'.format(
                                         self._state.minio_ingress_address,
-                                        self._state.minio_port),
-                                      'MLFLOW_TRACKING_URI': 'mlflow:{}'.format(config['mlflow_port'])}
+                                        self._state.minio_port)}
                     }
                 ],
                 'kubernetesResources': {
