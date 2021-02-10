@@ -173,17 +173,15 @@ class MlflowCharm(CharmBase):
 
         self.model.unit.status = MaintenanceStatus('Setting pod spec')
 
+        config = self.model.config
         self.model.pod.set_spec(
-            # TODO: put mysql connection details in here, as env vars for
-            # mlflow
-            # TODO: connect mlflow to minio
             {
                 'version': 3,
                 'containers': [
                     {
                         'name': 'mlflow',
                         'imageDetails': {'imagePath': 'quay.io/helix-ml/mlflow:1.13.1'},
-                        'ports': [{'name': 'http', 'containerPort': 5000}],
+                        'ports': [{'name': 'http', 'containerPort': config['mlflow_port']}],
                         'args': ['--host', '0.0.0.0',
                                  '--backend-store-uri',
                                  'mysql+pymysql://{}:{}@{}:{}/{}'.format(self._state.db_user,
@@ -203,11 +201,11 @@ class MlflowCharm(CharmBase):
                                       'AWS_DEFAULT_REGION': 'us-east-1',
                                       'MLFLOW_S3_ENDPOINT_URL': 'http://{}:{}'.format(
                                         self._state.minio_ingress_address,
-                                        self._state.minio_port)}
+                                        self._state.minio_port),
+                                      'MLFLOW_TRACKING_URI': 'mlflow:{}'.format(config['mlflow_port'])}
                     }
                 ],
                 'kubernetesResources': {
-                    # TODO: make nodeport configurable
                     'services': [
                         {
                             'name': 'mlflow-external',
@@ -218,9 +216,9 @@ class MlflowCharm(CharmBase):
                               },
                               'ports': [{
                                   'protocol': 'TCP',
-                                  'port': 5000,
-                                  'targetPort': 5000,
-                                  'nodePort': 31380
+                                  'port': config['mlflow_port'],
+                                  'targetPort': config['mlflow_port'],
+                                  'nodePort': config['mlflow_nodeport']
                               }],
                             },
                         },{
@@ -232,9 +230,9 @@ class MlflowCharm(CharmBase):
                               },
                               'ports': [{
                                   'protocol': 'TCP',
-                                  'port': 8082,
-                                  'targetPort': 8082,
-                                  'nodePort': 30600
+                                  'port': config['kubeflow_port'],
+                                  'targetPort': config['kubeflow_port'],
+                                  'nodePort': config['kubeflow_nodeport']
                               }],
                             },
                         },{
@@ -246,9 +244,9 @@ class MlflowCharm(CharmBase):
                               },
                               'ports': [{
                                   'protocol': 'TCP',
-                                  'port': 9000,
-                                  'targetPort': 9000,
-                                  'nodePort': 30650
+                                  'port': config['minio_port'],
+                                  'targetPort': config['minio_port'],
+                                  'nodePort': config['minio_nodeport']
                               }],
                             },
                         }
