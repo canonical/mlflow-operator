@@ -4,6 +4,7 @@
 
 import logging
 
+from pathlib import Path
 from ops.charm import CharmBase
 from ops.main import main
 from ops.framework import StoredState
@@ -122,9 +123,15 @@ class MlflowCharm(CharmBase):
                                         self._state.minio_port),
             'MLFLOW_TRACKING_URI': 'mlflow:{}'.format(config['mlflow_port'])}
 
-        requirements = []
-
         event.relation.data[self.unit]["environment"] = str(environment)
+
+        requirements = []
+        try:
+            for req in open("files/mlflow_requirements.txt", 'r'):
+                requirements.append(req.rstrip('\n'))
+        except IOError as e:
+            print("Error loading mlflow requirements file:", e)
+
         event.relation.data[self.unit]["requirements"] = str(requirements)
 
     def _on_minio_relation_changed(self, event):
