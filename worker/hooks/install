@@ -2,13 +2,13 @@
 import os
 import sys
 sys.path.insert(0, os.path.join(os.environ['CHARM_DIR'], 'lib'))
-from hookenv import log
+from charmhelpers.core import hookenv
 
 def install():
     """
     Lets not do anything here now but let the log know we passed through.
     """
-    log("=========== hook: install ===========")
+    hookenv.log("=========== hook: install ===========")
 
 if __name__ == "__main__":
     install()
