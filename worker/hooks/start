@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+import os
+import sys
+sys.path.insert(0, os.path.join(os.environ['CHARM_DIR'], 'lib'))
+from hookenv import log, status_set
+
+def start():
+    """
+    Lets not do anything here now but let the log know we passed through.
+    """
+    log("=========== hook: start ===========")
+
+if __name__ == "__main__":
+    start()
+    status_set('active', "ready")

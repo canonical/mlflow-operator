@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+import os
+import sys
+sys.path.insert(0, os.path.join(os.environ['CHARM_DIR'], 'lib'))
+from hookenv import log, relation_id, relation_get
+
+def master_relation_joined():
+    """
+    https://discourse.juju.is/t/charm-hooks/1040
+
+    [name]-relation-joined is run only when that remote unit is first observed by the unit.
+    It should be used to relation-set any local unit settings that can be determined using no more than the name of the
+    joining unit and the remote private-address setting, which is always available when the relation is created and is
+    by convention not deleted.
+
+    You should not depend upon any other relation settings in the -joined hook because they’re not guaranteed to be
+    present; if you need more information you should wait for a -changed hook that presents the right information.
+    """
+
+    log(" ========= hook: master-relation-joined  ========")
+
+    remoteUnit = os.environ.get('JUJU_REMOTE_UNIT', None) # remote_unit()
+
+    masterAddr = relation_get('private-address', unit=remoteUnit)
+
+    log(f"Joined with MASTER at private-address: {masterAddr}")
+
+if __name__ == "__main__":
+    master_relation_joined()

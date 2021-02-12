@@ -1,5 +1,8 @@
 ---
 applications:
+  worker:
+    charm: "./worker.charm"
+    scale: 1
   mlflow:
     charm: "./mlflow.charm"
     scale: 1
@@ -16,3 +19,5 @@ relations:
     - mysql
   - - mlflow:minio
     - minio
+  - - worker:mlflow
+    - mlflow

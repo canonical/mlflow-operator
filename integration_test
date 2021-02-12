@@ -4,7 +4,9 @@ set -xeuo pipefail
 testctl get
 export KUBECONFIG=$(pwd)/kubeconfig
 (cd mlflow && charmcraft build)
+(cd worker && charmcraft build)
 ./testctl-rsync.sh mlflow/mlflow.charm /root
+./testctl-rsync.sh worker/worker.charm /root
 ./testctl-rsync.sh bundle.yaml /root
 
 # How to iterate quickly without getting a new VM every time:
