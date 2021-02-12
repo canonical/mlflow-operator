@@ -2,7 +2,7 @@
 import os
 import sys
 sys.path.insert(0, os.path.join(os.environ['CHARM_DIR'], 'lib'))
-from hookenv import log
+from charmhelpers.core import hookenv
 
 def master_relation_created():
     """
@@ -12,7 +12,7 @@ def master_relation_created():
     later point in time, the hook will fire once the relation has been established.
     """
 
-    log(" ========= hook: master-relation-created  ========")
+    hookenv.log(" ========= hook: master-relation-created  ========")
 
 
 if __name__ == "__main__":

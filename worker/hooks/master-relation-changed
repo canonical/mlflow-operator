@@ -2,7 +2,7 @@
 import os
 import sys
 sys.path.insert(0, os.path.join(os.environ['CHARM_DIR'], 'lib'))
-from hookenv import log, relation_get, status_set
+from charmhelpers.core import hookenv
 
 def writeWorkerkeyFile(workerkey):
     """ Write the workerkey to file in the charm directory,
@@ -23,15 +23,15 @@ def master_relation_changed():
 
     The settings that you can get, and that you should set, are determined by the relation’s interface.
     """
-    log(" ========= hook: master-relation-changed  ========")
+    hookenv.log(" ========= hook: master-relation-changed  ========")
 
     localunitname = os.environ['JUJU_UNIT_NAME']
 
     ## If we have data that belong to this unit
-    if relation_get(f"{localunitname}-worker-key"):
+    if hookenv.relation_get(f"{localunitname}-worker-key"):
 
         # Get the worker-key with our unit name on it, e.g.: 'worker/0-worker-key'
-        workerKey = relation_get(f"{localunitname}-worker-key")
+        workerKey = hookenv.relation_get(f"{localunitname}-worker-key")
 
         # As a dummy operation, we create a file on the unit with the key.
         # This would be an example of doing something useful with the
@@ -41,20 +41,20 @@ def master_relation_changed():
         writeWorkerkeyFile(workerKey)
 
         # Show key in the status message.
-        status_set("active", f"WorkerKey: {workerKey}")
+        hookenv.status_set("active", f"WorkerKey: {workerKey}")
 
     else:
 
-        status_set("waiting", "worker-key not available for this unit.")
+        hookenv.status_set("waiting", "worker-key not available for this unit.")
 
     # Lets always log the message the master unit has, when there is one.
-    if relation_get('message'):
+    if hookenv.relation_get('message'):
 
         masterUnitName = os.environ['JUJU_REMOTE_UNIT']
 
-        masterMessage = relation_get('message', unit=masterUnitName)
+        masterMessage = hookenv.relation_get('message', unit=masterUnitName)
 
-        log(f"MASTER message: {masterMessage}")
+        hookenv.log(f"MASTER message: {masterMessage}")
 
 
 if __name__ == "__main__":

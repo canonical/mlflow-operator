@@ -2,7 +2,7 @@
 import os
 import sys
 sys.path.insert(0, os.path.join(os.environ['CHARM_DIR'], 'lib'))
-from hookenv import log
+from charmhelpers.core import hookenv
 
 def master_relation_departed():
     """
@@ -22,7 +22,7 @@ def master_relation_departed():
     hook: [name]-relation-broken
     """
 
-    log(" ========= hook: master-relation-departed  ========")
+    hookenv.log(" ========= hook: master-relation-departed  ========")
 
 
 if __name__ == "__main__":
