@@ -2,14 +2,14 @@
 import os
 import sys
 sys.path.insert(0, os.path.join(os.environ['CHARM_DIR'], 'lib'))
-from charmhelpers.core import hookenv
+from hookenv import log, status_set
 
 def start():
     """
     Lets not do anything here now but let the log know we passed through.
     """
-    hookenv.log("=========== hook: start ===========")
+    log("=========== hook: start ===========")
 
 if __name__ == "__main__":
     start()
-    hookenv.status_set('active', "ready")
+    status_set('active', "ready")

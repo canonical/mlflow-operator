@@ -2,7 +2,7 @@
 import os
 import sys
 sys.path.insert(0, os.path.join(os.environ['CHARM_DIR'], 'lib'))
-from charmhelpers.core import hookenv
+from hookenv import log, relation_id, relation_get
 
 def master_relation_joined():
     """
@@ -17,13 +17,13 @@ def master_relation_joined():
     present; if you need more information you should wait for a -changed hook that presents the right information.
     """
 
-    hookenv.log(" ========= hook: master-relation-joined  ========")
+    log(" ========= hook: master-relation-joined  ========")
 
     remoteUnit = os.environ.get('JUJU_REMOTE_UNIT', None) # remote_unit()
 
     masterAddr = relation_get('private-address', unit=remoteUnit)
 
-    hookenv.log(f"Joined with MASTER at private-address: {masterAddr}")
+    log(f"Joined with MASTER at private-address: {masterAddr}")
 
 if __name__ == "__main__":
     master_relation_joined()

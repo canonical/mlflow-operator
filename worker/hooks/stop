@@ -2,13 +2,13 @@
 import os
 import sys
 sys.path.insert(0, os.path.join(os.environ['CHARM_DIR'], 'lib'))
-from charmhelpers.core import hookenv
+from hookenv import log
 
 def stop():
     """
     Lets not do anything here now but let the log know we passed through.
     """
-    hookenv.log("=========== hook: stop ===========")
+    log("=========== hook: stop ===========")
 
 if __name__ == "__main__":
     stop()
