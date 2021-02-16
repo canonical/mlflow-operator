@@ -34,6 +34,8 @@ class MlflowCharm(CharmBase):
             db_user=None, db_password=None, db_root_password=None,
             minio_egress_subnets=None, minio_ingress_address=None, minio_ip=None,
             minio_password=None, minio_port=None, minio_private_address=None, minio_user=None,
+            prometheus_port=None, prometheus_metrics_path=None, prometheus_labels=None,
+            prometheus_scrape_interval=None, prometheus_scrape_timeout=None,
         )
         self.db = MySQLClient(self, 'db')  # 'db' relation in metadata.yaml
         self.framework.observe(self.db.on.database_changed, self._on_database_changed)
@@ -49,6 +51,8 @@ class MlflowCharm(CharmBase):
         self.framework.observe(self.on.minio_relation_changed, self._on_minio_relation_changed)
         self.framework.observe(self.on.mlflow_relation_joined, self._on_mlflow_relation_changed)
         self.framework.observe(self.on.mlflow_relation_changed, self._on_mlflow_relation_changed)
+        self.framework.observe(self.on.prometheus_relation_joined, self._on_prometheus_relation_changed)
+        self.framework.observe(self.on.prometheus_relation_changed, self._on_prometheus_relation_changed)
 
     def dequote(self, string):
         """
@@ -108,6 +112,24 @@ class MlflowCharm(CharmBase):
         }
 
         self.minio.set_bucket_policy(bucket, json.dumps(policy))
+
+    def _on_prometheus_relation_changed(self, event):
+        logger.info("================================")
+        logger.info(f"_on_prometheus_relation_changed is running; {event}")
+        logger.info("================================")
+        self._state.prometheus_port = event.relation.data[event.unit].get("port")
+        self._state.prometheus_metrics_path = event.relation.data[event.unit].get("metrics_path")
+        self._state.prometheus_labels = event.relation.data[event.unit].get("labels")
+        self._state.prometheus_scrape_interval = event.relation.data[event.unit].get("scrape_interval")
+        self._state.prometheus_scrape_timeout = event.relation.data[event.unit].get("scrape_timeout")
+
+        config = self.model.config
+        event.relation.data[self.unit]["port"] = str(config['mlflow_port'])
+        event.relation.data[self.unit]["metrics_path"] = '/metrics'
+        if config['mlflow_scrape_interval']:
+          event.relation.data[self.unit]["scrape_interval"] = config['mlflow_scrape_interval']
+        if config['mlflow_scrape_timeout']:
+          event.relation.data[self.unit]["scrape_timeout"] = config['mlflow_scrape_timeout']
 
     def _on_mlflow_relation_changed(self, event):
         logger.info("================================")
@@ -213,6 +235,7 @@ class MlflowCharm(CharmBase):
                         'imageDetails': {'imagePath': 'quay.io/helix-ml/mlflow:1.13.1'},
                         'ports': [{'name': 'http', 'containerPort': config['mlflow_port']}],
                         'args': ['--host', '0.0.0.0',
+                                 '--expose-prometheus', '/metrics',
                                  '--backend-store-uri',
                                  'mysql+pymysql://{}:{}@{}:{}/{}'.format(self._state.db_user,
                                                                       self._state.db_password,

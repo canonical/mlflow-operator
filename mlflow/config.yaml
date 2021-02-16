@@ -12,6 +12,16 @@ options:
       The nodeport for MLFlow
     type: int
     default: 31380
+  mlflow_scrape_interval:
+    description: |
+      How frequently to scrape targets from MLFlow.
+    type: string
+    default: None
+  mlflow_scrape_timeout:
+    description: |
+      Per-scrape timeout when scraping MLFlow.
+    type: string
+    default: None
   minio_port:
     description: |
       The port Minio will be listening on

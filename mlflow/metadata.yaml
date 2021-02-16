@@ -18,6 +18,9 @@ requires:
   minio:
     interface: generic-ip-port-user-pass
     limit: 1
+  prometheus:
+    interface: prometheus
+    limit: 1
 provides:
   mlflow:
     interface: mlflow

@@ -12,6 +12,9 @@ applications:
   minio:
     charm: "cs:~kubeflow-charmers/minio-146"
     scale: 1
+  prometheus:
+    charm: "cs:~charmed-osm/prometheus-k8s-32"
+    scale: 1
 bundle: kubernetes
 description: "MLflow"
 relations:
@@ -19,5 +22,7 @@ relations:
     - mysql
   - - mlflow:minio
     - minio
+  - - mlflow:prometheus
+    - prometheus
   - - worker:mlflow
     - mlflow
