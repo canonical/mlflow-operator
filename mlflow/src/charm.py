@@ -136,6 +136,16 @@ class MlflowCharm(CharmBase):
         logger.info(f"_on_mlflow_relation_changed is running; {event}")
         logger.info("================================")
 
+        if not self._state.db_host:
+            self.unit.status = WaitingStatus("Waiting for database relation")
+            event.defer()
+            return
+
+        if not self._state.minio_ingress_address:
+            self.unit.status = WaitingStatus("Waiting for minio relation")
+            event.defer()
+            return
+
         config = self.model.config
         environment = {
             'AWS_ACCESS_KEY_ID': self._state.minio_user,
