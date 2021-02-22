@@ -16,6 +16,7 @@ from minio import Minio
 from minio.error import S3Error
 from datetime import datetime
 import json
+from base64 import b64encode
 
 DB_NAME = "mlflow"
 BUCKET_NAME = "mlflow"
@@ -268,6 +269,19 @@ class MlflowCharm(CharmBase):
                     }
                 ],
                 'kubernetesResources': {
+                    'secrets': [
+                        {
+                            'name': 'seldon-init-container-secret',
+                            'data': {
+                                'AWS_ENDPOINT_URL': b64encode('http://{}:{}'.format(
+                                        self._state.minio_ingress_address,
+                                        self._state.minio_port).encode("utf-8")).decode("utf-8"),
+                                'AWS_ACCESS_KEY_ID': b64encode(self._state.minio_user.encode("utf-8")).decode("utf-8"),
+                                'AWS_SECRET_ACCESS_KEY': b64encode(self._state.minio_password.encode("utf-8")).decode("utf-8"),
+                                'USE_SSL': b64encode('false'.encode("utf-8")).decode("utf-8")
+                            }
+                        }
+                    ],
                     'services': [
                         {
                             'name': 'mlflow-external',
