@@ -6,6 +6,7 @@ description: |
 summary: |
   A charm which provides a Kubernetes installation of the MLflow (https://mlflow.org/) server.
 series: [kubernetes]
+tags: [mlflow]
 #resources:
 #  oci-image:
 #    type: oci-image
@@ -21,6 +22,5 @@ requires:
   prometheus:
     interface: prometheus
     limit: 1
-provides:
-  mlflow:
-    interface: mlflow
+  pod-defaults:
+    interface: pod-defaults
