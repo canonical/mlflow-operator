@@ -27,4 +27,4 @@ relations:
   - - mlflow:prometheus
     - prometheus
   - - worker:mlflow
-    - pod-defaults
+    - mlflow
