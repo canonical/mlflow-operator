@@ -26,5 +26,5 @@ relations:
     - minio
   - - mlflow:prometheus
     - prometheus
-  - - worker:mlflow
+  - - worker:pod-defaults
     - mlflow
