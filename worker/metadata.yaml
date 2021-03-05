@@ -10,6 +10,6 @@ tags:
   - misc
   - education
 subordinate: false
-requires:
-  mlflow:
+provides:
+  pod-defaults:
     interface: pod-defaults

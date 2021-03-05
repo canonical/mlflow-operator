@@ -21,8 +21,8 @@ class WorkerCharm(CharmBase):
         self._stored.set_default(things=[])
         
         # Register relation events
-        self.framework.observe(self.on.mlflow_relation_joined, self._on_mlflow_relation_changed)
-        self.framework.observe(self.on.mlflow_relation_changed, self._on_mlflow_relation_changed)
+        self.framework.observe(self.on.pod_defaults_relation_joined, self._on_pod_defaults_relation_changed)
+        self.framework.observe(self.on.pod_defaults_relation_changed, self._on_pod_defaults_relation_changed)
 
     def _on_config_changed(self, _):
         current = self.config["thing"]
@@ -37,9 +37,9 @@ class WorkerCharm(CharmBase):
         else:
             event.set_results({"fortune": "A bug in the code is worth two in the documentation."})
 
-    def _on_mlflow_relation_changed(self, event):
+    def _on_pod_defaults_relation_changed(self, event):
         logger.info("================================")
-        logger.info(f"_on_mlflow_relation_changed is running; {event}")
+        logger.info(f"_on_pod_defaults_relation_changed is running; {event}")
         logger.info("================================")
         logger.info("================================")
         logger.info(event.relation.data[event.unit])
