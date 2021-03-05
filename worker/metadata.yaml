@@ -11,5 +11,5 @@ tags:
   - education
 subordinate: false
 requires:
-  pod-defaults:
+  mlflow:
     interface: pod-defaults

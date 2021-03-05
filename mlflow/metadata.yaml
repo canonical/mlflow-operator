@@ -22,5 +22,5 @@ requires:
   prometheus:
     interface: prometheus
     limit: 1
-  pod-defaults:
+  mlflow:
     interface: pod-defaults
