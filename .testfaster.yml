@@ -59,13 +59,15 @@ base:
     # already running when you testctl get
     #!/bin/bash
     set -xeuo pipefail
+    echo "cache-bust 1"
     # snappity snaps
     export PATH="/snap/bin:$PATH"
     # juju uses the hostname in the kubeconfig to try and connect _from_ the
     # pod to the apiserver. so give it an ip address that resolves to the host
     # from inside the pods.
     cd /root
-    snap install juju --classic --channel=2.9/edge
+    snap install juju --classic --channel=2.9/candidate
+    #snap install juju --classic --channel=2.9/edge
     # Set kubeconfig to point to k8s apiserver on an address that's routable
     # from inside the pods, so jujud can access it.  In this case the docker
     # bridge.
