@@ -9,9 +9,35 @@ applications:
   mysql:
     charm: "cs:~charmed-osm/mariadb-k8s-34"
     scale: 1
+
   minio:
-    charm: "cs:~kubeflow-charmers/minio-146"
+    # From https://github.com/canonical/bundle-kubeflow/blob/master/bundle.yaml
+    charm: "cs:minio-55"
+
+    #charm: "cs:~kubeflow-charmers/minio-146"
+    # Located charm "minio" in charm-store, revision 146
+    # Located charm "mariadb-k8s" in charm-store, revision 34
+    # Located charm "prometheus-k8s" in charm-store, revision 32
+    # Executing changes:
+    # - upload charm minio from charm-store for series kubernetes
+    # - upgrade minio from charm-store using charm minio for series kubernetes
+    # ERROR cannot deploy bundle: cannot upgrade application "minio" to charm "cs:~kubeflow-charmers/minio-146": would break relation "argo-controller:object-storage minio:object-storage"
+
+    #charm: "cs:~kubeflow-charmers/minio-8"
+    #
+    # Located charm "minio" in charm-store, revision 8
+    # Located charm "mariadb-k8s" in charm-store, revision 34
+    # Located charm "prometheus-k8s" in charm-store, revision 32
+    # Executing changes:
+    # - upload charm minio from charm-store for series kubernetes
+    # - upgrade minio from charm-store using charm minio for series kubernetes
+    # ERROR cannot deploy bundle: Juju on containers does not support updating storage on a statefulset.
+    # The new charm's metadata contains updated storage declarations.
+    # You'll need to deploy a new charm rather than upgrading if you need this change.
+    #  not supported (not supported)
+
     scale: 1
+
   prometheus:
     charm: "cs:~charmed-osm/prometheus-k8s-32"
     options:
