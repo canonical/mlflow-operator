@@ -14,7 +14,12 @@ applications:
     # From https://github.com/canonical/bundle-kubeflow/blob/master/bundle.yaml
     charm: "cs:minio-55"
 
-    #charm: "cs:~kubeflow-charmers/minio-146"
+  # avoid colliding with name of minio for kubeflow, which uses a newer charm
+  # which exposes an 'object-storage' interface rather than a 'minio'
+  # interface, which the mlflow charm can't speak yet.
+  minio-old:
+
+    charm: "cs:~kubeflow-charmers/minio-146"
     # Located charm "minio" in charm-store, revision 146
     # Located charm "mariadb-k8s" in charm-store, revision 34
     # Located charm "prometheus-k8s" in charm-store, revision 32
@@ -49,7 +54,8 @@ relations:
   - - mlflow:db
     - mysql
   - - mlflow:minio
-    - minio
+    - minio-old
+    #- minio:object-storage
   - - mlflow:prometheus
     - prometheus
   - - worker:pod-defaults
