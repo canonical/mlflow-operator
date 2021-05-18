@@ -34,11 +34,11 @@ options:
     default: 30650
   kubeflow_port:
     description: |
-      The port Kubeflow will be listening on
+      The port istio-ingressgateway will be listening on
     type: int
-    default: 8082
+    default: 80
   kubeflow_nodeport:
     description: |
-      The nodeport for Kubeflow
+      The nodeport for Kubeflow (istio-ingressgateway)
     type: int
     default: 30600
