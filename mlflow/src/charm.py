@@ -160,7 +160,7 @@ class MlflowCharm(CharmBase):
         self._state.prometheus_scrape_interval = data.get("scrape_interval")
         self._state.prometheus_scrape_timeout = data.get("scrape_timeout")
 
-        config = self.config.model
+        config = self.model.config
         data = event.relation.data[self.unit]
         data["port"] = str(config["mlflow_port"])
         data["metrics_path"] = "/metrics"
