@@ -42,7 +42,7 @@ class WorkerCharm(CharmBase):
         logger.info(f"_on_pod_defaults_relation_changed is running; {event}")
         logger.info("================================")
         logger.info("================================")
-        logger.info(event.relation.data[event.unit])
+        logger.info(event.relation.data)
         logger.info("================================")
         logger.info("================================")
 
