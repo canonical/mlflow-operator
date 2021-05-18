@@ -379,7 +379,7 @@ class MlflowCharm(CharmBase):
                             "spec": {
                                 "type": "NodePort",
                                 "selector": {
-                                    "app.kubernetes.io/name": "kubeflow-dashboard",
+                                    "app.kubernetes.io/name": "istio-ingressgateway",
                                 },
                                 "ports": [
                                     {
