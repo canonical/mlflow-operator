@@ -1,7 +1,7 @@
 #!/bin/bash
 set -xeuo pipefail
 
-testctl get
+testctl get --keep-existing-lease --keep-existing-pool
 export KUBECONFIG=$(pwd)/kubeconfig
 (cd mlflow && charmcraft build)
 (cd worker && charmcraft build)

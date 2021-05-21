@@ -109,13 +109,13 @@ base:
         echo $roles roles matching istio-ingressgateway-operator
         sleep 1
     done
+
     # from https://charmed-kubeflow.io/docs/install
-    kubectl patch role -n kf istio-ingressgateway-operator -p '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"istio-ingressgateway-operator"},"rules":[{"apiGroups":["*"],"resources":["*"],"verbs":["*"]}]}'
+    # (not needed any more?)
+    #kubectl patch role -n kf istio-ingressgateway-operator -p '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"istio-ingressgateway-operator"},"rules":[{"apiGroups":["*"],"resources":["*"],"verbs":["*"]}]}'
     # TODO: wait for kubeflow to be fully up
 
-  # Need kube 1.17 for kubeflow last time I checked (1.18 doesn't work).
-  # https://github.com/kubeflow/kubeflow/issues/5246#issuecomment-682013220
-  kubernetes_version: v1.17.11
+  kubernetes_version: v1.18.3
 
 runtime:
   cpus: 4
