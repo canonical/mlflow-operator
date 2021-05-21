@@ -6,7 +6,7 @@ if [[ -z "${SKIP_SETUP:-}" && -z "${SKIP_SETUP_SNAPS:-}" ]]; then
     sudo snap install microk8s --channel 1.21/stable --classic
     sudo snap remove juju --purge || true
     sudo snap install juju --classic --channel=2.9/stable
-    microk8s enable storage
+    microk8s enable storage dns
 fi
 
 echo "Ensuring kubeconfig"
