@@ -5,6 +5,9 @@ if [[ -z "${SKIP_SETUP:-}" && -z "${SKIP_SETUP_SNAPS:-}" ]]; then
     sudo snap remove microk8s --purge || true
     sudo snap install microk8s --channel 1.21/stable --classic
     sudo snap remove juju --purge || true
+    if [ -d ~/.local/share/juju ]; then
+        mv ~/.local/share/juju ~/.local/share/juju-$(date +%s)
+    fi
     sudo snap install juju --classic --channel=2.9/candidate
     sudo snap remove charmcraft --purge || true
     sudo snap install charmcraft
@@ -16,6 +19,8 @@ microk8s config > kubeconfig.microk8s
 export KUBECONFIG=$(pwd)/kubeconfig.microk8s
 
 if [ -z "${SKIP_SETUP:-}" ]; then
+    echo "Sleeping for 60 seconds to hopefully avoid falling down a crack"
+    sleep 60
     # https://juju.is/docs/olm/microk8s
     until juju bootstrap microk8s micro; do
         echo "Waiting for juju bootstrap to succeed"
