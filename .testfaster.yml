@@ -4,7 +4,7 @@ base:
   os_dockerfile: |-
     # This dockerfile defines the base disk image for your VMs
     FROM quay.io/testfaster/kube-ubuntu
-    ENV cache-bust 6
+    ENV cache-bust 7
     RUN touch /root/hello-world.txt
     # https://github.com/PowerShell/PowerShell/issues/9252#issuecomment-486954264
     RUN apt-get update && apt-get install -y snapd selinux-utils selinux-policy-default rsync socat vim
