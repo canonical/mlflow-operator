@@ -29,7 +29,12 @@ if [ -z "${SKIP_SETUP:-}" ]; then
         echo "Waiting for juju bootstrap to succeed"
         sleep 1
     done
-    juju deploy cs:bundle/kubeflow-267
+
+    # Hrm, before we deploy kubeflow with juju, does this work? and avoid
+    # https://github.com/canonical/bundle-kubeflow/issues/361
+    microk8s enable kubeflow
+
+    #juju deploy cs:bundle/kubeflow-267
 
 fi
 
@@ -37,6 +42,11 @@ fi
 cp mlflow/mlflow.charm .
 (cd worker && charmcraft build)
 cp worker/worker.charm .
+
+echo "Are you still ready, microk8s?"
+microk8s status --wait-ready
+echo "Sleeping for 120 seconds to hopefully avoid falling down another crack"
+sleep 120
 
 juju deploy ./bundle.yaml
 
