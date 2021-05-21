@@ -6,6 +6,8 @@ if [[ -z "${SKIP_SETUP:-}" && -z "${SKIP_SETUP_SNAPS:-}" ]]; then
     sudo snap install microk8s --channel 1.21/stable --classic
     sudo snap remove juju --purge || true
     sudo snap install juju --classic --channel=2.9/stable
+    sudo snap remove charmcraft --purge || true
+    sudo snap install charmcraft
     microk8s enable storage dns
 fi
 
@@ -15,12 +17,21 @@ export KUBECONFIG=$(pwd)/kubeconfig.microk8s
 
 if [ -z "${SKIP_SETUP:-}" ]; then
     # https://juju.is/docs/olm/microk8s
-    juju bootstrap microk8s micro
+    until juju bootstrap microk8s micro; do
+        echo "Waiting for juju bootstrap to succeed"
+        sleep 1
+    done
     juju deploy cs:bundle/kubeflow-267
 
 fi
 
 (cd mlflow && charmcraft build)
+cp mlflow/mlflow.charm .
 (cd worker && charmcraft build)
+cp worker/worker.charm .
 
 juju deploy ./bundle.yaml
+
+echo "Congrats. Try running:"
+echo "    watch -c juju status --color"
+echo "Also, follow step 6 onwards in: https://charmed-kubeflow.io/docs/install"
