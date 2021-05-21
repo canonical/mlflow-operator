@@ -1,0 +1,26 @@
+#!/bin/bash
+set -xeuo pipefail
+
+if [[ -z "${SKIP_SETUP:-}" && -z "${SKIP_SETUP_SNAPS:-}" ]]; then
+    sudo snap remove microk8s --purge || true
+    sudo snap install microk8s --channel 1.21/stable --classic
+    sudo snap remove juju --purge || true
+    sudo snap install juju --classic --channel=2.9/stable
+    microk8s enable storage
+fi
+
+echo "Ensuring kubeconfig"
+microk8s config > kubeconfig.microk8s
+export KUBECONFIG=$(pwd)/kubeconfig.microk8s
+
+if [ -z "${SKIP_SETUP:-}" ]; then
+    # https://juju.is/docs/olm/microk8s
+    juju bootstrap microk8s micro
+    juju deploy cs:bundle/kubeflow-267
+
+fi
+
+(cd mlflow && charmcraft build)
+(cd worker && charmcraft build)
+
+juju deploy ./bundle.yaml
