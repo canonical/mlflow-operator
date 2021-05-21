@@ -14,6 +14,9 @@ if [[ -z "${SKIP_SETUP:-}" && -z "${SKIP_SETUP_SNAPS:-}" ]]; then
     microk8s enable storage dns
 fi
 
+echo "Waiting for microk8s"
+microk8s status --wait-ready
+
 echo "Ensuring kubeconfig"
 microk8s config > kubeconfig.microk8s
 export KUBECONFIG=$(pwd)/kubeconfig.microk8s
