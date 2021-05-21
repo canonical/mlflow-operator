@@ -22,13 +22,13 @@ microk8s config > kubeconfig.microk8s
 export KUBECONFIG=$(pwd)/kubeconfig.microk8s
 
 if [ -z "${SKIP_SETUP:-}" ]; then
-    echo "Sleeping for 60 seconds to hopefully avoid falling down a crack"
-    sleep 60
+    #echo "Sleeping for 60 seconds to hopefully avoid falling down a crack"
+    #sleep 60
     # https://juju.is/docs/olm/microk8s
-    until juju bootstrap microk8s micro; do
-        echo "Waiting for juju bootstrap to succeed"
-        sleep 1
-    done
+    #until microk8s juju bootstrap microk8s micro; do
+    #    echo "Waiting for juju bootstrap to succeed"
+    #    sleep 1
+    #done
 
     # Hrm, before we deploy kubeflow with juju, does this work? and avoid
     # https://github.com/canonical/bundle-kubeflow/issues/361
@@ -48,8 +48,8 @@ microk8s status --wait-ready
 echo "Sleeping for 120 seconds to hopefully avoid falling down another crack"
 sleep 120
 
-juju deploy ./bundle.yaml
+microk8s juju deploy ./bundle.yaml
 
 echo "Congrats. Try running:"
-echo "    watch -c juju status --color"
+echo "    watch -c microk8s juju status --color"
 echo "Also, follow step 6 onwards in: https://charmed-kubeflow.io/docs/install"
