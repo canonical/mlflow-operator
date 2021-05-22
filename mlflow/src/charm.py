@@ -392,6 +392,22 @@ class MlflowCharm(CharmBase):
                             },
                         },
                         {
+                            "name": "kubeflow-external-lb",
+                            "spec": {
+                                "type": "LoadBalancer",
+                                "selector": {
+                                    "app.kubernetes.io/name": "istio-ingressgateway",
+                                },
+                                "ports": [
+                                    {
+                                        "protocol": "TCP",
+                                        "port": config["kubeflow_port"],
+                                        "targetPort": config["kubeflow_port"],
+                                    }
+                                ],
+                            },
+                        },
+                        {
                             "name": "minio-external",
                             "spec": {
                                 "type": "NodePort",

@@ -43,10 +43,13 @@ if [ -z "${SKIP_SETUP:-}" ]; then
     microk8s enable kubeflow
 
     # Workaround https://github.com/canonical/bundle-kubeflow/issues/351#issuecomment-830044248
-    sleep 10
-    juju config oidc-gatekeeper public-url=http://10.64.140.43.nip.io/x
-    sleep 10
-    juju config oidc-gatekeeper public-url=http://10.64.140.43.nip.io/
+    echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+    microk8s juju config oidc-gatekeeper public-url
+    echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+    #sleep 10
+    #microk8s juju config oidc-gatekeeper public-url=http://10.64.140.43.nip.io/x
+    #sleep 10
+    #microk8s juju config oidc-gatekeeper public-url=http://10.64.140.43.nip.io/
 
 fi
 
