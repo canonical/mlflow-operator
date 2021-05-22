@@ -17,7 +17,7 @@ if [[ -z "${SKIP_SETUP:-}" && -z "${SKIP_SETUP_SNAPS:-}" ]]; then
     sudo snap install juju --classic --channel=2.9/candidate
     sudo snap remove charmcraft --purge || true
     sudo snap install charmcraft
-    microk8s enable storage dns
+    #microk8s enable storage dns
 fi
 
 echo "Waiting for microk8s"
@@ -36,11 +36,17 @@ if [ -z "${SKIP_SETUP:-}" ]; then
     #    sleep 1
     #done
 
+    #juju deploy cs:bundle/kubeflow-267
+
     # Hrm, before we deploy kubeflow with juju, does this work? and avoid
     # https://github.com/canonical/bundle-kubeflow/issues/361
     microk8s enable kubeflow
 
-    #juju deploy cs:bundle/kubeflow-267
+    # Workaround https://github.com/canonical/bundle-kubeflow/issues/351#issuecomment-830044248
+    sleep 10
+    juju config oidc-gatekeeper public-url=http://10.64.140.43.nip.io/x
+    sleep 10
+    juju config oidc-gatekeeper public-url=http://10.64.140.43.nip.io/
 
 fi
 
