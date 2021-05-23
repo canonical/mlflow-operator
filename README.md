@@ -4,6 +4,14 @@
 
 How to get it running on an Ubuntu system:
 
+If not done before:
+```
+sudo usermod -a -G microk8s $USER
+sudo chown -f -R $USER ~/.kube
+sudo su - $USER
+```
+
+Run:
 ```
 export DOCKER_USERNAME=<docker-hub-username>
 export DOCKER_ACCESS_TOKEN=<docker-hub-password>
