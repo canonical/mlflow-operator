@@ -5,7 +5,9 @@
 How to get it running on an Ubuntu system:
 
 ```
-DOCKER_USERNAME=<docker-hub-username> DOCKER_ACCESS_TOKEN=<docker-hub-password> bash integration_test_minik8s
+export DOCKER_USERNAME=<docker-hub-username>
+export DOCKER_ACCESS_TOKEN=<docker-hub-password>
+bash integration_test_minik8s
 ```
 
 Set the docker hub username and access token to those of a docker hub pro account to avoid docker hub ratelimits.
