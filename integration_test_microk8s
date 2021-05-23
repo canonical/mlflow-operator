@@ -6,10 +6,10 @@ echo "Using docker auth: $DOCKER_USERNAME and $DOCKER_ACCESS_TOKEN"
 if [[ -z "${SKIP_SETUP:-}" && -z "${SKIP_SETUP_SNAPS:-}" ]]; then
     sudo snap remove microk8s --purge || true
     sudo snap install microk8s --channel 1.21/stable --classic
-    (echo '  [plugins."io.containerd.grpc.v1.cri".registry.configs]'
-     echo '    [plugins."io.containerd.grpc.v1.cri".registry.configs."docker.io".auth]'
-     echo '      username = "'$DOCKER_USERNAME'"'
-     echo '      password = "'$DOCKER_ACCESS_TOKEN'"') | sudo tee -a /var/snap/microk8s/current/args/containerd-template.toml
+    (echo '    [plugins."io.containerd.grpc.v1.cri".registry.configs]'
+     echo '      [plugins."io.containerd.grpc.v1.cri".registry.configs."docker.io".auth]'
+     echo '        username = "'$DOCKER_USERNAME'"'
+     echo '        password = "'$DOCKER_ACCESS_TOKEN'"') | sudo tee -a /var/snap/microk8s/current/args/containerd-template.toml
     sudo systemctl restart snap.microk8s.daemon-containerd.service
 
     sudo snap remove juju --purge || true
