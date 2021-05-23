@@ -8,10 +8,9 @@ if [[ -z "${SKIP_SETUP:-}" && -z "${SKIP_SETUP_SNAPS:-}" ]]; then
     sudo snap install microk8s --channel 1.21/stable --classic
     echo '  [plugins."io.containerd.grpc.v1.cri".registry.configs]' >> /var/snap/microk8s/current/args/containerd-template.toml
     echo '    [plugins."io.containerd.grpc.v1.cri".registry.configs."docker.io".auth]' >> /var/snap/microk8s/current/args/containerd-template.toml
-    # Set DOCKER_AUTH to the "auth" part from ~/.docker/config for docker.io
     echo '      username = "'$DOCKER_USERNAME'"' >> /var/snap/microk8s/current/args/containerd-template.toml
     echo '      password = "'$DOCKER_ACCESS_TOKEN'"' >> /var/snap/microk8s/current/args/containerd-template.toml
-    microk8s.stop; microk8s.start
+    sudo systemctl restart snap.microk8s.daemon-containerd.service
 
     sudo snap remove juju --purge || true
     if [ -d ~/.local/share/juju ]; then
