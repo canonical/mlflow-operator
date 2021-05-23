@@ -4,14 +4,15 @@
 
 How to get it running on an Ubuntu system:
 
-If not done before:
+If you've not installed microk8s before:
 ```
+getent group microk8s || sudo groupadd microk8s
 sudo usermod -a -G microk8s $USER
 sudo chown -f -R $USER ~/.kube
 sudo su - $USER
 ```
 
-Run:
+Start up a microk8s cluster and install kubeflow & mlflow and relate them together:
 ```
 export DOCKER_USERNAME=<docker-hub-username>
 export DOCKER_ACCESS_TOKEN=<docker-hub-password>
