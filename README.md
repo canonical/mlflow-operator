@@ -12,7 +12,7 @@ Set the docker hub username and access token to those of a docker hub pro accoun
 
 **Note:** This will wipe out an existing microk8s cluster, so use with care.
 
-**Note:** This may need to be retried several times, due to various Juju/Kubeflow bugs.
+**Note:** This may need to be retried several times, due to various Juju/Kubeflow bugs. For example if you get an error message or a 403 error after logging in.
 
 **Note:** Min 14GB RAM needed.
 
