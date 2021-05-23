@@ -1,6 +1,8 @@
 #!/bin/bash
 set -xeuo pipefail
 
+echo "Using docker auth: $DOCKER_AUTH"
+
 if [[ -z "${SKIP_SETUP:-}" && -z "${SKIP_SETUP_SNAPS:-}" ]]; then
     sudo snap remove microk8s --purge || true
     sudo snap install microk8s --channel 1.21/stable --classic
@@ -64,6 +66,11 @@ echo "Sleeping for 120 seconds to hopefully avoid falling down another crack"
 sleep 120
 
 microk8s juju deploy ./bundle.yaml
+
+microk8s juju relate mlflow:pod-defaults admission-webhook:pod-defaults
+sleep 60
+# workaround https://github.com/canonical/admission-webhook-operator/issues/4
+kubectl get poddefaults -A -o yaml |sed 's/namespace: kubeflow/namespace: admin/' |kubectl apply -f - --namespace=admin
 
 echo "Congrats. Try running:"
 echo "    watch -c microk8s juju status --color"

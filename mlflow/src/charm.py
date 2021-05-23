@@ -192,10 +192,14 @@ class MlflowCharm(CharmBase):
                     "env": {
                         "AWS_ACCESS_KEY_ID": self._state.minio_user,
                         "AWS_SECRET_ACCESS_KEY": self._state.minio_password,
+                        # XXX shouldn't we use kube service DNS rather than
+                        # "hardcoding" an IP here?
                         "MLFLOW_S3_ENDPOINT_URL": "http://{}:{}".format(
                             self._state.minio_ingress_address, self._state.minio_port
                         ),
-                        "MLFLOW_TRACKING_URI": "mlflow:{}".format(
+                        # XXX this assumes we're being deployed into kubeflow
+                        # namespace. How to get namespace from this context?
+                        "MLFLOW_TRACKING_URI": "http://mlflow.kubeflow.svc.cluster.local:{}".format(
                             config["mlflow_port"]
                         ),
                     }
