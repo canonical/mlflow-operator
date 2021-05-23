@@ -12,11 +12,12 @@ if [[ -z "${SKIP_SETUP:-}" && -z "${SKIP_SETUP_SNAPS:-}" ]]; then
      echo '        password = "'$DOCKER_ACCESS_TOKEN'"') | sudo tee -a /var/snap/microk8s/current/args/containerd-template.toml
     sudo systemctl restart snap.microk8s.daemon-containerd.service
 
-    sudo snap remove juju --purge || true
-    if [ -d ~/.local/share/juju ]; then
-        mv ~/.local/share/juju ~/.local/share/juju-$(date +%s)
-    fi
-    sudo snap install juju --classic --channel=2.9/candidate
+    #sudo snap remove juju --purge || true
+    #if [ -d ~/.local/share/juju ]; then
+    #    mv ~/.local/share/juju ~/.local/share/juju-$(date +%s)
+    #fi
+    #sudo snap install juju --classic --channel=2.9/stable
+
     sudo snap remove charmcraft --purge || true
     sudo snap install charmcraft
     #microk8s enable storage dns
