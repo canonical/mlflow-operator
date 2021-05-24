@@ -72,7 +72,7 @@ microk8s juju relate mlflow:pod-defaults admission-webhook:pod-defaults
 # XXX poll for poddefault existence
 sleep 120
 # workaround https://github.com/canonical/admission-webhook-operator/issues/4
-kubectl get poddefaults -A -o yaml |sed 's/namespace: kubeflow/namespace: admin/' |kubectl apply -f - --namespace=admin
+microk8s kubectl get poddefaults -A -o yaml |sed 's/namespace: kubeflow/namespace: admin/' |microk8s kubectl apply -f - --namespace=admin
 
 echo "Congrats. Try running:"
 echo "    watch -c microk8s juju status --color"
