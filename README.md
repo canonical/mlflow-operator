@@ -127,10 +127,10 @@ Run both cells and observe that your model metrics are recorded in MLflow!
 
 ## Roadmap
 
-* Write intro explaining why you'd want to do this
-* Publish to charm store
-* Expose MLflow GUI on MetalLB
-* Make `DOCKER_USERNAME` and `DOCKER_ACCESS_TOKEN` optional
-* Make it work for namespaces other than admin
-* Spell out the above tutorial explicitly rather than getting the user to run a script
-* Reference various juju/kubeflow bugs that can cause things to fail
+* [ ] Write intro explaining why you'd want to do this
+* [ ] Publish to charm store
+* [ ] Expose MLflow GUI on MetalLB
+* [ ] Make `DOCKER_USERNAME` and `DOCKER_ACCESS_TOKEN` optional
+* [ ] Make it work for namespaces other than admin
+* [ ] Spell out the above tutorial explicitly rather than getting the user to run a script
+* [ ] Reference various juju/kubeflow bugs that can cause things to fail
