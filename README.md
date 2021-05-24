@@ -25,7 +25,7 @@ Set the docker hub username and access token to those of a docker hub pro accoun
 
 **Note:** This may need to be retried several times, due to various Juju/Kubeflow bugs. For example if you get an error message or a 403 error after logging in.
 
-**Note:** Min 14GB RAM needed.
+**Note:** Min 14GB RAM needed, 50GB disk space.
 
 Open [http://10.64.140.43.nip.io/](http://10.64.140.43.nip.io/) and log in with the username and password given in the output of the above command.
 
