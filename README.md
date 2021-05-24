@@ -134,5 +134,5 @@ Run both cells and observe that your model metrics are recorded in MLflow!
 * [ ] Make it work for namespaces other than admin
 * [ ] Spell out the above tutorial explicitly rather than getting the user to run a script
 * [ ] Reference various juju/kubeflow bugs that can cause things to fail
-* [ ] Record demo video
+* [x] Record demo video
 * [ ] Move to Canonical repo
