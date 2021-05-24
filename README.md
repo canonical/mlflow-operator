@@ -125,6 +125,12 @@ if __name__ == "__main__":
 
 Run both cells and observe that your model metrics are recorded in MLflow!
 
+To access MLflow, run:
+```
+microk8s kubectl get services -A|grep mlflow
+```
+And open the `mlflow` `ClusterIP` in the browser with `:5000` on the end.
+
 ## Roadmap
 
 * [ ] Write intro explaining why you'd want to do this
