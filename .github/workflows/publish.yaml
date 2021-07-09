@@ -1,0 +1,35 @@
+name: Publish bundle to charm store
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: Publish bundle
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: |
+        set -eux
+        sudo snap install charm --classic
+        sudo snap install juju-bundle --classic
+        sudo apt update
+        sudo apt install python3-pip
+        sudo pip3 install charmcraft
+
+    - name: Publish bundle
+      env:
+        CHARMSTORE_CREDENTIAL: ${{ secrets.CHARMSTORE_CREDENTIAL }}
+      run: |
+        set -eux
+        echo $CHARMSTORE_CREDENTIAL > ~/.go-cookies
+        juju-bundle publish \
+            --url cs:~mlflow-charmers/mlflow \
+            --publish-charms \
+            --publish-namespace mlflow-charmers
