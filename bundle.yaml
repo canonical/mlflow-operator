@@ -1,9 +1,5 @@
 ---
 applications:
-  worker:
-    charm: "./worker.charm"
-    scale: 1
-
   mlflow:
     charm: "./mlflow.charm"
     scale: 1
@@ -35,5 +31,3 @@ relations:
     #- minio:object-storage
   - - mlflow:prometheus
     - prometheus
-  - - worker:pod-defaults
-    - mlflow:pod-defaults
