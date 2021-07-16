@@ -8,7 +8,6 @@ from base64 import b64encode
 
 from oci_image import OCIImageResource, OCIImageResourceError
 from ops.charm import CharmBase
-from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from serialized_data_interface import (
@@ -22,8 +21,6 @@ BUCKET_NAME = "mlflow"
 
 
 class Operator(CharmBase):
-    _state = StoredState()
-
     def __init__(self, *args):
         super().__init__(*args)
 
@@ -47,14 +44,6 @@ class Operator(CharmBase):
 
         self.log = logging.getLogger(__name__)
 
-        self._state.set_default(
-            prometheus_port=None,
-            prometheus_metrics_path=None,
-            prometheus_labels=None,
-            prometheus_scrape_interval=None,
-            prometheus_scrape_timeout=None,
-        )
-
         self.framework.observe(self.on.config_changed, self.set_pod_spec)
         self.framework.observe(self.on.install, self.set_pod_spec)
         self.framework.observe(self.on.upgrade_charm, self.set_pod_spec)
@@ -68,12 +57,6 @@ class Operator(CharmBase):
         self.framework.observe(
             self.on.pod_defaults_relation_changed,
             self._on_pod_defaults_relation_changed,
-        )
-        self.framework.observe(
-            self.on.prometheus_relation_joined, self._on_prometheus_relation_changed
-        )
-        self.framework.observe(
-            self.on.prometheus_relation_changed, self._on_prometheus_relation_changed
         )
         self.framework.observe(
             self.on["object-storage"].relation_changed, self.set_pod_spec
@@ -92,23 +75,6 @@ class Operator(CharmBase):
                     "port": self.model.config["mlflow_port"],
                 }
             )
-
-    def _on_prometheus_relation_changed(self, event):
-        data = event.relation.data[event.unit]
-        self._state.prometheus_port = data.get("port")
-        self._state.prometheus_metrics_path = data.get("metrics_path")
-        self._state.prometheus_labels = data.get("labels")
-        self._state.prometheus_scrape_interval = data.get("scrape_interval")
-        self._state.prometheus_scrape_timeout = data.get("scrape_timeout")
-
-        config = self.model.config
-        data = event.relation.data[self.unit]
-        data["port"] = str(config["mlflow_port"])
-        data["metrics_path"] = "/metrics"
-        if config["mlflow_scrape_interval"]:
-            data["scrape_interval"] = config["mlflow_scrape_interval"]
-        if config["mlflow_scrape_timeout"]:
-            data["scrape_timeout"] = config["mlflow_scrape_timeout"]
 
     def _on_pod_defaults_relation_changed(self, event):
         os = self.interfaces["object-storage"].get_data()
@@ -204,8 +170,6 @@ class Operator(CharmBase):
                         "args": [
                             "--host",
                             "0.0.0.0",
-                            "--expose-prometheus",
-                            "/metrics",
                             "--backend-store-uri",
                             "mysql+pymysql://{}:{}@{}:{}/{}".format(
                                 "root",
