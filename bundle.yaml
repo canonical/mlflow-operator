@@ -12,12 +12,6 @@ applications:
     charm: "cs:minio"
     scale: 1
 
-  prometheus:
-    charm: "cs:~charmed-osm/prometheus-k8s-32"
-    options:
-      default-target: 'mlflow-server:5000'
-    scale: 1
-
 bundle: kubernetes
 description: "MLflow"
 relations:
@@ -25,5 +19,3 @@ relations:
     - mysql
   - - mlflow-server:object-storage
     - minio:object-storage
-  - - mlflow-server
-    - prometheus
