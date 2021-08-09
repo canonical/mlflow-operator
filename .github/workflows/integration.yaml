@@ -42,6 +42,11 @@ jobs:
         sudo apt update
         sudo apt install -y firefox-geckodriver tox
 
+    # Avoid race condition with storage taking a long time to initialize
+    - name: Wait for storage
+      run: |
+        sg microk8s -c 'microk8s kubectl rollout status deployment/hostpath-provisioner -n kube-system'
+
     - name: Bootstrap
       run: |
         set -eux

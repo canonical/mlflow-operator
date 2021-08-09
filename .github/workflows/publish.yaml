@@ -21,7 +21,7 @@ jobs:
         sudo snap install juju-bundle --classic
         sudo apt update
         sudo apt install python3-pip
-        sudo pip3 install charmcraft
+        sudo pip3 install charmcraft==1.0.0
 
     - name: Publish bundle
       env:
