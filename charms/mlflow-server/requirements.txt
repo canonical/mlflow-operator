@@ -1,5 +1,5 @@
-ops==1.2.0
-oci-image==1.0.0
-ops-lib-mysql
-minio
-serialized-data-interface<0.4
+minio < 7.2
+oci-image < 1.1
+ops < 1.4
+ops-lib-mysql < 1.1
+serialized-data-interface < 0.4

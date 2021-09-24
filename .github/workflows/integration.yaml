@@ -18,7 +18,8 @@ jobs:
     - uses: actions/checkout@v2
     - run: sudo apt update
     - run: sudo apt install tox
-    - run: tox -e ${{ matrix.charm }}
+    - run: tox -e ${{ matrix.charm }}-unit
+    - run: tox -e ${{ matrix.charm }}-lint
 
   deploy:
     name: Test
@@ -28,46 +29,42 @@ jobs:
     - name: Check out repo
       uses: actions/checkout@v2
 
-    - uses: balchua/microk8s-actions@v0.2.2
+    - name: Setup operator environment
+      uses: charmed-kubernetes/actions-operator@main
       with:
-        channel: '1.20/stable'
-        addons: '["dns", "storage", "rbac", "metallb:10.64.140.43-10.64.140.49"]'
+        provider: microk8s
+        channel: 1.21/stable
+        charmcraft-channel: latest/candidate
+
+    - name: Enable MetalLB
+      run: |
+        set -eux
+        sg microk8s -c "microk8s enable metallb:10.64.140.43-10.64.140.49"
+        sg microk8s -c "microk8s status --wait-ready"
+
+    # ModuleNotFoundError: No module named 'virtualenv.seed.via_app_data'
+    - name: Remove pip-installed virtualenv
+      run: |
+        set -eux
+        sudo pip uninstall -y virtualenv
+        sudo apt install -y python3-virtualenv
 
     - name: Install dependencies
       run: |
         set -eux
-        sudo snap install charm --classic
-        sudo snap install juju --classic
-        sudo snap install juju-bundle --classic
         sudo snap install juju-wait --classic
-        sudo snap install charmcraft --classic --channel latest/candidate
         sudo apt update
         sudo apt install -y firefox-geckodriver tox
 
-    # Avoid race condition with storage taking a long time to initialize
-    - name: Wait for storage
-      run: |
-        sg microk8s -c 'microk8s kubectl rollout status deployment/hostpath-provisioner -n kube-system'
-
-    - name: Bootstrap
-      run: |
-        set -eux
-        sg microk8s -c 'juju bootstrap microk8s uk8s'
-        juju add-model mlflow
+    - name: Ensure storage is up
+      run: kubectl rollout status deployment/hostpath-provisioner -n kube-system
 
     - name: Deploy charm dependencies
       timeout-minutes: 15
       run: |
         set -eux
-        juju model-config update-status-hook-interval=15s
-        juju deploy ch:istio --trust
-        juju config istio-pilot 'default-gateways=kubeflow-gateway'
-        sleep 10
-        juju wait -wvt 300 --retry_errors 20
-        juju model-config update-status-hook-interval=5m
-
-        # https://bugs.launchpad.net/juju/+bug/1921739
-        (i=600; while ! juju wait -wvt 30 ; do ((--i)) || exit; sleep 1; done)
+        juju deploy istio --channel 1.11/stable --trust
+        juju wait -wvt 600
 
     - name: Deploy MLflow
       run: |
@@ -76,8 +73,9 @@ jobs:
         juju relate mlflow-server istio-pilot
         juju wait -wvt 900 --retry_errors 20
 
-    - name: Test MLflow
-      run: sg microk8s -c 'tox -e selenium'
+    - run: tox -e selenium
+      env:
+        KUBECONFIG: /home/runner/.kube/config
 
     - run: kubectl get all -A
       if: failure()
