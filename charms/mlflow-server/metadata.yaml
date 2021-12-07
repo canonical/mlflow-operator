@@ -9,7 +9,6 @@ resources:
   oci-image:
     type: oci-image
     description: Backing OCI image
-    auto-fetch: true
     upstream-source: quay.io/helix-ml/mlflow:1.13.1
 requires:
   db:
