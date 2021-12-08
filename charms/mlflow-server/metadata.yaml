@@ -3,6 +3,7 @@
 name: mlflow-server
 description: |
   MLflow
+series: [kubernetes]
 summary: |
   A charm which provides a Kubernetes installation of the MLflow (https://mlflow.org/) server.
 resources:
