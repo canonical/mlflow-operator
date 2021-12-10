@@ -1,7 +1,10 @@
----
+bundle: kubernetes
+name: mlflow
+description: "MLflow"
+
 applications:
   mlflow-server:
-    charm: "cs:mlflow-server"
+    charm: "ch:mlflow-server"
     scale: 1
 
   mysql:
@@ -9,11 +12,10 @@ applications:
     scale: 1
 
   minio:
-    charm: "cs:minio"
+    charm: "ch:minio"
+    channel: "latest/edge"
     scale: 1
 
-bundle: kubernetes
-description: "MLflow"
 relations:
   - - mlflow-server
     - mysql
