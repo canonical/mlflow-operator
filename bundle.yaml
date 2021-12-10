@@ -5,7 +5,6 @@ description: "MLflow"
 applications:
   mlflow-server:
     charm: "ch:mlflow-server"
-    channel: "latest/edge"
     scale: 1
 
   mysql:
