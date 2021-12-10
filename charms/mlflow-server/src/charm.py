@@ -24,66 +24,37 @@ class Operator(CharmBase):
     def __init__(self, *args):
         super().__init__(*args)
 
-        if not self.unit.is_leader():
-            # We can't do anything useful when not the leader, so do nothing.
-            self.model.unit.status = WaitingStatus("Waiting for leadership")
-            return
-
         self.image = OCIImageResource(self, "oci-image")
-
-        try:
-            self.interfaces = get_interfaces(self)
-        except NoVersionsListed as err:
-            self.model.unit.status = WaitingStatus(str(err))
-            return
-        except NoCompatibleVersions as err:
-            self.model.unit.status = BlockedStatus(str(err))
-            return
-        else:
-            self.model.unit.status = ActiveStatus()
-
         self.log = logging.getLogger(__name__)
 
-        self.framework.observe(self.on.config_changed, self.set_pod_spec)
-        self.framework.observe(self.on.install, self.set_pod_spec)
-        self.framework.observe(self.on.upgrade_charm, self.set_pod_spec)
+        for event in [
+            self.on.install,
+            self.on.leader_elected,
+            self.on.upgrade_charm,
+            self.on.config_changed,
+            self.on.db_relation_changed,
+            self.on["object-storage"].relation_changed,
+            self.on["ingress"].relation_changed,
+        ]:
+            self.framework.observe(event, self.main)
 
         # Register relation events
-        self.framework.observe(self.on.db_relation_changed, self.set_pod_spec)
-        self.framework.observe(
+        for event in [
             self.on.pod_defaults_relation_joined,
-            self._on_pod_defaults_relation_changed,
-        )
-        self.framework.observe(
             self.on.pod_defaults_relation_changed,
-            self._on_pod_defaults_relation_changed,
-        )
-        self.framework.observe(
-            self.on["object-storage"].relation_changed, self.set_pod_spec
-        )
-        self.framework.observe(
-            self.on["ingress"].relation_changed, self.configure_ingress
-        )
-
-    def configure_ingress(self, event):
-        if self.interfaces["ingress"]:
-            self.interfaces["ingress"].send_data(
-                {
-                    "prefix": "/mlflow",
-                    "rewrite": "/",
-                    "service": self.model.app.name,
-                    "port": self.model.config["mlflow_port"],
-                }
-            )
+        ]:
+            self.framework.observe(event, self._on_pod_defaults_relation_changed)
 
     def _on_pod_defaults_relation_changed(self, event):
-        os = self.interfaces["object-storage"].get_data()
-        if not os:
-            event.defer()
+        try:
+            interfaces = self._get_interfaces()
+        except CheckFailed as check_failed:
+            self.model.unit.status = check_failed.status
             return
 
+        obj_storage = interfaces["object-storage"].get_data()
         config = self.model.config
-        endpoint = f"http://{os['service']}:{os['port']}"
+        endpoint = f"http://{obj_storage['service']}:{obj_storage['port']}"
         tracking = f"{self.model.app.name}.{self.model.name}.svc.cluster.local"
         tracking = f"http://{tracking}:{config['mlflow-port']}"
 
@@ -91,8 +62,8 @@ class Operator(CharmBase):
             {
                 "minio": {
                     "env": {
-                        "AWS_ACCESS_KEY_ID": os["access-key"],
-                        "AWS_SECRET_ACCESS_KEY": os["secret-key"],
+                        "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
+                        "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
                         "MLFLOW_S3_ENDPOINT_URL": endpoint,
                         "MLFLOW_TRACKING_URI": tracking,
                     }
@@ -109,16 +80,19 @@ class Operator(CharmBase):
 
         event.relation.data[self.unit]["requirements"] = str(requirements)
 
-    def set_pod_spec(self, event):
+    def main(self, event):
         try:
-            image_details = self.image.fetch()
-        except OCIImageResourceError as e:
-            self.model.unit.status = e.status
-            self.log.info(e)
+            self._check_leader()
+            interfaces = self._get_interfaces()
+            image_details = self._check_image_details()
+        except CheckFailed as check_failed:
+            self.model.unit.status = check_failed.status
             return
 
-        mysql = self.model.relations["db"]
+        self._configure_mesh(interfaces)
+        config = self.model.config
 
+        mysql = self.model.relations["db"]
         if len(mysql) > 1:
             self.model.unit.status = BlockedStatus("Too many mysql relations")
             return
@@ -132,7 +106,9 @@ class Operator(CharmBase):
             self.model.unit.status = WaitingStatus("Waiting for mysql relation data")
             return
 
-        if not ((os := self.interfaces["object-storage"]) and os.get_data()):
+        if not (
+            (obj_storage := interfaces["object-storage"]) and obj_storage.get_data()
+        ):
             self.model.unit.status = WaitingStatus(
                 "Waiting for object-storage relation data"
             )
@@ -140,23 +116,24 @@ class Operator(CharmBase):
 
         self.model.unit.status = MaintenanceStatus("Setting pod spec")
 
-        os = list(os.get_data().values())[0]
+        obj_storage = list(obj_storage.get_data().values())[0]
         secrets = [
             {
                 "name": "seldon-init-container-secret",
                 "data": {
                     k: b64encode(v.encode("utf-8")).decode("utf-8")
                     for k, v in {
-                        "AWS_ENDPOINT_URL": "http://{service}:{port}".format(**os),
-                        "AWS_ACCESS_KEY_ID": os["access-key"],
-                        "AWS_SECRET_ACCESS_KEY": os["secret-key"],
-                        "USE_SSL": str(os["secure"]).lower(),
+                        "AWS_ENDPOINT_URL": "http://{service}:{port}".format(
+                            **obj_storage
+                        ),
+                        "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
+                        "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
+                        "USE_SSL": str(obj_storage["secure"]).lower(),
                     }.items()
                 },
             }
         ]
 
-        config = self.model.config
         self.model.pod.set_spec(
             {
                 "version": 3,
@@ -189,11 +166,11 @@ class Operator(CharmBase):
                                 mysql["port"],
                                 mysql["database"],
                             ),
-                            "AWS_ACCESS_KEY_ID": os["access-key"],
-                            "AWS_SECRET_ACCESS_KEY": os["secret-key"],
+                            "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
+                            "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
                             "AWS_DEFAULT_REGION": "us-east-1",
                             "MLFLOW_S3_ENDPOINT_URL": "http://{service}:{port}".format(
-                                **os
+                                **obj_storage
                             ),
                         },
                     }
@@ -256,6 +233,49 @@ class Operator(CharmBase):
             },
         )
         self.model.unit.status = ActiveStatus()
+
+    def _configure_mesh(self, interfaces):
+        if interfaces["ingress"]:
+            interfaces["ingress"].send_data(
+                {
+                    "prefix": "/mlflow",
+                    "rewrite": "/",
+                    "service": self.model.app.name,
+                    "port": self.model.config["mlflow_port"],
+                }
+            )
+
+    def _check_leader(self):
+        if not self.unit.is_leader():
+            # We can't do anything useful when not the leader, so do nothing.
+            raise CheckFailed("Waiting for leadership", WaitingStatus)
+
+    def _get_interfaces(self):
+        try:
+            interfaces = get_interfaces(self)
+        except NoVersionsListed as err:
+            raise CheckFailed(err, WaitingStatus)
+        except NoCompatibleVersions as err:
+            raise CheckFailed(err, BlockedStatus)
+        return interfaces
+
+    def _check_image_details(self):
+        try:
+            image_details = self.image.fetch()
+        except OCIImageResourceError as e:
+            raise CheckFailed(f"{e.status.message}", e.status_type)
+        return image_details
+
+
+class CheckFailed(Exception):
+    """Raise this exception if one of the checks in main fails."""
+
+    def __init__(self, msg, status_type=None):
+        super().__init__()
+
+        self.msg = msg
+        self.status_type = status_type
+        self.status = status_type(msg)
 
 
 if __name__ == "__main__":
