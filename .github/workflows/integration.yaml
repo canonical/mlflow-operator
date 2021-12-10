@@ -38,7 +38,7 @@ jobs:
         sudo snap install juju --classic
         sudo snap install juju-bundle --classic
         sudo snap install juju-wait --classic
-        sudo pip3 install charmcraft==1.0.0
+        sudo snap install charmcraft --classic --channel latest/candidate
         sudo apt update
         sudo apt install -y firefox-geckodriver tox
 
@@ -71,7 +71,7 @@ jobs:
     - name: Deploy MLflow
       run: |
         set -eux
-        juju bundle deploy --build
+        sg microk8s -c 'juju bundle deploy --build --destructive-mode'
         juju relate mlflow-server istio-pilot
         juju wait -wvt 300
 

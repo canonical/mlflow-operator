@@ -13,7 +13,7 @@ def harness():
 
 
 def test_not_leader(harness):
-    harness.begin()
+    harness.begin_with_initial_hooks()
     assert isinstance(harness.charm.model.unit.status, WaitingStatus)
 
 
