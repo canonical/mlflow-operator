@@ -1,5 +1,4 @@
 name: Publish
-
 on:
   push:
     branches:
@@ -11,7 +10,6 @@ on:
       - master
       - main
       - track/**
-
 jobs:
   get-charm-matrix:
     name: Generate the Charm Matrix
@@ -23,7 +21,6 @@ jobs:
       - name: Get paths for all charms in repo
         id: get-charm-matrix-step
         run: bash ./.github/workflows/get-charm-paths.sh
-
   publish-charm:
     name: Publish Charm
     runs-on: ubuntu-latest
@@ -40,16 +37,3 @@ jobs:
           credentials: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
           charm-path: ${{ matrix.charm-path }}
           charmcraft-channel: latest/edge
-
-  publish-bundle:
-    # TODO: This publishes always, even if nothing changed. Decouple bundle publishing from charm publishing in future?
-    name: Publish Bundle
-    runs-on: ubuntu-latest
-    env:
-      CHARMCRAFT_AUTH: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install dependencies
-        run: sudo snap install charmcraft --classic --channel=latest/edge
-      - name: Publish bundle using charmcraft
-        run: bash ./.github/workflows/publish-bundle.sh
