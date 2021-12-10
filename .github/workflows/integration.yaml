@@ -63,7 +63,7 @@ jobs:
         juju deploy ch:istio --trust
         juju config istio-pilot 'default-gateways=kubeflow-gateway'
         sleep 10
-        juju wait -wvt 300
+        juju wait -wvt 300 --retry-errors 20
         juju model-config update-status-hook-interval=5m
 
         # https://bugs.launchpad.net/juju/+bug/1921739
@@ -74,7 +74,7 @@ jobs:
         set -eux
         sg microk8s -c 'juju bundle deploy --build --destructive-mode'
         juju relate mlflow-server istio-pilot
-        juju wait -wvt 900
+        juju wait -wvt 900 --retry-errors 20
 
     - name: Test MLflow
       run: sg microk8s -c 'tox -e selenium'
