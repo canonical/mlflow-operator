@@ -52,11 +52,11 @@ class Operator(CharmBase):
             self.model.unit.status = check_failed.status
             return
 
-        obj_storage = interfaces["object-storage"].get_data()
+        obj_storage = list(interfaces["object-storage"].get_data().values())[0]
         config = self.model.config
         endpoint = f"http://{obj_storage['service']}:{obj_storage['port']}"
         tracking = f"{self.model.app.name}.{self.model.name}.svc.cluster.local"
-        tracking = f"http://{tracking}:{config['mlflow-port']}"
+        tracking = f"http://{tracking}:{config['mlflow_port']}"
 
         event.relation.data[self.app]["pod-defaults"] = json.dumps(
             {
@@ -235,15 +235,21 @@ class Operator(CharmBase):
         self.model.unit.status = ActiveStatus()
 
     def _configure_mesh(self, interfaces):
-        if interfaces["ingress"]:
-            interfaces["ingress"].send_data(
-                {
-                    "prefix": "/mlflow",
-                    "rewrite": "/",
-                    "service": self.model.app.name,
-                    "port": self.model.config["mlflow_port"],
-                }
-            )
+        if not interfaces["ingress"]:
+            return
+
+        for app_name, version in interfaces["ingress"].versions.items():
+            data = {
+                "prefix": "/mlflow",
+                "rewrite": "/",
+                "service": self.model.app.name,
+                "port": self.model.config["mlflow_port"],
+            }
+
+            if version == "v2":
+                data["namespace"] = str(self.model.name)
+
+            interfaces["ingress"].send_data(data, app_name)
 
     def _check_leader(self):
         if not self.unit.is_leader():
@@ -254,9 +260,9 @@ class Operator(CharmBase):
         try:
             interfaces = get_interfaces(self)
         except NoVersionsListed as err:
-            raise CheckFailed(err, WaitingStatus)
+            raise CheckFailed(str(err), WaitingStatus)
         except NoCompatibleVersions as err:
-            raise CheckFailed(err, BlockedStatus)
+            raise CheckFailed(str(err), BlockedStatus)
         return interfaces
 
     def _check_image_details(self):

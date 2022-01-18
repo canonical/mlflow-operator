@@ -17,16 +17,19 @@ def driver(request):
     status = yaml.safe_load(
         check_output(
             [
-                "microk8s",
                 "kubectl",
                 "get",
-                "services/istio-ingressgateway",
-                "-nmlflow",
+                "services",
+                "-A",
                 "-oyaml",
             ]
         )
     )
-    endpoint = status["status"]["loadBalancer"]["ingress"][0]["ip"]
+    endpoint = next(
+        s["status"]["loadBalancer"]["ingress"][0]["ip"]
+        for s in status["items"]
+        if s["metadata"]["name"] == "istio-ingressgateway"
+    )
     url = f"http://{endpoint}.nip.io/mlflow/"
     options = Options()
     options.headless = True
