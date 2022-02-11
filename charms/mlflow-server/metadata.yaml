@@ -3,6 +3,7 @@
 name: mlflow-server
 description: |
   MLflow
+min-juju-version: "2.9.0"
 series: [kubernetes]
 summary: |
   A charm which provides a Kubernetes installation of the MLflow (https://mlflow.org/) server.
