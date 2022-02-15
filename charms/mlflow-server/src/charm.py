@@ -238,7 +238,7 @@ class Operator(CharmBase):
         if interfaces["ingress"]:
             interfaces["ingress"].send_data(
                 {
-                    "prefix": "/mlflow",
+                    "prefix": "/mlflow/",
                     "rewrite": "/",
                     "service": self.model.app.name,
                     "port": self.model.config["mlflow_port"],
