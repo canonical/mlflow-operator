@@ -61,8 +61,11 @@ jobs:
         set -eux
         juju model-config update-status-hook-interval=15s
         juju deploy ch:istio --trust
-        juju config istio-pilot 'default-gateways=kubeflow-gateway'
-        sleep 10
+        juju deploy istio-gateway --channel=1.5/stable --trust istio-ingressgateway
+        juju deploy istio-pilot --channel=1.5/stable --config default-gateway=kubeflow-gateway
+        juju relate istio-pilot:istio-pilot istio-ingressgateway:istio-pilot
+        sleep 30
+        kubectl patch role -n kubeflow istio-ingressgateway-operator -p '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"istio-ingressgateway-operator"},"rules":[{"apiGroups":["*"],"resources":["*"],"verbs":["*"]}]}'
         juju wait -wvt 300 --retry_errors 20
         juju model-config update-status-hook-interval=5m
 
