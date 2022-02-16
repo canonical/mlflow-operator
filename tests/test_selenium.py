@@ -31,6 +31,7 @@ def driver(request):
     options = Options()
     options.headless = True
     options.log.level = "trace"
+    max_wait = 10  # seconds
 
     kwargs = {
         "options": options,
@@ -38,16 +39,8 @@ def driver(request):
     }
 
     with webdriver.Firefox(**kwargs) as driver:
-        wait = WebDriverWait(driver, 180, 1, (JavascriptException, StopIteration))
-        for _ in range(60):
-            try:
-                driver.get(url)
-                break
-            except WebDriverException:
-                sleep(5)
-        else:
-            driver.get(url)
-
+        wait = WebDriverWait(driver, max_wait)
+        driver.get(url)
         yield driver, wait, url
 
         Path(f"/tmp/selenium-{request.node.name}.har").write_text(driver.har)
@@ -60,4 +53,4 @@ def test_dashboard(driver):
     driver, wait, url = driver
 
     # TODO: More testing
-    wait.until(EC.presence_of_element_located((By.ID, "root")))
+    wait.until(EC.presence_of_element_located((By.CLASS_NAME, "experiment-view-container")))
