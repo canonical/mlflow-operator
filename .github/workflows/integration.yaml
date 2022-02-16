@@ -60,7 +60,6 @@ jobs:
       run: |
         set -eux
         juju model-config update-status-hook-interval=15s
-        juju deploy ch:istio --trust
         juju deploy istio-gateway --channel=1.5/stable --trust istio-ingressgateway
         juju deploy istio-pilot --channel=1.5/stable --config default-gateway=kubeflow-gateway
         juju relate istio-pilot:istio-pilot istio-ingressgateway:istio-pilot
