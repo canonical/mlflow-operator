@@ -1,9 +1,9 @@
 from base64 import b64decode
 
 import pytest
-from ops.model import BlockedStatus, WaitingStatus, ActiveStatus
-from ops.testing import Harness
 import yaml
+from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
+from ops.testing import Harness
 
 from charm import Operator
 
@@ -39,9 +39,7 @@ def test_main_no_relation(harness):
     # confirm that we can serialize the pod spec
     yaml.safe_dump(pod_spec)
 
-    assert harness.charm.model.unit.status == WaitingStatus(
-        "Waiting for mysql relation data"
-    )
+    assert harness.charm.model.unit.status == WaitingStatus("Waiting for mysql relation data")
 
 
 def test_install_with_all_inputs(harness):
@@ -110,10 +108,7 @@ def test_install_with_all_inputs(harness):
     db_secrets = [s for s in secrets if s["name"] == f"{charm_name}-db-secret"][0]
 
     assert env_config["db-secret"]["secret"]["name"] == db_secrets["name"]
-    assert (
-        b64decode(db_secrets["data"]["DB_ROOT_PASSWORD"]).decode("utf-8")
-        == "lorem-ipsum"
-    )
+    assert b64decode(db_secrets["data"]["DB_ROOT_PASSWORD"]).decode("utf-8") == "lorem-ipsum"
     assert b64decode(db_secrets["data"]["MLFLOW_TRACKING_URI"]).decode(
         "utf-8"
     ) == "mysql+pymysql://{}:{}@{}:{}/{}".format(
@@ -126,8 +121,7 @@ def test_install_with_all_inputs(harness):
 
     assert env_config["aws-secret"]["secret"]["name"] == minio_secrets["name"]
     assert (
-        b64decode(minio_secrets["data"]["AWS_ACCESS_KEY_ID"]).decode("utf-8")
-        == "minio-access-key"
+        b64decode(minio_secrets["data"]["AWS_ACCESS_KEY_ID"]).decode("utf-8") == "minio-access-key"
     )
     assert (
         b64decode(minio_secrets["data"]["AWS_SECRET_ACCESS_KEY"]).decode("utf-8")
