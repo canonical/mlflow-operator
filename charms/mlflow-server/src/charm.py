@@ -57,13 +57,15 @@ class Operator(CharmBase):
         endpoint = f"http://{obj_storage['service']}:{obj_storage['port']}"
         tracking = f"{self.model.app.name}.{self.model.name}.svc.cluster.local"
         tracking = f"http://{tracking}:{config['mlflow-port']}"
-
         event.relation.data[self.app]["pod-defaults"] = json.dumps(
             {
                 "minio": {
                     "env": {
-                        "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
-                        "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
+                        "aws-secret": {
+                            "secret": {
+                                "name": f"{self.model.app.name}-seldon-init-container-secret"
+                            }
+                        },
                         "MLFLOW_S3_ENDPOINT_URL": endpoint,
                         "MLFLOW_TRACKING_URI": tracking,
                     }
@@ -91,6 +93,7 @@ class Operator(CharmBase):
 
         self._configure_mesh(interfaces)
         config = self.model.config
+        charm_name = self.model.app.name
 
         mysql = self.model.relations["db"]
         if len(mysql) > 1:
@@ -119,7 +122,7 @@ class Operator(CharmBase):
         obj_storage = list(obj_storage.get_data().values())[0]
         secrets = [
             {
-                "name": "seldon-init-container-secret",
+                "name": f"{charm_name}-seldon-init-container-secret",
                 "data": {
                     k: b64encode(v.encode("utf-8")).decode("utf-8")
                     for k, v in {
@@ -131,7 +134,23 @@ class Operator(CharmBase):
                         "USE_SSL": str(obj_storage["secure"]).lower(),
                     }.items()
                 },
-            }
+            },
+            {
+                "name": f"{charm_name}-db-secret",
+                "data": {
+                    k: b64encode(v.encode("utf-8")).decode("utf-8")
+                    for k, v in {
+                        "DB_ROOT_PASSWORD": mysql["root_password"],
+                        "MLFLOW_TRACKING_URI": "mysql+pymysql://{}:{}@{}:{}/{}".format(
+                            "root",
+                            mysql["root_password"],
+                            mysql["host"],
+                            mysql["port"],
+                            mysql["database"],
+                        ),
+                    }.items()
+                },
+            },
         ]
 
         self.model.pod.set_spec(
@@ -148,26 +167,19 @@ class Operator(CharmBase):
                             "--host",
                             "0.0.0.0",
                             "--backend-store-uri",
-                            "mysql+pymysql://{}:{}@{}:{}/{}".format(
-                                "root",
-                                mysql["root_password"],
-                                mysql["host"],
-                                mysql["port"],
-                                mysql["database"],
-                            ),
+                            "$(MLFLOW_TRACKING_URI)",
                             "--default-artifact-root",
                             "s3://{}/".format(BUCKET_NAME),
                         ],
                         "envConfig": {
-                            "MLFLOW_TRACKING_URI": "mysql+pymysql://{}:{}@{}:{}/{}".format(
-                                "root",
-                                mysql["root_password"],
-                                mysql["host"],
-                                mysql["port"],
-                                mysql["database"],
-                            ),
-                            "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
-                            "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
+                            "db-secret": {
+                                "secret": {"name": f"{charm_name}-db-secret"}
+                            },
+                            "aws-secret": {
+                                "secret": {
+                                    "name": f"{charm_name}-seldon-init-container-secret"
+                                }
+                            },
                             "AWS_DEFAULT_REGION": "us-east-1",
                             "MLFLOW_S3_ENDPOINT_URL": "http://{service}:{port}".format(
                                 **obj_storage
