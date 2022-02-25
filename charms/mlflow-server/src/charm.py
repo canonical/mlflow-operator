@@ -71,11 +71,8 @@ class Operator(CharmBase):
             {
                 "minio": {
                     "env": {
-                        "aws-secret": {
-                            "secret": {
-                                "name": f"{self.model.app.name}-seldon-init-container-secret"
-                            }
-                        },
+                        "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
+                        "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
                         "MLFLOW_S3_ENDPOINT_URL": endpoint,
                         "MLFLOW_TRACKING_URI": tracking,
                     }
@@ -132,7 +129,7 @@ class Operator(CharmBase):
         obj_storage = list(obj_storage.get_data().values())[0]
         secrets = [
             {
-                "name": f"{charm_name}-seldon-init-container-secret",
+                "name": f"{charm_name}-minio-secret",
                 "data": {
                     k: b64encode(v.encode("utf-8")).decode("utf-8")
                     for k, v in {
@@ -179,9 +176,7 @@ class Operator(CharmBase):
                         ],
                         "envConfig": {
                             "db-secret": {"secret": {"name": f"{charm_name}-db-secret"}},
-                            "aws-secret": {
-                                "secret": {"name": f"{charm_name}-seldon-init-container-secret"}
-                            },
+                            "aws-secret": {"secret": {"name": f"{charm_name}-minio-secret"}},
                             "AWS_DEFAULT_REGION": "us-east-1",
                             "MLFLOW_S3_ENDPOINT_URL": "http://{service}:{port}".format(
                                 **obj_storage

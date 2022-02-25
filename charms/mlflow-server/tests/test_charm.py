@@ -102,9 +102,7 @@ def test_install_with_all_inputs(harness):
     charm_name = harness.model.app.name
     secrets = pod_spec[0]["kubernetesResources"]["secrets"]
     env_config = pod_spec[0]["containers"][0]["envConfig"]
-    minio_secrets = [
-        s for s in secrets if s["name"] == f"{charm_name}-seldon-init-container-secret"
-    ][0]
+    minio_secrets = [s for s in secrets if s["name"] == f"{charm_name}-minio-secret"][0]
     db_secrets = [s for s in secrets if s["name"] == f"{charm_name}-db-secret"][0]
 
     assert env_config["db-secret"]["secret"]["name"] == db_secrets["name"]
