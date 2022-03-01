@@ -2,6 +2,11 @@
 # Copyright 2020 Luke Marsden
 # See LICENSE file for licensing details.
 
+"""Charm for the ML Flow Server.
+
+https://github.com/canonical/mlflow-operator
+"""
+
 import json
 import logging
 from base64 import b64encode
@@ -21,6 +26,11 @@ BUCKET_NAME = "mlflow"
 
 
 class Operator(CharmBase):
+    """Charm for the ML Flow Server.
+
+    https://github.com/canonical/mlflow-operator
+    """
+
     def __init__(self, *args):
         super().__init__(*args)
 
@@ -48,7 +58,7 @@ class Operator(CharmBase):
     def _on_pod_defaults_relation_changed(self, event):
         try:
             interfaces = self._get_interfaces()
-        except CheckFailed as check_failed:
+        except CheckFailedError as check_failed:
             self.model.unit.status = check_failed.status
             return
 
@@ -57,7 +67,6 @@ class Operator(CharmBase):
         endpoint = f"http://{obj_storage['service']}:{obj_storage['port']}"
         tracking = f"{self.model.app.name}.{self.model.name}.svc.cluster.local"
         tracking = f"http://{tracking}:{config['mlflow-port']}"
-
         event.relation.data[self.app]["pod-defaults"] = json.dumps(
             {
                 "minio": {
@@ -81,16 +90,21 @@ class Operator(CharmBase):
         event.relation.data[self.unit]["requirements"] = str(requirements)
 
     def main(self, event):
+        """Main function of the charm.
+
+        Runs at install, update, config change and relation change.
+        """
         try:
             self._check_leader()
             interfaces = self._get_interfaces()
             image_details = self._check_image_details()
-        except CheckFailed as check_failed:
+        except CheckFailedError as check_failed:
             self.model.unit.status = check_failed.status
             return
 
         self._configure_mesh(interfaces)
         config = self.model.config
+        charm_name = self.model.app.name
 
         mysql = self.model.relations["db"]
         if len(mysql) > 1:
@@ -106,12 +120,8 @@ class Operator(CharmBase):
             self.model.unit.status = WaitingStatus("Waiting for mysql relation data")
             return
 
-        if not (
-            (obj_storage := interfaces["object-storage"]) and obj_storage.get_data()
-        ):
-            self.model.unit.status = WaitingStatus(
-                "Waiting for object-storage relation data"
-            )
+        if not ((obj_storage := interfaces["object-storage"]) and obj_storage.get_data()):
+            self.model.unit.status = WaitingStatus("Waiting for object-storage relation data")
             return
 
         self.model.unit.status = MaintenanceStatus("Setting pod spec")
@@ -119,19 +129,33 @@ class Operator(CharmBase):
         obj_storage = list(obj_storage.get_data().values())[0]
         secrets = [
             {
-                "name": "seldon-init-container-secret",
+                "name": f"{charm_name}-minio-secret",
                 "data": {
                     k: b64encode(v.encode("utf-8")).decode("utf-8")
                     for k, v in {
-                        "AWS_ENDPOINT_URL": "http://{service}:{port}".format(
-                            **obj_storage
-                        ),
+                        "AWS_ENDPOINT_URL": "http://{service}:{port}".format(**obj_storage),
                         "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
                         "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
                         "USE_SSL": str(obj_storage["secure"]).lower(),
                     }.items()
                 },
-            }
+            },
+            {
+                "name": f"{charm_name}-db-secret",
+                "data": {
+                    k: b64encode(v.encode("utf-8")).decode("utf-8")
+                    for k, v in {
+                        "DB_ROOT_PASSWORD": mysql["root_password"],
+                        "MLFLOW_TRACKING_URI": "mysql+pymysql://{}:{}@{}:{}/{}".format(
+                            "root",
+                            mysql["root_password"],
+                            mysql["host"],
+                            mysql["port"],
+                            mysql["database"],
+                        ),
+                    }.items()
+                },
+            },
         ]
 
         self.model.pod.set_spec(
@@ -141,33 +165,18 @@ class Operator(CharmBase):
                     {
                         "name": "mlflow",
                         "imageDetails": image_details,
-                        "ports": [
-                            {"name": "http", "containerPort": config["mlflow_port"]}
-                        ],
+                        "ports": [{"name": "http", "containerPort": config["mlflow_port"]}],
                         "args": [
                             "--host",
                             "0.0.0.0",
                             "--backend-store-uri",
-                            "mysql+pymysql://{}:{}@{}:{}/{}".format(
-                                "root",
-                                mysql["root_password"],
-                                mysql["host"],
-                                mysql["port"],
-                                mysql["database"],
-                            ),
+                            "$(MLFLOW_TRACKING_URI)",
                             "--default-artifact-root",
                             "s3://{}/".format(BUCKET_NAME),
                         ],
                         "envConfig": {
-                            "MLFLOW_TRACKING_URI": "mysql+pymysql://{}:{}@{}:{}/{}".format(
-                                "root",
-                                mysql["root_password"],
-                                mysql["host"],
-                                mysql["port"],
-                                mysql["database"],
-                            ),
-                            "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
-                            "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
+                            "db-secret": {"secret": {"name": f"{charm_name}-db-secret"}},
+                            "aws-secret": {"secret": {"name": f"{charm_name}-minio-secret"}},
                             "AWS_DEFAULT_REGION": "us-east-1",
                             "MLFLOW_S3_ENDPOINT_URL": "http://{service}:{port}".format(
                                 **obj_storage
@@ -248,32 +257,32 @@ class Operator(CharmBase):
     def _check_leader(self):
         if not self.unit.is_leader():
             # We can't do anything useful when not the leader, so do nothing.
-            raise CheckFailed("Waiting for leadership", WaitingStatus)
+            raise CheckFailedError("Waiting for leadership", WaitingStatus)
 
     def _get_interfaces(self):
         try:
             interfaces = get_interfaces(self)
         except NoVersionsListed as err:
-            raise CheckFailed(err, WaitingStatus)
+            raise CheckFailedError(err, WaitingStatus)
         except NoCompatibleVersions as err:
-            raise CheckFailed(err, BlockedStatus)
+            raise CheckFailedError(err, BlockedStatus)
         return interfaces
 
     def _check_image_details(self):
         try:
             image_details = self.image.fetch()
         except OCIImageResourceError as e:
-            raise CheckFailed(f"{e.status.message}", e.status_type)
+            raise CheckFailedError(f"{e.status.message}", e.status_type)
         return image_details
 
 
-class CheckFailed(Exception):
+class CheckFailedError(Exception):
     """Raise this exception if one of the checks in main fails."""
 
     def __init__(self, msg, status_type=None):
         super().__init__()
 
-        self.msg = msg
+        self.msg = str(msg)
         self.status_type = status_type
         self.status = status_type(msg)
 
