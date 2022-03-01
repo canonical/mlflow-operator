@@ -282,7 +282,7 @@ class CheckFailedError(Exception):
     def __init__(self, msg, status_type=None):
         super().__init__()
 
-        self.msg = msg
+        self.msg = str(msg)
         self.status_type = status_type
         self.status = status_type(msg)
 
