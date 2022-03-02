@@ -320,7 +320,7 @@ def _db_secret_dict(mysql):
     db_secret = {
         "DB_ROOT_PASSWORD": mysql["root_password"],
         "MLFLOW_TRACKING_URI": f"mysql+pymysql://root:{mysql['root_password']}@{mysql['host']}"
-                               f":{mysql['port']}/{mysql['database']}",
+        f":{mysql['port']}/{mysql['database']}",
     }
     return _b64_encode_dict(db_secret)
 
