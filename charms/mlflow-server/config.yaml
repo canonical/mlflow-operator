@@ -2,6 +2,11 @@
 # See LICENSE file for licensing details.
 #
 options:
+  default_artifact_root:
+    description: |
+      The name of the default bucket mlflow uses for artifacts, if not specified by the workflow
+    type: string
+    default: mlflow
   mlflow_port:
     description: |
       The port MLFlow will be listening on

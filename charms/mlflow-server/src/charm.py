@@ -9,6 +9,7 @@ https://github.com/canonical/mlflow-operator
 
 import json
 import logging
+import re
 from base64 import b64encode
 
 from oci_image import OCIImageResource, OCIImageResourceError
@@ -22,7 +23,6 @@ from serialized_data_interface import (
 )
 
 DB_NAME = "mlflow"
-BUCKET_NAME = "mlflow"
 
 
 class Operator(CharmBase):
@@ -96,6 +96,7 @@ class Operator(CharmBase):
         """
         try:
             self._check_leader()
+            default_artifact_root = validate_s3_bucket_name(self.config["default_artifact_root"])
             interfaces = self._get_interfaces()
             image_details = self._check_image_details()
         except CheckFailedError as check_failed:
@@ -172,7 +173,7 @@ class Operator(CharmBase):
                             "--backend-store-uri",
                             "$(MLFLOW_TRACKING_URI)",
                             "--default-artifact-root",
-                            "s3://{}/".format(BUCKET_NAME),
+                            f"s3://{default_artifact_root}/",
                         ],
                         "envConfig": {
                             "db-secret": {"secret": {"name": f"{charm_name}-db-secret"}},
@@ -274,6 +275,22 @@ class Operator(CharmBase):
         except OCIImageResourceError as e:
             raise CheckFailedError(f"{e.status.message}", e.status_type)
         return image_details
+
+
+def validate_s3_bucket_name(name):
+    """Validates the name as a valid S3 bucket name, raising a CheckFailedError if invalid."""
+    # regex from https://stackoverflow.com/a/50484916/5394584
+    if re.match(
+        r"(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)",
+        name,
+    ):
+        return name
+    else:
+        msg = (
+            f"Invalid value for config default_artifact_root '{name}'"
+            f" - value must be a valid S3 bucket name"
+        )
+        raise CheckFailedError(msg, BlockedStatus)
 
 
 class CheckFailedError(Exception):
