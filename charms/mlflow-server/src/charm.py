@@ -62,11 +62,11 @@ class Operator(CharmBase):
             self.model.unit.status = check_failed.status
             return
 
-        obj_storage = interfaces["object-storage"].get_data()
+        obj_storage = list(interfaces["object-storage"].get_data().values())[0]
         config = self.model.config
         endpoint = f"http://{obj_storage['service']}:{obj_storage['port']}"
         tracking = f"{self.model.app.name}.{self.model.name}.svc.cluster.local"
-        tracking = f"http://{tracking}:{config['mlflow-port']}"
+        tracking = f"http://{tracking}:{config['mlflow_port']}"
         event.relation.data[self.app]["pod-defaults"] = json.dumps(
             {
                 "minio": {
