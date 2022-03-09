@@ -1,3 +1,7 @@
+# Copyright 2022 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+import json
 from base64 import b64decode
 from contextlib import nullcontext as does_not_raise
 
@@ -91,22 +95,22 @@ def test_install_with_all_inputs(harness):
     harness.update_config({"default_artifact_root": default_artifact_root})
 
     # object storage
+
     os_data = {
+        "access-key": "minio-access-key",
+        "namespace": "namespace",
+        "port": 1234,
+        "secret-key": "minio-super-secret-key",
+        "secure": True,
+        "service": "service",
+    }
+    os_rel_data = {
         "_supported_versions": "- v1",
-        "data": yaml.dump(
-            {
-                "access-key": "minio-access-key",
-                "namespace": "namespace",
-                "port": 1234,
-                "secret-key": "minio-super-secret-key",
-                "secure": True,
-                "service": "service",
-            }
-        ),
+        "data": yaml.dump(os_data),
     }
     os_rel_id = harness.add_relation("object-storage", "storage-provider")
     harness.add_relation_unit(os_rel_id, "storage-provider/0")
-    harness.update_relation_data(os_rel_id, "storage-provider", os_data)
+    harness.update_relation_data(os_rel_id, "storage-provider", os_rel_data)
 
     # ingress
     ingress_relation_name = "ingress"
@@ -118,6 +122,13 @@ def test_install_with_all_inputs(harness):
     harness.update_relation_data(
         ingress_rel_id, f"{ingress_relation_name}-subscriber", relation_version_data
     )
+
+    # pod defaults relations setup
+    pod_defaults_rel_name = "pod-defaults"
+    pod_defaults_rel_id = harness.add_relation(
+        "pod-defaults", f"{pod_defaults_rel_name}-subscriber"
+    )
+    harness.add_relation_unit(pod_defaults_rel_id, f"{pod_defaults_rel_name}-subscriber/0")
 
     harness.begin_with_initial_hooks()
 
@@ -162,3 +173,27 @@ def test_install_with_all_inputs(harness):
         f"pod_spec container args have unexpected default-artifact-root."
         f"  Expected {expected_bucket_name}, found {actual_bucket_name}"
     )
+
+    # test correct data structure is sent to admission webhook
+    mlflow_pod_defaults_data = {
+        key.name: value
+        for key, value in harness.model.get_relation(
+            pod_defaults_rel_name, pod_defaults_rel_id
+        ).data.items()
+        if "mlflow-server" in key.name
+    }
+    mlflow_pod_defaults_minio_data = json.loads(
+        mlflow_pod_defaults_data[charm_name]["pod-defaults"]
+    )["minio"]["env"]
+
+    assert mlflow_pod_defaults_minio_data["AWS_ACCESS_KEY_ID"] == os_data["access-key"]
+    assert mlflow_pod_defaults_minio_data["AWS_SECRET_ACCESS_KEY"] == os_data["secret-key"]
+    assert (
+        mlflow_pod_defaults_minio_data["MLFLOW_S3_ENDPOINT_URL"]
+        == f"http://{os_data['service']}:{os_data['port']}"
+    )
+    assert (
+        mlflow_pod_defaults_minio_data["MLFLOW_TRACKING_URI"]
+        == f"http://{harness.model.app.name}.{harness.model.name}.svc.cluster.local:{harness.charm.config['mlflow_port']}"
+    )
+    assert "requirements" in mlflow_pod_defaults_data[f"{charm_name}/0"]
