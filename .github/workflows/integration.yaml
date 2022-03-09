@@ -7,123 +7,163 @@ on:
   pull_request:
 
 jobs:
-  unit-test:
-    name: Unit Test
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        charm: [server]
-
+        charm:
+          - mlflow-server
     steps:
-    - uses: actions/checkout@v2
-    - run: sudo apt update
-    - run: sudo apt install tox
-    - run: tox -e ${{ matrix.charm }}
+      - uses: actions/checkout@v2
+      - run: python3 -m pip install tox
+      - run: tox -e ${{ matrix.charm }}-lint
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        charm:
+          - mlflow-server
+    steps:
+      - uses: actions/checkout@v2
+      - run: python3 -m pip install tox
+      - run: tox -e ${{ matrix.charm }}-unit
+
+  integration:
+    name: Integration tests (microk8s)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        charm:
+          - mlflow-server
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup operator environment
+        uses: charmed-kubernetes/actions-operator@main
+        with:
+          provider: microk8s
+          channel: 1.21/stable
+          charmcraft-channel: latest/candidate
+      - run: |
+          sg microk8s -c "tox -e ${{ matrix.charm }}-integration"
+
+      # Collect debug logs if failed
+      - name: Dump Juju/k8s logs on failure
+        uses: canonical/charm-logdump-action@main
+        if: failure()
+        with:
+          app: ${{ matrix.charm }}
+          model: testing
 
   deploy:
     name: Test
     runs-on: ubuntu-latest
 
     steps:
-    - name: Check out repo
-      uses: actions/checkout@v2
+      - name: Check out repo
+        uses: actions/checkout@v2
 
-    - uses: balchua/microk8s-actions@v0.2.2
-      with:
-        channel: '1.20/stable'
-        addons: '["dns", "storage", "rbac", "metallb:10.64.140.43-10.64.140.49"]'
+      - uses: balchua/microk8s-actions@v0.2.2
+        with:
+          channel: '1.20/stable'
+          addons: '["dns", "storage", "rbac", "metallb:10.64.140.43-10.64.140.49"]'
 
-    - name: Install dependencies
-      run: |
-        set -eux
-        sudo snap install charm --classic
-        sudo snap install juju --classic
-        sudo snap install juju-bundle --classic
-        sudo snap install juju-wait --classic
-        sudo snap install charmcraft --classic --channel latest/candidate
-        sudo apt update
-        sudo apt install -y firefox-geckodriver tox
+      - name: Install dependencies
+        run: |
+          set -eux
+          sudo snap install charm --classic
+          sudo snap install juju --classic
+          sudo snap install juju-bundle --classic
+          sudo snap install juju-wait --classic
+          sudo snap install charmcraft --classic --channel latest/candidate
+          sudo apt update
+          sudo apt install -y firefox-geckodriver tox
 
-    # Avoid race condition with storage taking a long time to initialize
-    - name: Wait for storage
-      run: |
-        sg microk8s -c 'microk8s kubectl rollout status deployment/hostpath-provisioner -n kube-system'
+      # Avoid race condition with storage taking a long time to initialize
+      - name: Wait for storage
+        run: |
+          sg microk8s -c 'microk8s kubectl rollout status deployment/hostpath-provisioner -n kube-system'
 
-    - name: Bootstrap
-      run: |
-        set -eux
-        sg microk8s -c 'juju bootstrap microk8s uk8s'
-        juju add-model mlflow
+      - name: Bootstrap
+        run: |
+          set -eux
+          sg microk8s -c 'juju bootstrap microk8s uk8s'
+          juju add-model mlflow
 
-    - name: Deploy charm dependencies
-      timeout-minutes: 15
-      run: |
-        set -eux
-        juju model-config update-status-hook-interval=15s
-        juju deploy istio-gateway --channel=1.5/stable --trust istio-ingressgateway
-        juju deploy istio-pilot --channel=1.5/stable --config default-gateway=kubeflow-gateway
-        juju relate istio-pilot:istio-pilot istio-ingressgateway:istio-pilot
-        sleep 30
-        kubectl patch role -n mlflow istio-ingressgateway-operator -p '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"istio-ingressgateway-operator"},"rules":[{"apiGroups":["*"],"resources":["*"],"verbs":["*"]}]}'
-        juju wait -wvt 300 --retry_errors 20
-        juju model-config update-status-hook-interval=5m
+      - name: Deploy charm dependencies
+        timeout-minutes: 15
+        run: |
+          set -eux
+          juju model-config update-status-hook-interval=15s
+          juju deploy istio-gateway --channel=1.5/stable --trust istio-ingressgateway
+          juju deploy istio-pilot --channel=1.5/stable --config default-gateway=kubeflow-gateway
+          juju relate istio-pilot:istio-pilot istio-ingressgateway:istio-pilot
+          sleep 30
+          kubectl patch role -n mlflow istio-ingressgateway-operator -p '{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"istio-ingressgateway-operator"},"rules":[{"apiGroups":["*"],"resources":["*"],"verbs":["*"]}]}'
+          juju wait -wvt 300 --retry_errors 20
+          juju model-config update-status-hook-interval=5m
 
-        # https://bugs.launchpad.net/juju/+bug/1921739
-        (i=600; while ! juju wait -wvt 30 ; do ((--i)) || exit; sleep 1; done)
+          # https://bugs.launchpad.net/juju/+bug/1921739
+          (i=600; while ! juju wait -wvt 30 ; do ((--i)) || exit; sleep 1; done)
 
-    - name: Deploy MLflow
-      run: |
-        set -eux
-        sg microk8s -c 'juju bundle deploy --build --destructive-mode'
-        juju relate mlflow-server istio-pilot
-        juju wait -wvt 900 --retry_errors 20
+      - name: Deploy MLflow
+        run: |
+          set -eux
+          sg microk8s -c 'juju bundle deploy --build --destructive-mode'
+          juju relate mlflow-server istio-pilot
+          juju wait -wvt 900 --retry_errors 20
 
-    - name: Test MLflow
-      run: sg microk8s -c 'tox -e selenium'
+      - name: Test MLflow
+        run: sg microk8s -c 'tox -e selenium'
 
-    - run: kubectl get all -A
-      if: failure()
+      - run: kubectl get all -A
+        if: failure()
 
-    - run: kubectl get virtualservices -A
-      if: failure()
+      - run: kubectl get virtualservices -A
+        if: failure()
 
-    - run: juju status
-      if: failure()
+      - run: juju status
+        if: failure()
 
-    - name: Get mlflow workload logs
-      run: kubectl logs --tail 100 -nmlflow -lapp.kubernetes.io/name=mlflow-server
-      if: failure()
+      - name: Get mlflow workload logs
+        run: kubectl logs --tail 100 -nmlflow -lapp.kubernetes.io/name=mlflow-server
+        if: failure()
 
-    - name: Get mlflow operator logs
-      run: kubectl logs --tail 100 -nmlflow -loperator.juju.is/name=mlflow-server
-      if: failure()
+      - name: Get mlflow operator logs
+        run: kubectl logs --tail 100 -nmlflow -loperator.juju.is/name=mlflow-server
+        if: failure()
 
-    - name: Generate inspect tarball
-      run: >
-        sg microk8s <<EOF
-          microk8s inspect | \
-          grep -Po "Report tarball is at \K.+" | \
-          xargs -I {} cp {} inspection-report-${{ strategy.job-index }}.tar.gz
-        EOF
-      if: failure()
+      - name: Generate inspect tarball
+        run: >
+          sg microk8s <<EOF
+            microk8s inspect | \
+            grep -Po "Report tarball is at \K.+" | \
+            xargs -I {} cp {} inspection-report-${{ strategy.job-index }}.tar.gz
+          EOF
+        if: failure()
 
-    - name: Upload inspect tarball
-      uses: actions/upload-artifact@v2
-      with:
-        name: inspection-reports
-        path: ./inspection-report-${{ strategy.job-index }}.tar.gz
-      if: failure()
+      - name: Upload inspect tarball
+        uses: actions/upload-artifact@v2
+        with:
+          name: inspection-reports
+          path: ./inspection-report-${{ strategy.job-index }}.tar.gz
+        if: failure()
 
-    - name: Upload selenium screenshots
-      uses: actions/upload-artifact@v2
-      with:
-        name: selenium-screenshots
-        path: /tmp/selenium-*.png
-      if: failure()
+      - name: Upload selenium screenshots
+        uses: actions/upload-artifact@v2
+        with:
+          name: selenium-screenshots
+          path: /tmp/selenium-*.png
+        if: failure()
 
-    - name: Upload HAR logs
-      uses: actions/upload-artifact@v2
-      with:
-        name: selenium-har
-        path: /tmp/selenium-*.har
-      if: failure()
+      - name: Upload HAR logs
+        uses: actions/upload-artifact@v2
+        with:
+          name: selenium-har
+          path: /tmp/selenium-*.har
+        if: failure()
