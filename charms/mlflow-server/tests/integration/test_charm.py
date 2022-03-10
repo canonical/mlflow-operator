@@ -11,9 +11,10 @@ from lightkube.core.client import Client
 from lightkube.models.rbac_v1 import PolicyRule
 from lightkube.resources.rbac_authorization_v1 import Role
 from pytest_operator.plugin import OpsTest
+from selenium.common.exceptions import JavascriptException, WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 from seleniumwire import webdriver
 
@@ -69,7 +70,7 @@ async def test_access_dashboard(ops_test: OpsTest, request):
     this_role.rules.append(new_policy_rule)
     lightkube_client.patch(Role, istio_gateway_role_name, this_role)
 
-    sleep(30)
+    sleep(50)
     await ops_test.model.set_config({"update-status-hook-interval": "5m"})
 
     await ops_test.model.wait_for_idle(status="active")
@@ -80,7 +81,7 @@ async def test_access_dashboard(ops_test: OpsTest, request):
     options = Options()
     options.headless = True
     options.log.level = "trace"
-    max_wait = 10  # seconds
+    max_wait = 20  # seconds
 
     kwargs = {
         "options": options,
@@ -88,7 +89,23 @@ async def test_access_dashboard(ops_test: OpsTest, request):
     }
 
     with webdriver.Firefox(**kwargs) as driver:
-        wait = WebDriverWait(driver, max_wait)
-        driver.get(url)
-        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "experiment-view-container")))
+        wait = WebDriverWait(driver, max_wait, 1, (JavascriptException, StopIteration))
+        for _ in range(60):
+            try:
+                driver.get(url)
+                wait.until(
+                    expected_conditions.presence_of_element_located(
+                        (By.CLASS_NAME, "experiment-view-container")
+                    )
+                )
+                break
+            except WebDriverException:
+                sleep(5)
+        else:
+            driver.get(url)
+        wait.until(
+            expected_conditions.presence_of_element_located(
+                (By.CLASS_NAME, "experiment-view-container")
+            )
+        )
         Path(f"/tmp/selenium-{request.node.name}.har").write_text(driver.har)
