@@ -2,16 +2,16 @@
 # See LICENSE file for licensing details.
 
 import logging
+import time
 from pathlib import Path
 
 import pytest
-import yaml
-from pytest_operator.plugin import OpsTest
-from lightkube.core.client import Client
-from lightkube.resources.rbac_authorization_v1 import Role
-from lightkube.models.rbac_v1 import PolicyRule
-import time
 import requests
+import yaml
+from lightkube.core.client import Client
+from lightkube.models.rbac_v1 import PolicyRule
+from lightkube.resources.rbac_authorization_v1 import Role
+from pytest_operator.plugin import OpsTest
 
 log = logging.getLogger(__name__)
 
