@@ -2,16 +2,20 @@
 # See LICENSE file for licensing details.
 
 import logging
-import time
 from pathlib import Path
+from time import sleep
 
 import pytest
-import requests
 import yaml
 from lightkube.core.client import Client
 from lightkube.models.rbac_v1 import PolicyRule
 from lightkube.resources.rbac_authorization_v1 import Role
 from pytest_operator.plugin import OpsTest
+from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from seleniumwire import webdriver
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +43,7 @@ async def test_build_and_deploy(ops_test: OpsTest):
     assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
 
-async def test_access_dashboard(ops_test: OpsTest):
+async def test_access_dashboard(ops_test: OpsTest, request):
     istio_pilot = "istio-pilot"
     istio_gateway = "istio-gateway"
     await ops_test.model.deploy(istio_pilot, channel="1.5/stable")
@@ -65,15 +69,26 @@ async def test_access_dashboard(ops_test: OpsTest):
     this_role.rules.append(new_policy_rule)
     lightkube_client.patch(Role, istio_gateway_role_name, this_role)
 
-    time.sleep(30)
+    sleep(30)
     await ops_test.model.set_config({"update-status-hook-interval": "5m"})
 
     await ops_test.model.wait_for_idle(status="active")
 
     status = await ops_test.model.get_status()
-    istio_gateway_address = (
-        "http://" + status["applications"][istio_gateway]["public-address"] + ".nip.io"
-    )
+    url = f"http://{status['applications'][istio_gateway]['public-address']}.nip.io/mlflow/"
 
-    r = requests.get(f"{istio_gateway_address}/mlflow/")
-    assert r.status_code == 200
+    options = Options()
+    options.headless = True
+    options.log.level = "trace"
+    max_wait = 10  # seconds
+
+    kwargs = {
+        "options": options,
+        "seleniumwire_options": {"enable_har": True},
+    }
+
+    with webdriver.Firefox(**kwargs) as driver:
+        wait = WebDriverWait(driver, max_wait)
+        driver.get(url)
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "experiment-view-container")))
+        Path(f"/tmp/selenium-{request.node.name}.har").write_text(driver.har)

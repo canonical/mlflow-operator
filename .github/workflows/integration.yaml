@@ -49,7 +49,9 @@ jobs:
           provider: microk8s
           channel: 1.21/stable
           charmcraft-channel: latest/candidate
-      - run: sg microk8s -c 'microk8s enable metallb:10.64.140.43-10.64.140.49'
+      - run: |
+          sg microk8s -c 'microk8s enable metallb:10.64.140.43-10.64.140.49'
+          sudo apt install -y firefox-geckodriver
 
       - run: |
           sg microk8s -c "tox -e ${{ matrix.charm }}-integration"
@@ -61,3 +63,10 @@ jobs:
         with:
           app: ${{ matrix.charm }}
           model: testing
+
+      - name: Upload HAR logs
+        uses: actions/upload-artifact@v2
+        with:
+          name: selenium-har
+          path: /tmp/selenium-*.har
+        if: failure()
