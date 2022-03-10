@@ -15,7 +15,7 @@ from base64 import b64encode
 from oci_image import OCIImageResource, OCIImageResourceError
 from ops.charm import CharmBase
 from ops.main import main
-from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
+from ops.model import StatusBase, ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from serialized_data_interface import (
     NoCompatibleVersions,
     NoVersionsListed,
@@ -101,6 +101,7 @@ class Operator(CharmBase):
             image_details = self._check_image_details()
         except CheckFailedError as check_failed:
             self.model.unit.status = check_failed.status
+            self.model.unit.message = check_failed.msg
             return
 
         self._configure_mesh(interfaces)
@@ -296,7 +297,7 @@ def validate_s3_bucket_name(name):
 class CheckFailedError(Exception):
     """Raise this exception if one of the checks in main fails."""
 
-    def __init__(self, msg, status_type=None):
+    def __init__(self, msg, status_type=StatusBase):
         super().__init__()
 
         self.msg = str(msg)
