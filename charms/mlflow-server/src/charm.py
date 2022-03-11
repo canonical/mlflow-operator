@@ -284,7 +284,7 @@ class CheckFailedError(Exception):
 
         self.msg = str(msg)
         self.status_type = status_type
-        self.status = status_type(msg)
+        self.status = status_type(self.msg)
 
 
 if __name__ == "__main__":
