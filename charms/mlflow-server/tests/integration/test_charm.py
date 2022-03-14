@@ -6,17 +6,12 @@ from pathlib import Path
 from time import sleep
 
 import pytest
+import requests
 import yaml
 from lightkube.core.client import Client
 from lightkube.models.rbac_v1 import PolicyRule
 from lightkube.resources.rbac_authorization_v1 import Role
 from pytest_operator.plugin import OpsTest
-from selenium.common.exceptions import JavascriptException, WebDriverException
-from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.support import expected_conditions
-from selenium.webdriver.support.ui import WebDriverWait
-from seleniumwire import webdriver
 
 log = logging.getLogger(__name__)
 
@@ -78,34 +73,11 @@ async def test_access_dashboard(ops_test: OpsTest, request):
     status = await ops_test.model.get_status()
     url = f"http://{status['applications'][istio_gateway]['public-address']}.nip.io/mlflow/"
 
-    options = Options()
-    options.headless = True
-    options.log.level = "trace"
-    max_wait = 20  # seconds
-
-    kwargs = {
-        "options": options,
-        "seleniumwire_options": {"enable_har": True},
-    }
-
-    with webdriver.Firefox(**kwargs) as driver:
-        wait = WebDriverWait(driver, max_wait, 1, (JavascriptException, StopIteration))
-        for _ in range(60):
-            try:
-                driver.get(url)
-                wait.until(
-                    expected_conditions.presence_of_element_located(
-                        (By.CLASS_NAME, "experiment-view-container")
-                    )
-                )
-                break
-            except WebDriverException:
-                sleep(5)
-        else:
-            driver.get(url)
-        wait.until(
-            expected_conditions.presence_of_element_located(
-                (By.CLASS_NAME, "experiment-view-container")
-            )
-        )
-        Path(f"/tmp/selenium-{request.node.name}.har").write_text(driver.har)
+    for _ in range(60):
+        try:
+            requests.get(url, timeout=60)
+            break
+        except requests.ConnectionError:
+            sleep(5)
+    r = requests.get(url)
+    assert r.status_code == 200
