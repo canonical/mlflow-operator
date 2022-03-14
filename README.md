@@ -50,6 +50,7 @@ import os
 import warnings
 import sys
 
+import boto3
 import pandas as pd
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -99,6 +100,15 @@ if __name__ == "__main__":
     alpha =  0.5
     l1_ratio =  0.5
 
+    # create bucket
+    object_storage = boto3.client('s3', endpoint_url=os.getenv('MLFLOW_S3_ENDPOINT_URL'), config=boto3.session.Config(signature_version='s3v4'))
+    default_bucket_name = "mlflow"
+
+    buckets_response = object_storage.list_buckets()
+    result = [bucket for bucket in buckets_response['Buckets'] if bucket["Name"] == default_bucket_name]
+    if not result:
+        object_storage.create_bucket(Bucket=default_bucket_name)
+
     with mlflow.start_run():
         lr = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, random_state=42)
         lr.fit(train_x, train_y)
@@ -125,11 +135,7 @@ if __name__ == "__main__":
 
 Run both cells and observe that your model metrics are recorded in MLflow!
 
-To access MLflow, run:
-```
-microk8s kubectl get services -A|grep "mlflow-server"
-```
-And open the `mlflow` `ClusterIP` in the browser with `:5000` on the end.
+To access MLflow dashboard, go to [http://10.64.140.43.nip.io/mlflow/#/](http://10.64.140.43.nip.io/mlflow/#/)
 
 ## Roadmap
 
