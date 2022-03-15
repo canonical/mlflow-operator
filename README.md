@@ -136,14 +136,3 @@ if __name__ == "__main__":
 Run both cells and observe that your model metrics are recorded in MLflow!
 
 To access MLflow dashboard, go to [http://10.64.140.43.nip.io/mlflow/#/](http://10.64.140.43.nip.io/mlflow/#/)
-
-## Roadmap
-
-* [ ] Write intro explaining why you'd want to do this
-* [ ] Publish to charm store
-* [ ] Expose MLflow GUI on MetalLB
-* [ ] Make it work for namespaces other than admin - by documenting/scripting how to copy poddefaults into new namespaces for manual setup
-* [ ] Spell out the above tutorial explicitly rather than getting the user to run a script
-* [ ] Reference various juju/kubeflow bugs that can cause things to fail
-* [x] Record demo video
-* [ ] Move to Canonical repo
