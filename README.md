@@ -1,7 +1,5 @@
 # Kubeflow + MLflow on Juju with Microk8s
 
-![screenshot](demo.png "Screenshot showing kubeflow notebook publishing to mlflow")
-
 ## Get Started
 
 Follow the [quick start guide](https://charmed-kubeflow.io/docs/quickstart) to deploy kubeflow on microk8s.
@@ -128,4 +126,11 @@ if __name__ == "__main__":
 
 Run both cells and observe that your model metrics are recorded in MLflow!
 
-To access MLflow dashboard, go to [http://10.64.140.43.nip.io/mlflow/#/](http://10.64.140.43.nip.io/mlflow/#/)
+![screenshot](demo.png "Screenshot showing kubeflow notebook publishing to mlflow")
+
+## MLFlow Dashboard
+
+If you followed the instructions above, you could access MLflow dashboard by going to [http://10.64.140.43.nip.io/mlflow/#/](http://10.64.140.43.nip.io/mlflow/#/)
+Otherwise, run `microk8s kubectl get services -A | grep "mlflow-server"`, and open the `mlflow` `ClusterIP` in the browser with `:5000` on the end.
+
+![MLFlow Dashboard Screenshot](mlflow-dashboard.png "MLFlow Dashboard Screenshot")
