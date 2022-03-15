@@ -130,14 +130,3 @@ To access MLflow, run:
 microk8s kubectl get services -A|grep "mlflow-server"
 ```
 And open the `mlflow` `ClusterIP` in the browser with `:5000` on the end.
-
-## Roadmap
-
-* [ ] Write intro explaining why you'd want to do this
-* [ ] Publish to charm store
-* [ ] Expose MLflow GUI on MetalLB
-* [ ] Make it work for namespaces other than admin - by documenting/scripting how to copy poddefaults into new namespaces for manual setup
-* [ ] Spell out the above tutorial explicitly rather than getting the user to run a script
-* [ ] Reference various juju/kubeflow bugs that can cause things to fail
-* [x] Record demo video
-* [ ] Move to Canonical repo
