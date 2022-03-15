@@ -43,29 +43,7 @@ def test_main_no_relation(harness):
     assert harness.charm.model.unit.status == WaitingStatus("Waiting for mysql relation data")
 
 
-@pytest.mark.parametrize(
-    "name,context_raised",
-    [
-        # Note, this is a non-exhaustive list
-        ("some-valid-name", does_not_raise()),
-        ("0123456789", does_not_raise()),
-        ("01", pytest.raises(CheckFailedError)),  # name too short
-        ("x" * 64, pytest.raises(CheckFailedError)),  # name too long
-        ("some_invalid_name", pytest.raises(CheckFailedError)),  # name has '_'
-        ("some;invalid;name" * 64, pytest.raises(CheckFailedError)),  # name has special characters
-        ("Some-Invalid-Name", pytest.raises(CheckFailedError)),  # name has capitals
-    ],
-)
-def test_validate_s3_bucket_name(name, context_raised):
-    with context_raised as err:
-        assert name == validate_s3_bucket_name(name)
-    if isinstance(err, Exception):
-        error_message = "Invalid value for config default_artifact_root"
-        assert error_message in str(err)
-        assert err.status_type == BlockedStatus
-
-
-def test_install_with_all_inputs(harness):
+def test_install_with_all_inputs(harness, mocker):
     harness.set_leader(True)
     harness.add_oci_resource(
         "oci-image",
@@ -119,6 +97,11 @@ def test_install_with_all_inputs(harness):
         ingress_rel_id, f"{ingress_relation_name}-subscriber", relation_version_data
     )
 
+    # Mock away _validate_default_s3_bucket to avoid using boto3/creating clients
+    mocked_validate_default_s3_bucket = mocker.patch("charm.Operator._validate_default_s3_bucket")
+    bucket_name = harness._backend.config_get()['default_artifact_root']
+    mocked_validate_default_s3_bucket.return_value = bucket_name
+
     harness.begin_with_initial_hooks()
 
     pod_spec = harness.get_pod_spec()
@@ -162,3 +145,7 @@ def test_install_with_all_inputs(harness):
         f"pod_spec container args have unexpected default-artifact-root."
         f"  Expected {expected_bucket_name}, found {actual_bucket_name}"
     )
+
+
+# TODO: charm.Operator._validate_default_s3_bucket does not get tested
+# TODO: check function of create_root_if_not_exists in those tests

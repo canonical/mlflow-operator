@@ -1,5 +1,5 @@
+boto3
 ops==1.2.0
 oci-image==1.0.0
 ops-lib-mysql
-minio
 serialized-data-interface<0.4
