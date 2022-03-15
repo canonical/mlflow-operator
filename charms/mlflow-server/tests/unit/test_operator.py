@@ -212,7 +212,7 @@ def test_install_with_all_inputs(harness):
     assert mlflow_pod_defaults_minio_data["AWS_SECRET_ACCESS_KEY"] == os_data["secret-key"]
     assert (
         mlflow_pod_defaults_minio_data["MLFLOW_S3_ENDPOINT_URL"]
-        == f"http://{os_data['service']}:{os_data['port']}"
+        == f"http://{os_data['service']}.{os_data['namespace']}:{os_data['port']}"
     )
     assert (
         mlflow_pod_defaults_minio_data["MLFLOW_TRACKING_URI"]
