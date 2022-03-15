@@ -6,20 +6,23 @@
 
 Follow the [quick start guide](https://charmed-kubeflow.io/docs/quickstart) to deploy kubeflow on microk8s.
 
+
 Deploy mlflow-server
 ```shell
 juju deploy mlflow-server
 juju deploy cs:~charmed-osm/mariadb-k8s-35 mlflow-db
-
 juju relate minio mlflow-server
 juju relate istio-pilot mlflow-server
 juju relate mlflow-db mlflow-server
 juju relate mlflow-server admission-webhook
 ```
+Temporary workaround for missing pod-defaults:
+Run the following command to make a copy of pod defaults to user's namespace, which is `admin` following the guide.
+`microk8s kubectl get poddefaults mlflow-server-minio -o yaml | sed 's/namespace: kubeflow/namespace: admin/' | microk8s kubectl create -f -`
 
 Open [http://10.64.140.43.nip.io/](http://10.64.140.43.nip.io/) and log in with the username and password set in the quick start guide.
 
-Create a new notebook server, taking care to specify the `mlflow-minio` configuration. This will ensure that the correct environment variables are set so that the MLflow SDK can connect to the MLflow server.
+Create a new notebook server, taking care to specify the `mlflow-server-minio` configuration. This will ensure that the correct environment variables are set so that the MLflow SDK can connect to the MLflow server.
 
 ![config](config.png "Selecting the mlflow-minio configuration when launching a kubeflow notebook server")
 
@@ -40,6 +43,7 @@ import os
 import warnings
 import sys
 
+import boto3
 import pandas as pd
 import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -89,6 +93,15 @@ if __name__ == "__main__":
     alpha =  0.5
     l1_ratio =  0.5
 
+    # create bucket
+    object_storage = boto3.client('s3', endpoint_url=os.getenv('MLFLOW_S3_ENDPOINT_URL'), config=boto3.session.Config(signature_version='s3v4'))
+    default_bucket_name = "mlflow"
+
+    buckets_response = object_storage.list_buckets()
+    result = [bucket for bucket in buckets_response['Buckets'] if bucket["Name"] == default_bucket_name]
+    if not result:
+        object_storage.create_bucket(Bucket=default_bucket_name)
+
     with mlflow.start_run():
         lr = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, random_state=42)
         lr.fit(train_x, train_y)
@@ -115,8 +128,4 @@ if __name__ == "__main__":
 
 Run both cells and observe that your model metrics are recorded in MLflow!
 
-To access MLflow, run:
-```
-microk8s kubectl get services -A|grep "mlflow-server"
-```
-And open the `mlflow` `ClusterIP` in the browser with `:5000` on the end.
+To access MLflow dashboard, go to [http://10.64.140.43.nip.io/mlflow/#/](http://10.64.140.43.nip.io/mlflow/#/)
