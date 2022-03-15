@@ -16,6 +16,9 @@ juju relate istio-pilot mlflow-server
 juju relate mlflow-db mlflow-server
 juju relate mlflow-server admission-webhook
 ```
+Temporary workaround for missing pod-defaults:
+Run the following command to make a copy of pod defaults to user's namespace, which is `admin` following the guide.
+`microk8s kubectl get poddefaults mlflow-server-minio -o yaml | sed 's/namespace: kubeflow/namespace: admin/' | microk8s kubectl create -f -`
 
 Open [http://10.64.140.43.nip.io/](http://10.64.140.43.nip.io/) and log in with the username and password set in the quick start guide.
 
