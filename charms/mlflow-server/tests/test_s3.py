@@ -1,13 +1,11 @@
-import boto3
-from botocore.client import BaseClient
-import botocore.exceptions
 from contextlib import nullcontext as does_not_raise
+
+import botocore.exceptions
 import pytest
 from pytest_lazyfixture import lazy_fixture
 
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
-import pytest_mock
 
 @pytest.mark.parametrize(
     "name,returned",
@@ -42,8 +40,8 @@ def client_bucket_accessible(mocked_boto3_client):
 
 
 @pytest.fixture(scope="function")
-def client_accessible_emitting_ClientError(mocked_boto3_client):
-    mocked_boto3_client.head_client.side_effect = botocore.exceptions.ClientError({}, 'test')
+def client_accessible_emitting_ClientError(mocked_boto3_client):  # noqa: N802
+    mocked_boto3_client.head_client.side_effect = botocore.exceptions.ClientError({}, "test")
     yield mocked_boto3_client
 
 
@@ -68,11 +66,21 @@ def s3_wrapper_empty():
     "expected_returned,mocked_client,context_raised",
     [
         (True, lazy_fixture("client_bucket_accessible"), does_not_raise()),
-        (False, lazy_fixture("client_accessible_emitting_ClientError"), does_not_raise()),  # A handled error, returning False
-        (None, lazy_fixture("client_accessible_emitting_unknown_exception"), pytest.raises(Exception)),
-    ]
+        (
+            False,
+            lazy_fixture("client_accessible_emitting_ClientError"),
+            does_not_raise(),
+        ),  # A handled error, returning False
+        (
+            None,
+            lazy_fixture("client_accessible_emitting_unknown_exception"),
+            pytest.raises(Exception),
+        ),
+    ],
 )
-def test_check_if_bucket_accessible(expected_returned, mocked_client, context_raised, s3_wrapper_empty):
+def test_check_if_bucket_accessible(
+    expected_returned, mocked_client, context_raised, s3_wrapper_empty
+):
 
     with context_raised:
         s3_wrapper_empty._client = mocked_client
@@ -89,14 +97,18 @@ def test_check_if_bucket_accessible(expected_returned, mocked_client, context_ra
     [
         (True,),
         (False,),
-    ]
+    ],
 )
-def test_create_bucket_if_not_exists(is_bucket_accessible, mocked_boto3_client, mocker, s3_wrapper_empty):
-    mocked_check_if_bucket_accessible = mocker.patch("services.s3.S3BucketWrapper.check_if_bucket_accessible")
+def test_create_bucket_if_not_exists(
+    is_bucket_accessible, mocked_boto3_client, mocker, s3_wrapper_empty
+):
+    mocked_check_if_bucket_accessible = mocker.patch(
+        "services.s3.S3BucketWrapper.check_if_bucket_accessible"
+    )
     mocked_check_if_bucket_accessible.return_value = is_bucket_accessible
 
     bucket_name = "some_bucket"
-    s3_wrapper_empty.create_bucket_if_not_exists(bucket_name)
+    s3_wrapper_empty.create_bucket_if_missing(bucket_name)
 
     mocked_check_if_bucket_accessible.assert_called_with(bucket_name=bucket_name)
 

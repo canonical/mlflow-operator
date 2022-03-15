@@ -34,7 +34,7 @@ class S3BucketWrapper:
         except botocore.exceptions.ClientError:
             return False
 
-    def create_bucket_if_not_exists(self, bucket_name):
+    def create_bucket_if_missing(self, bucket_name):
         """Creates the bucket bucket_name if it does not exist, raising an error if it cannot.
 
         This method tries to access the bucket, assuming that if it is unaccessible that it does
@@ -45,6 +45,10 @@ class S3BucketWrapper:
         if self.check_if_bucket_accessible(bucket_name=bucket_name):
             return
 
+        self.create_bucket(bucket_name=bucket_name)
+
+    def create_bucket(self, bucket_name):
+        """Create a bucket via the client."""
         self.client.create_bucket(Bucket=bucket_name)
 
     @property
@@ -56,7 +60,7 @@ class S3BucketWrapper:
             self._client = boto3.client(
                 "s3",
                 endpoint_url=self.s3_url,
-                aws_secret_key_id=self.access_key,
+                aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_access_key,
             )
 

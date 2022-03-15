@@ -1,12 +1,12 @@
 from base64 import b64decode
-from contextlib import nullcontext as does_not_raise
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.testing import Harness
 
-from charm import CheckFailedError, Operator, validate_s3_bucket_name
+from charm import CheckFailedError, Operator
 
 
 @pytest.fixture
@@ -41,6 +41,178 @@ def test_main_no_relation(harness):
     yaml.safe_dump(pod_spec)
 
     assert harness.charm.model.unit.status == WaitingStatus("Waiting for mysql relation data")
+
+
+def test_validate_default_s3_bucket__bucket_name_invalid(harness, mocker):
+    mocked_validate_s3_bucket_name = mocker.patch("charm.validate_s3_bucket_name")
+    mocked_validate_s3_bucket_name.return_value = False
+    obj_storage = {}
+    harness.begin()
+    with pytest.raises(CheckFailedError) as raised:
+        harness.charm._validate_default_s3_bucket(obj_storage=obj_storage)
+
+    assert raised.value.status_type == BlockedStatus
+
+
+@pytest.fixture()
+def mocked_S3BucketWrapper(mocker):  # noqa: N802
+    mocked_s3_bucket_wrapper_class = mocker.patch("charm.S3BucketWrapper")
+    mocked_s3bucketwrapper_instance = MagicMock()
+    mocked_s3_bucket_wrapper_class.return_value = mocked_s3bucketwrapper_instance
+    return mocked_s3_bucket_wrapper_class, mocked_s3bucketwrapper_instance
+
+
+@pytest.fixture()
+def bucket_name_valid():
+    return "some-valid-bucket-name"
+
+
+@pytest.fixture()
+def sample_object_storage():
+    return {
+        "access-key": "access-key-value",
+        "secret-key": "secret-key-value",
+        "service": "service-value",
+        "port": "port-value",
+    }
+
+
+def test_validate_default_s3_bucket__bucket_is_accessible(
+    harness, mocked_S3BucketWrapper, bucket_name_valid, sample_object_storage  # noqa: N803
+):
+    bucket_name = bucket_name_valid
+    obj_storage = sample_object_storage
+
+    # Mocking and setup
+    mocked_s3bucketwrapper_class, mocked_s3bucketwrapper_instance = mocked_S3BucketWrapper
+    mocked_s3bucketwrapper_instance.check_if_bucket_accessible.return_value = True
+
+    harness.update_config(
+        {
+            "default_artifact_root": bucket_name,
+        }
+    )
+    harness.begin()
+
+    # Run the code
+    returned_bucket_name = harness.charm._validate_default_s3_bucket(obj_storage=obj_storage)
+    mocked_s3bucketwrapper_instance.check_if_bucket_accessible.assert_called_with(bucket_name)
+
+    # Check that everything worked as expected
+    assert returned_bucket_name == bucket_name
+
+
+def test_validate_default_s3_bucket__missing__do_not_create_if_missing(
+    harness, mocked_S3BucketWrapper, bucket_name_valid, sample_object_storage  # noqa: N803
+):
+    bucket_name = bucket_name_valid
+    obj_storage = sample_object_storage
+
+    # Mocking and setup
+    mocked_s3bucketwrapper_class, mocked_s3bucketwrapper_instance = mocked_S3BucketWrapper
+    mocked_s3bucketwrapper_instance.check_if_bucket_accessible.return_value = False
+
+    harness.update_config(
+        {
+            "create_default_artifact_root_if_missing": False,
+            "default_artifact_root": bucket_name,
+        }
+    )
+    harness.begin()
+
+    # Run the code
+    with pytest.raises(CheckFailedError) as raised:
+        harness.charm._validate_default_s3_bucket(obj_storage=obj_storage)
+
+    # Check that everything worked as expected
+    mocked_s3bucketwrapper_class.assert_called_with(
+        access_key=obj_storage["access-key"],
+        secret_access_key=obj_storage["secret-key"],
+        s3_service=obj_storage["service"],
+        s3_port=obj_storage["port"],
+    )
+
+    mocked_s3bucketwrapper_instance.check_if_bucket_accessible.assert_called_with(bucket_name)
+
+    assert raised.value.status_type == BlockedStatus
+    assert (
+        "Set create_default_artifact_root_if_missing=True to automatically create"
+        in raised.value.msg
+    )
+
+
+def test_validate_default_s3_bucket__missing__fail_to_create_if_missing(
+    harness, mocked_S3BucketWrapper, bucket_name_valid, sample_object_storage  # noqa: N803
+):
+    bucket_name = bucket_name_valid
+    obj_storage = sample_object_storage
+
+    # Mocking and setup
+    mocked_s3bucketwrapper_class, mocked_s3bucketwrapper_instance = mocked_S3BucketWrapper
+    mocked_s3bucketwrapper_instance.check_if_bucket_accessible.return_value = False
+    mocked_s3bucketwrapper_instance.create_bucket.side_effect = Exception("something went wrong")
+
+    harness.update_config(
+        {
+            "create_default_artifact_root_if_missing": True,
+            "default_artifact_root": bucket_name,
+        }
+    )
+    harness.begin()
+
+    # Run the code
+    with pytest.raises(CheckFailedError) as raised:
+        harness.charm._validate_default_s3_bucket(obj_storage=obj_storage)
+
+    # Check that everything worked as expected
+    mocked_s3bucketwrapper_class.assert_called_with(
+        access_key=obj_storage["access-key"],
+        secret_access_key=obj_storage["secret-key"],
+        s3_service=obj_storage["service"],
+        s3_port=obj_storage["port"],
+    )
+
+    mocked_s3bucketwrapper_instance.check_if_bucket_accessible.assert_called_with(bucket_name)
+    mocked_s3bucketwrapper_instance.create_bucket.assert_called_with(bucket_name)
+
+    assert raised.value.status_type == BlockedStatus
+    assert "bucket not accessible or cannot be created" in raised.value.msg
+
+
+def test_validate_default_s3_bucket__missing__create_if_missing(
+    harness, mocked_S3BucketWrapper, bucket_name_valid, sample_object_storage  # noqa: N803
+):
+    bucket_name = bucket_name_valid
+    obj_storage = sample_object_storage
+
+    # Mocking and setup
+    mocked_s3bucketwrapper_class, mocked_s3bucketwrapper_instance = mocked_S3BucketWrapper
+    mocked_s3bucketwrapper_instance.check_if_bucket_accessible.return_value = False
+    mocked_s3bucketwrapper_instance.create_bucket.return_value = bucket_name
+
+    harness.update_config(
+        {
+            "create_default_artifact_root_if_missing": True,
+            "default_artifact_root": bucket_name,
+        }
+    )
+    harness.begin()
+
+    # Run the code
+    returned = harness.charm._validate_default_s3_bucket(obj_storage=obj_storage)
+
+    # Check that everything worked as expected
+    mocked_s3bucketwrapper_class.assert_called_with(
+        access_key=obj_storage["access-key"],
+        secret_access_key=obj_storage["secret-key"],
+        s3_service=obj_storage["service"],
+        s3_port=obj_storage["port"],
+    )
+
+    mocked_s3bucketwrapper_instance.check_if_bucket_accessible.assert_called_with(bucket_name)
+    mocked_s3bucketwrapper_instance.create_bucket.assert_called_with(bucket_name)
+
+    assert returned == bucket_name
 
 
 def test_install_with_all_inputs(harness, mocker):
@@ -99,7 +271,7 @@ def test_install_with_all_inputs(harness, mocker):
 
     # Mock away _validate_default_s3_bucket to avoid using boto3/creating clients
     mocked_validate_default_s3_bucket = mocker.patch("charm.Operator._validate_default_s3_bucket")
-    bucket_name = harness._backend.config_get()['default_artifact_root']
+    bucket_name = harness._backend.config_get()["default_artifact_root"]
     mocked_validate_default_s3_bucket.return_value = bucket_name
 
     harness.begin_with_initial_hooks()
@@ -145,7 +317,3 @@ def test_install_with_all_inputs(harness, mocker):
         f"pod_spec container args have unexpected default-artifact-root."
         f"  Expected {expected_bucket_name}, found {actual_bucket_name}"
     )
-
-
-# TODO: charm.Operator._validate_default_s3_bucket does not get tested
-# TODO: check function of create_root_if_not_exists in those tests

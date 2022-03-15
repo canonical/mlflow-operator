@@ -267,25 +267,26 @@ class Operator(CharmBase):
             s3_port=obj_storage["port"],
         )
 
-        # Create the bucket
-        if self.config['create_root_if_not_exists']:
-            try:
-                # create_bucket_if_not_exists implicitly checks for accessibility
-                s3_wrapper.create_bucket_if_not_exists(bucket_name)
-                return bucket_name
-            except Exception as e:
+        if s3_wrapper.check_if_bucket_accessible(bucket_name):
+            return bucket_name
+        else:
+            if self.config["create_default_artifact_root_if_missing"]:
+                try:
+                    s3_wrapper.create_bucket(bucket_name)
+                    return bucket_name
+                except Exception as e:
+                    raise CheckFailedError(
+                        "Error with default S3 artifact store - bucket not accessible or "
+                        f"cannot be created.  Caught error: '{str(e)}",
+                        BlockedStatus,
+                    )
+            else:
                 raise CheckFailedError(
-                    "Error with default S3 artifact store - bucket not accessible or cannot "
-                    f"be created.  Caught error: '{str(e)}",
+                    "Error with default S3 artifact store - bucket not accessible or does not exist."
+                    "  Set create_default_artifact_root_if_missing=True to automatically create a "
+                    "missing default bucket",
                     BlockedStatus,
                 )
-        else:
-            raise CheckFailedError(
-                "Error with default S3 artifact store - bucket not accessible or does not exist."
-                "  Set create_root_if_not_exists=True to automatically create a missing default "
-                "bucket",
-                BlockedStatus,
-            )
 
     def _define_secrets(self, obj_storage, mysql):
         """Returns needed secrets in pod_spec.kubernetesResources.secrets format."""
