@@ -2,34 +2,24 @@
 
 ![screenshot](demo.png "Screenshot showing kubeflow notebook publishing to mlflow")
 
-How to get it running on an Ubuntu system:
+## Get Started
 
-If you've not installed microk8s before:
-```
-getent group microk8s || sudo groupadd microk8s
-sudo usermod -a -G microk8s $USER
-sudo chown -f -R $USER ~/.kube
-sudo su - $USER
-```
+Follow the [quick start guide](https://charmed-kubeflow.io/docs/quickstart) to deploy kubeflow on microk8s.
 
-Start up a microk8s cluster and install kubeflow & mlflow and relate them together:
-```
-export DOCKER_USERNAME=<docker-hub-username>
-export DOCKER_ACCESS_TOKEN=<docker-hub-password>
-bash integration_test_microk8s
+
+Deploy mlflow-server
+```shell
+juju deploy mlflow-server
+juju deploy cs:~charmed-osm/mariadb-k8s-35 mlflow-db
+juju relate minio mlflow-server
+juju relate istio-pilot mlflow-server
+juju relate mlflow-db mlflow-server
+juju relate mlflow-server admission-webhook
 ```
 
-Set the docker hub username and access token to those of a docker hub pro account to avoid docker hub ratelimits.
+Open [http://10.64.140.43.nip.io/](http://10.64.140.43.nip.io/) and log in with the username and password set in the quick start guide.
 
-**Note:** This will wipe out an existing microk8s cluster, so use with care.
-
-**Note:** This may need to be retried several times, due to various Juju/Kubeflow bugs. For example if you get an error message or a 403 error after logging in.
-
-**Note:** Min 14GB RAM needed, 50GB disk space.
-
-Open [http://10.64.140.43.nip.io/](http://10.64.140.43.nip.io/) and log in with the username and password given in the output of the above command.
-
-Create a new notebook server, taking care to specify the `mlflow-minio` configuration. This will ensure that the correct environment variables are set so that the MLflow SDK can connect to the MLflow server.
+Create a new notebook server, taking care to specify the `mlflow-server-minio` configuration. This will ensure that the correct environment variables are set so that the MLflow SDK can connect to the MLflow server.
 
 ![config](config.png "Selecting the mlflow-minio configuration when launching a kubeflow notebook server")
 
