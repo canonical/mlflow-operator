@@ -1,11 +1,12 @@
 from base64 import b64decode
+from contextlib import nullcontext as does_not_raise
 
 import pytest
 import yaml
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.testing import Harness
 
-from charm import Operator
+from charm import CheckFailedError, Operator, validate_s3_bucket_name
 
 
 @pytest.fixture
@@ -42,6 +43,28 @@ def test_main_no_relation(harness):
     assert harness.charm.model.unit.status == WaitingStatus("Waiting for mysql relation data")
 
 
+@pytest.mark.parametrize(
+    "name,context_raised",
+    [
+        # Note, this is a non-exhaustive list
+        ("some-valid-name", does_not_raise()),
+        ("0123456789", does_not_raise()),
+        ("01", pytest.raises(CheckFailedError)),  # name too short
+        ("x" * 64, pytest.raises(CheckFailedError)),  # name too long
+        ("some_invalid_name", pytest.raises(CheckFailedError)),  # name has '_'
+        ("some;invalid;name" * 64, pytest.raises(CheckFailedError)),  # name has special characters
+        ("Some-Invalid-Name", pytest.raises(CheckFailedError)),  # name has capitals
+    ],
+)
+def test_validate_s3_bucket_name(name, context_raised):
+    with context_raised as err:
+        assert name == validate_s3_bucket_name(name)
+    if isinstance(err, Exception):
+        error_message = "Invalid value for config default_artifact_root"
+        assert error_message in str(err)
+        assert err.status_type == BlockedStatus
+
+
 def test_install_with_all_inputs(harness):
     harness.set_leader(True)
     harness.add_oci_resource(
@@ -63,6 +86,9 @@ def test_install_with_all_inputs(harness):
     rel_id = harness.add_relation("db", "mysql_app")
     harness.add_relation_unit(rel_id, "mysql_app/0")
     harness.update_relation_data(rel_id, "mysql_app/0", mysql_data)
+
+    default_artifact_root = "not-a-typical-bucket-name"
+    harness.update_config({"default_artifact_root": default_artifact_root})
 
     # object storage
     os_data = {
@@ -121,7 +147,18 @@ def test_install_with_all_inputs(harness):
     assert (
         b64decode(minio_secrets["data"]["AWS_ACCESS_KEY_ID"]).decode("utf-8") == "minio-access-key"
     )
+
     assert (
         b64decode(minio_secrets["data"]["AWS_SECRET_ACCESS_KEY"]).decode("utf-8")
         == "minio-super-secret-key"
+    )
+
+    # Confirm default_artifact_root config
+    args = pod_spec[0]["containers"][0]["args"]
+    default_artifact_root_arg_index = args.index("--default-artifact-root")
+    expected_bucket_name = f"s3://{default_artifact_root}/"
+    actual_bucket_name = args[default_artifact_root_arg_index + 1]
+    assert actual_bucket_name == expected_bucket_name, (
+        f"pod_spec container args have unexpected default-artifact-root."
+        f"  Expected {expected_bucket_name}, found {actual_bucket_name}"
     )
