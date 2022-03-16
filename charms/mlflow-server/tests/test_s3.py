@@ -35,19 +35,19 @@ def mocked_boto3_client(mocker):
 
 @pytest.fixture(scope="function")
 def client_bucket_accessible(mocked_boto3_client):
-    mocked_boto3_client.head_client.return_value = True
+    mocked_boto3_client.head_bucket.return_value = True
     yield mocked_boto3_client
 
 
 @pytest.fixture(scope="function")
 def client_accessible_emitting_ClientError(mocked_boto3_client):  # noqa: N802
-    mocked_boto3_client.head_client.side_effect = botocore.exceptions.ClientError({}, "test")
+    mocked_boto3_client.head_bucket.side_effect = botocore.exceptions.ClientError({}, "test")
     yield mocked_boto3_client
 
 
 @pytest.fixture(scope="function")
 def client_accessible_emitting_unknown_exception(mocked_boto3_client):
-    mocked_boto3_client.head_client.side_effect = Exception("some unexpected error")
+    mocked_boto3_client.head_bucket.side_effect = Exception("some unexpected error")
     yield mocked_boto3_client
 
 
@@ -89,7 +89,7 @@ def test_check_if_bucket_accessible(
         returned = s3_wrapper_empty.check_if_bucket_accessible(bucket_name)
         assert returned == expected_returned
 
-        s3_wrapper_empty.client.head_client.assert_called_with(Bucket=bucket_name)
+        s3_wrapper_empty.client.head_bucket.assert_called_with(Bucket=bucket_name)
 
 
 @pytest.mark.parametrize(

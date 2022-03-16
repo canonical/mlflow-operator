@@ -29,7 +29,7 @@ class S3BucketWrapper:
         bucket, or some other error with the client.
         """
         try:
-            self.client.head_client(Bucket=bucket_name)
+            self.client.head_bucket(Bucket=bucket_name)
             return True
         except botocore.exceptions.ClientError:
             return False
@@ -63,6 +63,7 @@ class S3BucketWrapper:
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_access_key,
             )
+            return self._client
 
     @property
     def s3_url(self):
