@@ -11,5 +11,3 @@ bases:
 parts:
   charm:
     charm-python-packages: [setuptools, pip]
-    prime:
-      - ./files

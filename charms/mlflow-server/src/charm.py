@@ -88,15 +88,6 @@ class Operator(CharmBase):
             }
         )
 
-        requirements = []
-        try:
-            for req in open("files/mlflow_requirements.txt", "r"):
-                requirements.append(req.rstrip("\n"))
-        except IOError as e:
-            print("Error loading mlflow requirements file:", e)
-
-        event.relation.data[self.unit]["requirements"] = str(requirements)
-
     def main(self, event):
         """Main function of the charm.
 
