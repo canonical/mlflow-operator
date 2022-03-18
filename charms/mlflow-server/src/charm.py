@@ -131,32 +131,13 @@ class Operator(CharmBase):
         secrets = [
             {
                 "name": f"{charm_name}-minio-secret",
-                "data": {
-                    k: b64encode(v.encode("utf-8")).decode("utf-8")
-                    for k, v in {
-                        "AWS_ENDPOINT_URL": "http://{service}:{port}".format(**obj_storage),
-                        "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
-                        "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
-                        "USE_SSL": str(obj_storage["secure"]).lower(),
-                    }.items()
-                },
+                "data": _minio_credentials_dict(obj_storage=obj_storage),
             },
             {
-                "name": f"{charm_name}-db-secret",
-                "data": {
-                    k: b64encode(v.encode("utf-8")).decode("utf-8")
-                    for k, v in {
-                        "DB_ROOT_PASSWORD": mysql["root_password"],
-                        "MLFLOW_TRACKING_URI": "mysql+pymysql://{}:{}@{}:{}/{}".format(
-                            "root",
-                            mysql["root_password"],
-                            mysql["host"],
-                            mysql["port"],
-                            mysql["database"],
-                        ),
-                    }.items()
-                },
+                "name": f"{charm_name}-seldon-init-container-s3-credentials",
+                "data": _seldon_credentials_dict(obj_storage=obj_storage),
             },
+            {"name": f"{charm_name}-db-secret", "data": _db_secret_dict(mysql=mysql)},
         ]
 
         self.model.pod.set_spec(
@@ -302,6 +283,46 @@ class CheckFailedError(Exception):
         self.msg = str(msg)
         self.status_type = status_type
         self.status = status_type(self.msg)
+
+
+def _b64_encode_dict(d):
+    """Returns the dict with values being base64 encoded."""
+    # Why do we encode and decode in utf-8 first?
+    return {k: b64encode(v.encode("utf-8")).decode("utf-8") for k, v in d.items()}
+
+
+def _minio_credentials_dict(obj_storage):
+    """Returns a dict of minio credentials with the values base64 encoded."""
+    minio_credentials = {
+        "AWS_ENDPOINT_URL": f"http://{obj_storage['service']}:{obj_storage['port']}",
+        "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
+        "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
+        "USE_SSL": str(obj_storage["secure"]).lower(),
+    }
+    return _b64_encode_dict(minio_credentials)
+
+
+def _seldon_credentials_dict(obj_storage):
+    """Returns a dict of seldon init-container object storage credentials, base64 encoded."""
+    credentials = {
+        "RCLONE_CONFIG_S3_TYPE": "s3",
+        "RCLONE_CONFIG_S3_PROVIDER": "minio",
+        "RCLONE_CONFIG_S3_ACCESS_KEY_ID": obj_storage["access-key"],
+        "RCLONE_CONFIG_S3_SECRET_ACCESS_KEY": obj_storage["secret-key"],
+        "RCLONE_CONFIG_S3_ENDPOINT": f"http://{obj_storage['service']}:{obj_storage['port']}",
+        "RCLONE_CONFIG_S3_ENV_AUTH": "false",
+    }
+    return _b64_encode_dict(credentials)
+
+
+def _db_secret_dict(mysql):
+    """Returns a dict of db-secret credential data, base64 encoded."""
+    db_secret = {
+        "DB_ROOT_PASSWORD": mysql["root_password"],
+        "MLFLOW_TRACKING_URI": f"mysql+pymysql://root:{mysql['root_password']}@{mysql['host']}"
+        f":{mysql['port']}/{mysql['database']}",
+    }
+    return _b64_encode_dict(db_secret)
 
 
 if __name__ == "__main__":

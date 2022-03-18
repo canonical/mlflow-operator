@@ -91,19 +91,15 @@ def test_install_with_all_inputs(harness):
     harness.update_config({"default_artifact_root": default_artifact_root})
 
     # object storage
-    os_data = {
-        "_supported_versions": "- v1",
-        "data": yaml.dump(
-            {
-                "access-key": "minio-access-key",
-                "namespace": "namespace",
-                "port": 1234,
-                "secret-key": "minio-super-secret-key",
-                "secure": True,
-                "service": "service",
-            }
-        ),
+    os_data_dict = {
+        "access-key": "minio-access-key",
+        "namespace": "namespace",
+        "port": 1234,
+        "secret-key": "minio-super-secret-key",
+        "secure": True,
+        "service": "service",
     }
+    os_data = {"_supported_versions": "- v1", "data": yaml.dump(os_data_dict)}
     os_rel_id = harness.add_relation("object-storage", "storage-provider")
     harness.add_relation_unit(os_rel_id, "storage-provider/0")
     harness.update_relation_data(os_rel_id, "storage-provider", os_data)
@@ -128,14 +124,21 @@ def test_install_with_all_inputs(harness):
     charm_name = harness.model.app.name
     secrets = pod_spec[0]["kubernetesResources"]["secrets"]
     env_config = pod_spec[0]["containers"][0]["envConfig"]
-    minio_secrets = [s for s in secrets if s["name"] == f"{charm_name}-minio-secret"][0]
-    db_secrets = [s for s in secrets if s["name"] == f"{charm_name}-db-secret"][0]
+    secrets_dict = {s["name"]: s for s in secrets}
 
-    assert env_config["db-secret"]["secret"]["name"] == db_secrets["name"]
-    assert b64decode(db_secrets["data"]["DB_ROOT_PASSWORD"]).decode("utf-8") == "lorem-ipsum"
-    assert b64decode(db_secrets["data"]["MLFLOW_TRACKING_URI"]).decode(
-        "utf-8"
-    ) == "mysql+pymysql://{}:{}@{}:{}/{}".format(
+    assert (
+        env_config["db-secret"]["secret"]["name"]
+        == secrets_dict[f"{charm_name}-db-secret"]["name"]
+    )
+    assert (
+        b64decode(secrets_dict[f"{charm_name}-db-secret"]["data"]["DB_ROOT_PASSWORD"]).decode(
+            "utf-8"
+        )
+        == "lorem-ipsum"
+    )
+    assert b64decode(
+        secrets_dict[f"{charm_name}-db-secret"]["data"]["MLFLOW_TRACKING_URI"]
+    ).decode("utf-8") == "mysql+pymysql://{}:{}@{}:{}/{}".format(
         "root",
         mysql_data["root_password"],
         mysql_data["host"],
@@ -143,15 +146,34 @@ def test_install_with_all_inputs(harness):
         mysql_data["database"],
     )
 
-    assert env_config["aws-secret"]["secret"]["name"] == minio_secrets["name"]
+    # Check minio credentials
     assert (
-        b64decode(minio_secrets["data"]["AWS_ACCESS_KEY_ID"]).decode("utf-8") == "minio-access-key"
+        env_config["aws-secret"]["secret"]["name"]
+        == secrets_dict[f"{charm_name}-minio-secret"]["name"]
+    )
+    assert (
+        b64decode(secrets_dict[f"{charm_name}-minio-secret"]["data"]["AWS_ACCESS_KEY_ID"]).decode(
+            "utf-8"
+        )
+        == os_data_dict["access-key"]
+    )
+    assert (
+        b64decode(
+            secrets_dict[f"{charm_name}-minio-secret"]["data"]["AWS_SECRET_ACCESS_KEY"]
+        ).decode("utf-8")
+        == os_data_dict["secret-key"]
     )
 
+    # Spot check for seldon init-container credentials
     assert (
-        b64decode(minio_secrets["data"]["AWS_SECRET_ACCESS_KEY"]).decode("utf-8")
-        == "minio-super-secret-key"
+        b64decode(
+            secrets_dict[f"{charm_name}-seldon-init-container-s3-credentials"]["data"][
+                "RCLONE_CONFIG_S3_ACCESS_KEY_ID"
+            ]
+        ).decode("utf-8")
+        == os_data_dict["access-key"]
     )
+    assert len(secrets_dict[f"{charm_name}-seldon-init-container-s3-credentials"]["data"]) == 6
 
     # Confirm default_artifact_root config
     args = pod_spec[0]["containers"][0]["args"]
