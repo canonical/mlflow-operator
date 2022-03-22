@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         charm:
-          - mlflow-server
+          - server
     steps:
       - uses: actions/checkout@v2
       - run: python3 -m pip install tox
@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         charm:
-          - mlflow-server
+          - server
     steps:
       - uses: actions/checkout@v2
       - run: python3 -m pip install tox
@@ -40,7 +40,7 @@ jobs:
       fail-fast: false
       matrix:
         charm:
-          - mlflow-server
+          - server
     steps:
       - uses: actions/checkout@v2
       - name: Setup operator environment
