@@ -38,9 +38,7 @@ async def test_build_and_deploy(ops_test: OpsTest):
     await ops_test.model.deploy(my_charm, resources=resources)
     await ops_test.model.add_relation(CHARM_NAME, obj_storage)
     await ops_test.model.add_relation(CHARM_NAME, db)
-    await ops_test.model.wait_for_idle(
-        status="active"
-    )
+    await ops_test.model.wait_for_idle(status="active")
 
 
 @pytest.mark.assertions
