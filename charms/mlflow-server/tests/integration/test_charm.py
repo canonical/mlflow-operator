@@ -39,7 +39,7 @@ async def test_build_and_deploy(ops_test: OpsTest):
     await ops_test.model.add_relation(CHARM_NAME, obj_storage)
     await ops_test.model.add_relation(CHARM_NAME, db)
     await ops_test.model.wait_for_idle(
-        status="active", raise_on_blocked=False, raise_on_error=False
+        status="active"
     )
 
 
