@@ -208,14 +208,13 @@ def test_install_with_all_inputs(harness):
         mlflow_pod_defaults_data[charm_name]["pod-defaults"]
     )["minio"]["env"]
 
-    assert mlflow_pod_defaults_minio_data["AWS_ACCESS_KEY_ID"] == os_data["access-key"]
-    assert mlflow_pod_defaults_minio_data["AWS_SECRET_ACCESS_KEY"] == os_data["secret-key"]
+    assert mlflow_pod_defaults_minio_data["AWS_ACCESS_KEY_ID"] == os_data_dict["access-key"]
+    assert mlflow_pod_defaults_minio_data["AWS_SECRET_ACCESS_KEY"] == os_data_dict["secret-key"]
     assert (
         mlflow_pod_defaults_minio_data["MLFLOW_S3_ENDPOINT_URL"]
-        == f"http://{os_data['service']}.{os_data['namespace']}:{os_data['port']}"
+        == f"http://{os_data_dict['service']}.{os_data_dict['namespace']}:{os_data_dict['port']}"
     )
     assert (
         mlflow_pod_defaults_minio_data["MLFLOW_TRACKING_URI"]
         == f"http://{harness.model.app.name}.{harness.model.name}.svc.cluster.local:{harness.charm.config['mlflow_port']}"
     )
-    assert "requirements" in mlflow_pod_defaults_data[f"{charm_name}/0"]
