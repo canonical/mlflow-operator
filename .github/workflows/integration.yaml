@@ -62,3 +62,10 @@ jobs:
         with:
           app: ${{ matrix.charm }}
           model: testing
+
+      - name: Upload HAR logs
+        uses: actions/upload-artifact@v2
+        with:
+          name: selenium-har
+          path: /tmp/selenium-*.har
+        if: failure()

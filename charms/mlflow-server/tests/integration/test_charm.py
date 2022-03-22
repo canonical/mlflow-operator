@@ -6,12 +6,18 @@ from pathlib import Path
 from time import sleep
 
 import pytest
-import requests
 import yaml
 from lightkube.core.client import Client
 from lightkube.models.rbac_v1 import PolicyRule
 from lightkube.resources.rbac_authorization_v1 import Role
+from pytest_lazyfixture import lazy_fixture
 from pytest_operator.plugin import OpsTest
+from selenium.common.exceptions import JavascriptException, WebDriverException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.support import expected_conditions
+from selenium.webdriver.support.ui import WebDriverWait
+from seleniumwire import webdriver
 
 log = logging.getLogger(__name__)
 
@@ -36,10 +42,14 @@ async def test_build_and_deploy(ops_test: OpsTest):
         status="active", raise_on_blocked=False, raise_on_error=False
     )
 
+
+@pytest.mark.assertions
+async def test_successful_deploy(ops_test: OpsTest):
     assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
 
-async def test_access_dashboard(ops_test: OpsTest, request):
+@pytest.mark.abort_on_fail
+async def test_deploy_with_ingress(ops_test: OpsTest):
     istio_pilot = "istio-pilot"
     istio_gateway = "istio-gateway"
     await ops_test.model.deploy(istio_pilot, channel="1.5/stable")
@@ -70,14 +80,55 @@ async def test_access_dashboard(ops_test: OpsTest, request):
 
     await ops_test.model.wait_for_idle(status="active")
 
-    status = await ops_test.model.get_status()
-    url = f"http://{status['applications'][istio_gateway]['public-address']}.nip.io/mlflow/"
 
-    for _ in range(60):
-        try:
-            requests.get(url, timeout=60)
-            break
-        except requests.ConnectionError:
-            sleep(5)
-    r = requests.get(url)
-    assert r.status_code == 200
+@pytest.fixture
+async def url_with_ingress(ops_test: OpsTest):
+    status = await ops_test.model.get_status()
+    url = f"http://{status['applications']['istio-gateway']['public-address']}.nip.io/mlflow/"
+    yield url
+
+
+@pytest.fixture
+async def url_without_ingress(ops_test: OpsTest):
+    status = await ops_test.model.get_status()
+    unit_name = ops_test.model.applications[CHARM_NAME].units[0].name
+    url = f"http://{status['applications'][CHARM_NAME]['units'][unit_name]['address']}:5000"
+    yield url
+
+
+@pytest.mark.assertions
+@pytest.mark.parametrize(
+    "url", [lazy_fixture("url_without_ingress"), lazy_fixture("url_with_ingress")]
+)
+async def test_access_dashboard(request, url):
+    options = Options()
+    options.headless = True
+    options.log.level = "trace"
+    max_wait = 20  # seconds
+
+    kwargs = {
+        "options": options,
+        "seleniumwire_options": {"enable_har": True},
+    }
+
+    with webdriver.Firefox(**kwargs) as driver:
+        wait = WebDriverWait(driver, max_wait, 1, (JavascriptException, StopIteration))
+        for _ in range(60):
+            try:
+                driver.get(url)
+                wait.until(
+                    expected_conditions.presence_of_element_located(
+                        (By.CLASS_NAME, "experiment-view-container")
+                    )
+                )
+                break
+            except WebDriverException:
+                sleep(5)
+        else:
+            driver.get(url)
+        wait.until(
+            expected_conditions.presence_of_element_located(
+                (By.CLASS_NAME, "experiment-view-container")
+            )
+        )
+        Path(f"/tmp/selenium-{request.node.name}.har").write_text(driver.har)
