@@ -15,7 +15,13 @@ from base64 import b64encode
 from oci_image import OCIImageResource, OCIImageResourceError
 from ops.charm import CharmBase
 from ops.main import main
-from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
+from ops.model import (
+    ActiveStatus,
+    BlockedStatus,
+    MaintenanceStatus,
+    StatusBase,
+    WaitingStatus,
+)
 from serialized_data_interface import (
     NoCompatibleVersions,
     NoVersionsListed,
@@ -62,11 +68,13 @@ class Operator(CharmBase):
             self.model.unit.status = check_failed.status
             return
 
-        obj_storage = interfaces["object-storage"].get_data()
+        obj_storage = list(interfaces["object-storage"].get_data().values())[0]
         config = self.model.config
-        endpoint = f"http://{obj_storage['service']}:{obj_storage['port']}"
+        endpoint = (
+            f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}"
+        )
         tracking = f"{self.model.app.name}.{self.model.name}.svc.cluster.local"
-        tracking = f"http://{tracking}:{config['mlflow-port']}"
+        tracking = f"http://{tracking}:{config['mlflow_port']}"
         event.relation.data[self.app]["pod-defaults"] = json.dumps(
             {
                 "minio": {
@@ -80,15 +88,6 @@ class Operator(CharmBase):
             }
         )
 
-        requirements = []
-        try:
-            for req in open("files/mlflow_requirements.txt", "r"):
-                requirements.append(req.rstrip("\n"))
-        except IOError as e:
-            print("Error loading mlflow requirements file:", e)
-
-        event.relation.data[self.unit]["requirements"] = str(requirements)
-
     def main(self, event):
         """Main function of the charm.
 
@@ -101,6 +100,7 @@ class Operator(CharmBase):
             image_details = self._check_image_details()
         except CheckFailedError as check_failed:
             self.model.unit.status = check_failed.status
+            self.model.unit.message = check_failed.msg
             return
 
         self._configure_mesh(interfaces)
@@ -160,7 +160,7 @@ class Operator(CharmBase):
                             "db-secret": {"secret": {"name": f"{charm_name}-db-secret"}},
                             "aws-secret": {"secret": {"name": f"{charm_name}-minio-secret"}},
                             "AWS_DEFAULT_REGION": "us-east-1",
-                            "MLFLOW_S3_ENDPOINT_URL": "http://{service}:{port}".format(
+                            "MLFLOW_S3_ENDPOINT_URL": "http://{service}.{namespace}:{port}".format(
                                 **obj_storage
                             ),
                         },
@@ -277,7 +277,7 @@ def validate_s3_bucket_name(name):
 class CheckFailedError(Exception):
     """Raise this exception if one of the checks in main fails."""
 
-    def __init__(self, msg, status_type=None):
+    def __init__(self, msg, status_type=StatusBase):
         super().__init__()
 
         self.msg = str(msg)
@@ -294,7 +294,7 @@ def _b64_encode_dict(d):
 def _minio_credentials_dict(obj_storage):
     """Returns a dict of minio credentials with the values base64 encoded."""
     minio_credentials = {
-        "AWS_ENDPOINT_URL": f"http://{obj_storage['service']}:{obj_storage['port']}",
+        "AWS_ENDPOINT_URL": f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}",
         "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
         "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
         "USE_SSL": str(obj_storage["secure"]).lower(),
