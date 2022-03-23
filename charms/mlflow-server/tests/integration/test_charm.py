@@ -61,6 +61,8 @@ async def test_deploy_with_ingress(ops_test: OpsTest):
         timeout=600,
     )
 
+    # Patch the istio-gateway Role so that it can access it's own configmap
+    # This can be removed when we move to the sidecar istio v1.11 charm
     lightkube_client = Client(
         namespace=ops_test.model_name,
     )
