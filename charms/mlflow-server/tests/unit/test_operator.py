@@ -281,7 +281,6 @@ def test_install_with_all_inputs(harness, mocker):
     )
     harness.add_relation_unit(pod_defaults_rel_id, f"{pod_defaults_rel_name}-subscriber/0")
 
-
     harness.begin_with_initial_hooks()
 
     pod_spec = harness.get_pod_spec()
