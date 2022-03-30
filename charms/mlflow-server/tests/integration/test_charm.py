@@ -62,9 +62,13 @@ async def test_default_bucket_created(ops_test: OpsTest):
     config = await ops_test.model.applications[CHARM_NAME].get_config()
     default_bucket_name = config["default_artifact_root"]["value"]
 
-    ret_code, stdout, stderr, kubectl_cmd = await does_minio_bucket_exist(default_bucket_name, ops_test)
-    assert ret_code == 0, f"Unable to find bucket named {default_bucket_name}, got " \
-                          f"stdout='{stdout}', stderr={stderr}.  Used command {kubectl_cmd}"
+    ret_code, stdout, stderr, kubectl_cmd = await does_minio_bucket_exist(
+        default_bucket_name, ops_test
+    )
+    assert ret_code == 0, (
+        f"Unable to find bucket named {default_bucket_name}, got "
+        f"stdout='{stdout}', stderr={stderr}.  Used command {kubectl_cmd}"
+    )
 
 
 async def does_minio_bucket_exist(bucket_name, ops_test: OpsTest):
@@ -103,16 +107,20 @@ async def does_minio_bucket_exist(bucket_name, ops_test: OpsTest):
         "--",
         "sh",
         "-c",
-        aws_cmd
+        aws_cmd,
     )
 
-    ret_code, stdout, stderr, = await ops_test.run(*kubectl_cmd)
+    (
+        ret_code,
+        stdout,
+        stderr,
+    ) = await ops_test.run(*kubectl_cmd)
     return ret_code, stdout, stderr, " ".join(kubectl_cmd)
 
 
 def generate_random_string(length: int = 4):
-    """Returns a randomly generated string of lower case alphabetic characters and given length"""
-    return ''.join(choices(ascii_lowercase, k=length))
+    """Returns a random string of lower case alphabetic characters and given length."""
+    return "".join(choices(ascii_lowercase, k=length))
 
 
 @pytest.mark.abort_on_fail
