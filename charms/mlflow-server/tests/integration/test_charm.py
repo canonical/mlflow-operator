@@ -3,6 +3,8 @@
 
 import logging
 from pathlib import Path
+from random import choices
+from string import ascii_lowercase
 from time import sleep
 
 import pytest
@@ -23,12 +25,18 @@ log = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 CHARM_NAME = METADATA["name"]
+OBJ_STORAGE_NAME = "minio"
+OBJ_STORAGE_CONFIG = {
+    "access-key": "minio",
+    "secret-key": "minio123",
+    "port": "9000",
+}
 
 
 @pytest.mark.abort_on_fail
 async def test_build_and_deploy(ops_test: OpsTest):
     db = "mlflow-db"
-    obj_storage = "minio"
+    obj_storage = OBJ_STORAGE_NAME
     await ops_test.model.deploy("charmed-osm-mariadb-k8s", application_name=db)
     await ops_test.model.deploy(obj_storage)
 
@@ -44,6 +52,62 @@ async def test_build_and_deploy(ops_test: OpsTest):
 @pytest.mark.assertions
 async def test_successful_deploy(ops_test: OpsTest):
     assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+
+
+async def test_default_bucket_created(ops_test: OpsTest):
+    default_bucket_name = await ops_test.model.applications[CHARM_NAME].get_config()
+
+    ret_code, stdout, stderr, kubectl_cmd = await does_minio_bucket_exist(default_bucket_name, ops_test)
+    assert ret_code == 0, f"Unable to find bucket named {default_bucket_name}, got " \
+                          f"stdout='{stdout}', stderr={stderr}.  Used command {kubectl_cmd}"
+
+
+async def does_minio_bucket_exist(bucket_name, ops_test: OpsTest):
+    """Connects to the minio server and checks if a bucket exists, checking if a bucket exists.
+
+    Returns:
+        Tuple of the return code, stdout, and stderr
+    """
+    access_key = OBJ_STORAGE_CONFIG["access-key"]
+    secret_key = OBJ_STORAGE_CONFIG["secret-key"]
+    port = OBJ_STORAGE_CONFIG["port"]
+    obj_storage_name = OBJ_STORAGE_NAME
+    model_name = ops_test.model_name
+    log.info(f"ops_test.model_name = {ops_test.model_name}")
+
+    obj_storage_url = f"http://{obj_storage_name}.{model_name}.svc.cluster.local:{port}"
+
+    aws_cmd = f"aws --endpoint-url {obj_storage_url} s3api head-bucket --bucket={bucket_name}"
+
+    # Add random suffix to pod name to avoid collision
+    this_pod_name = f"{CHARM_NAME}-minio-bucket-test-{generate_random_string()}"
+
+    kubectl_cmd = (
+        "microk8s",
+        "kubectl",
+        "run",
+        "--rm",
+        "-i",
+        "--restart=Never",
+        f"--namespace={ops_test.model_name}",
+        this_pod_name,
+        f"--env=AWS_ACCESS_KEY_ID={access_key}",
+        f"--env=AWS_SECRET_ACCESS_KEY={secret_key}",
+        "--image=amazon/aws-cli",
+        "--command",
+        "--",
+        "sh",
+        "-c",
+        aws_cmd
+    )
+
+    ret_code, stdout, stderr, = await ops_test.run(*kubectl_cmd)
+    return ret_code, stdout, stderr, " ".join(kubectl_cmd)
+
+
+def generate_random_string(length: int = 4):
+    """Returns a randomly generated string of lower case alphabetic characters and given length"""
+    return ''.join(choices(ascii_lowercase, k=length))
 
 
 @pytest.mark.abort_on_fail
