@@ -88,8 +88,10 @@ async def does_minio_bucket_exist(bucket_name, ops_test: OpsTest):
 
     # Region is not used and doesn't matter, but must be set to run in github actions as explained
     # in: https://florian.ec/blog/github-actions-awscli-errors/
-    aws_cmd = f"aws --endpoint-url {obj_storage_url} --region us-east-1 s3api head-bucket" \
-              f" --bucket={bucket_name}"
+    aws_cmd = (
+        f"aws --endpoint-url {obj_storage_url} --region us-east-1 s3api head-bucket"
+        f" --bucket={bucket_name}"
+    )
 
     # Add random suffix to pod name to avoid collision
     this_pod_name = f"{CHARM_NAME}-minio-bucket-test-{generate_random_string()}"
