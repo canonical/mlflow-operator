@@ -67,7 +67,7 @@ async def test_default_bucket_created(ops_test: OpsTest):
     )
     assert ret_code == 0, (
         f"Unable to find bucket named {default_bucket_name}, got "
-        f"stdout='{stdout}', stderr={stderr}.  Used command {kubectl_cmd}"
+        f"stdout=\n'{stdout}\n'stderr=\n{stderr}\nUsed command {kubectl_cmd}"
     )
 
 
@@ -86,7 +86,9 @@ async def does_minio_bucket_exist(bucket_name, ops_test: OpsTest):
 
     obj_storage_url = f"http://{obj_storage_name}.{model_name}.svc.cluster.local:{port}"
 
-    aws_cmd = f"aws --endpoint-url {obj_storage_url} s3api head-bucket --bucket={bucket_name}"
+    # Region is not used and doesn't matter, but must be set to run in github actions as explained in:
+    # https://florian.ec/blog/github-actions-awscli-errors/
+    aws_cmd = f"aws --endpoint-url {obj_storage_url} --region us-east-1 s3api head-bucket --bucket={bucket_name}"
 
     # Add random suffix to pod name to avoid collision
     this_pod_name = f"{CHARM_NAME}-minio-bucket-test-{generate_random_string()}"
