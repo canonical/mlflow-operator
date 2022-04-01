@@ -86,8 +86,8 @@ async def does_minio_bucket_exist(bucket_name, ops_test: OpsTest):
 
     obj_storage_url = f"http://{obj_storage_name}.{model_name}.svc.cluster.local:{port}"
 
-    # Region is not used and doesn't matter, but must be set to run in github actions as explained in:
-    # https://florian.ec/blog/github-actions-awscli-errors/
+    # Region is not used and doesn't matter, but must be set to run in github actions as explained
+    # in: https://florian.ec/blog/github-actions-awscli-errors/
     aws_cmd = f"aws --endpoint-url {obj_storage_url} --region us-east-1 s3api head-bucket" \
               f" --bucket={bucket_name}"
 
