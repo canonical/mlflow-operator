@@ -9,7 +9,6 @@ https://github.com/canonical/mlflow-operator
 
 import json
 import logging
-import re
 from base64 import b64encode
 
 from oci_image import OCIImageResource, OCIImageResourceError
@@ -28,7 +27,7 @@ from serialized_data_interface import (
     get_interfaces,
 )
 
-DB_NAME = "mlflow"
+from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
 
 class Operator(CharmBase):
@@ -42,6 +41,7 @@ class Operator(CharmBase):
 
         self.image = OCIImageResource(self, "oci-image")
         self.log = logging.getLogger(__name__)
+        self.charm_name = self.model.app.name
 
         for event in [
             self.on.install,
@@ -94,52 +94,27 @@ class Operator(CharmBase):
         Runs at install, update, config change and relation change.
         """
         try:
+            self.model.unit.status = MaintenanceStatus("Validating inputs and computing pod spec")
+
             self._check_leader()
-            default_artifact_root = validate_s3_bucket_name(self.config["default_artifact_root"])
             interfaces = self._get_interfaces()
             image_details = self._check_image_details()
+
+            mysql = self._configure_mysql()
+            obj_storage = _get_obj_storage(interfaces)
+            secrets = self._define_secrets(obj_storage=obj_storage, mysql=mysql)
+
+            default_artifact_root = self._validate_default_s3_bucket(obj_storage)
+
+            self._configure_mesh(interfaces)
         except CheckFailedError as check_failed:
             self.model.unit.status = check_failed.status
             self.model.unit.message = check_failed.msg
             return
 
-        self._configure_mesh(interfaces)
-        config = self.model.config
-        charm_name = self.model.app.name
-
-        mysql = self.model.relations["db"]
-        if len(mysql) > 1:
-            self.model.unit.status = BlockedStatus("Too many mysql relations")
-            return
-
-        try:
-            mysql = mysql[0]
-            unit = list(mysql.units)[0]
-            mysql = mysql.data[unit]
-            mysql["database"]
-        except (IndexError, KeyError):
-            self.model.unit.status = WaitingStatus("Waiting for mysql relation data")
-            return
-
-        if not ((obj_storage := interfaces["object-storage"]) and obj_storage.get_data()):
-            self.model.unit.status = WaitingStatus("Waiting for object-storage relation data")
-            return
-
         self.model.unit.status = MaintenanceStatus("Setting pod spec")
 
-        obj_storage = list(obj_storage.get_data().values())[0]
-        secrets = [
-            {
-                "name": f"{charm_name}-minio-secret",
-                "data": _minio_credentials_dict(obj_storage=obj_storage),
-            },
-            {
-                "name": f"{charm_name}-seldon-init-container-s3-credentials",
-                "data": _seldon_credentials_dict(obj_storage=obj_storage),
-            },
-            {"name": f"{charm_name}-db-secret", "data": _db_secret_dict(mysql=mysql)},
-        ]
-
+        config = self.model.config
         self.model.pod.set_spec(
             {
                 "version": 3,
@@ -157,8 +132,8 @@ class Operator(CharmBase):
                             f"s3://{default_artifact_root}/",
                         ],
                         "envConfig": {
-                            "db-secret": {"secret": {"name": f"{charm_name}-db-secret"}},
-                            "aws-secret": {"secret": {"name": f"{charm_name}-minio-secret"}},
+                            "db-secret": {"secret": {"name": f"{self.charm_name}-db-secret"}},
+                            "aws-secret": {"secret": {"name": f"{self.charm_name}-minio-secret"}},
                             "AWS_DEFAULT_REGION": "us-east-1",
                             "MLFLOW_S3_ENDPOINT_URL": "http://{service}.{namespace}:{port}".format(
                                 **obj_storage
@@ -236,6 +211,22 @@ class Operator(CharmBase):
                 }
             )
 
+    def _configure_mysql(
+        self,
+    ):
+        mysql = self.model.relations["db"]
+        if len(mysql) > 1:
+            raise CheckFailedError("Too many mysql relations", BlockedStatus)
+
+        try:
+            mysql = mysql[0]
+            unit = list(mysql.units)[0]
+            mysql = mysql.data[unit]
+            mysql["database"]
+            return mysql
+        except (IndexError, KeyError):
+            raise CheckFailedError("Waiting for mysql relation data", WaitingStatus)
+
     def _check_leader(self):
         if not self.unit.is_leader():
             # We can't do anything useful when not the leader, so do nothing.
@@ -257,21 +248,59 @@ class Operator(CharmBase):
             raise CheckFailedError(f"{e.status.message}", e.status_type)
         return image_details
 
+    def _validate_default_s3_bucket(self, obj_storage):
+        """Validates the default S3 store, ensuring bucket is accessible and creating if needed."""
+        # Validate the bucket name
+        bucket_name = self.config["default_artifact_root"]
+        if not validate_s3_bucket_name(bucket_name):
+            msg = (
+                f"Invalid value for config default_artifact_root '{bucket_name}'"
+                f" - value must be a valid S3 bucket name"
+            )
+            raise CheckFailedError(msg, BlockedStatus)
 
-def validate_s3_bucket_name(name):
-    """Validates the name as a valid S3 bucket name, raising a CheckFailedError if invalid."""
-    # regex from https://stackoverflow.com/a/50484916/5394584
-    if re.match(
-        r"(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)",
-        name,
-    ):
-        return name
-    else:
-        msg = (
-            f"Invalid value for config default_artifact_root '{name}'"
-            f" - value must be a valid S3 bucket name"
+        # Ensure the bucket exists, creating it if missing and create_root_if_not_exists==True
+        s3_wrapper = S3BucketWrapper(
+            access_key=obj_storage["access-key"],
+            secret_access_key=obj_storage["secret-key"],
+            s3_service=obj_storage["service"],
+            s3_port=obj_storage["port"],
         )
-        raise CheckFailedError(msg, BlockedStatus)
+
+        if s3_wrapper.check_if_bucket_accessible(bucket_name):
+            return bucket_name
+        else:
+            if self.config["create_default_artifact_root_if_missing"]:
+                try:
+                    s3_wrapper.create_bucket(bucket_name)
+                    return bucket_name
+                except Exception as e:
+                    raise CheckFailedError(
+                        "Error with default S3 artifact store - bucket not accessible or "
+                        f"cannot be created.  Caught error: '{str(e)}",
+                        BlockedStatus,
+                    )
+            else:
+                raise CheckFailedError(
+                    "Error with default S3 artifact store - bucket not accessible or does not exist."
+                    "  Set create_default_artifact_root_if_missing=True to automatically create a "
+                    "missing default bucket",
+                    BlockedStatus,
+                )
+
+    def _define_secrets(self, obj_storage, mysql):
+        """Returns needed secrets in pod_spec.kubernetesResources.secrets format."""
+        return [
+            {
+                "name": f"{self.charm_name}-minio-secret",
+                "data": _minio_credentials_dict(obj_storage=obj_storage),
+            },
+            {
+                "name": f"{self.charm_name}-seldon-init-container-s3-credentials",
+                "data": _seldon_credentials_dict(obj_storage=obj_storage),
+            },
+            {"name": f"{self.charm_name}-db-secret", "data": _db_secret_dict(mysql=mysql)},
+        ]
 
 
 class CheckFailedError(Exception):
@@ -294,7 +323,7 @@ def _b64_encode_dict(d):
 def _minio_credentials_dict(obj_storage):
     """Returns a dict of minio credentials with the values base64 encoded."""
     minio_credentials = {
-        "AWS_ENDPOINT_URL": f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}",
+        "AWS_ENDPOINT_URL": f"http://{obj_storage['service']}:{obj_storage['port']}",
         "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
         "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
         "USE_SSL": str(obj_storage["secure"]).lower(),
@@ -323,6 +352,26 @@ def _db_secret_dict(mysql):
         f":{mysql['port']}/{mysql['database']}",
     }
     return _b64_encode_dict(db_secret)
+
+
+def _get_obj_storage(interfaces):
+    """Unpacks and returns the object-storage relation data.
+
+    Raises CheckFailedError if an anticipated error occurs.
+    """
+    if not ((obj_storage := interfaces["object-storage"]) and obj_storage.get_data()):
+        raise CheckFailedError("Waiting for object-storage relation data", WaitingStatus)
+
+    try:
+        obj_storage = list(obj_storage.get_data().values())[0]
+    except Exception as e:
+        raise CheckFailedError(
+            f"Unexpected error unpacking object storage data - data format not "
+            f"as expected. Caught exception: '{str(e)}'",
+            BlockedStatus,
+        )
+
+    return obj_storage
 
 
 if __name__ == "__main__":

@@ -2,6 +2,12 @@
 # See LICENSE file for licensing details.
 #
 options:
+  create_default_artifact_root_if_missing:
+    description: |
+      If True, charm will try to create the default_artifact_root bucket in S3 if it does not 
+      exist.  If False and the bucket does not exist, the charm enter Blocked status
+    type: boolean
+    default: true
   default_artifact_root:
     description: |
       The name of the default bucket mlflow uses for artifacts, if not specified by the workflow
