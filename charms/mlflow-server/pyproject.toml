@@ -1,6 +1,7 @@
 [tool.black]
 line-length = 99
 target-version = ["py38"]
+exclude = ["lib"]
 
 [tool.isort]
 profile = "black"

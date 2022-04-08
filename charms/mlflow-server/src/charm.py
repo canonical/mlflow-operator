@@ -11,6 +11,8 @@ import json
 import logging
 from base64 import b64encode
 
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from oci_image import OCIImageResource, OCIImageResourceError
 from ops.charm import CharmBase
 from ops.main import main
@@ -29,6 +31,7 @@ from serialized_data_interface import (
 
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
+PROMETHEUS_PATH = "/prometheus"
 
 class Operator(CharmBase):
     """Charm for the ML Flow Server.
@@ -42,6 +45,32 @@ class Operator(CharmBase):
         self.image = OCIImageResource(self, "oci-image")
         self.log = logging.getLogger(__name__)
         self.charm_name = self.model.app.name
+
+        self.prometheus_provider = MetricsEndpointProvider(
+            charm=self,
+            relation_name="metrics-endpoint",
+            jobs=[
+                {
+                    "metrics_path": PROMETHEUS_PATH,
+                    "static_configs": [
+                        {
+                            "targets": [
+                                "{}.{}.svc.cluster.local:{}".format(
+                                    self.model.app.name,
+                                    self.model.name,
+                                    self.config["mlflow_port"],
+                                )
+                            ]
+                        }
+                    ],
+                }
+            ],
+        )
+
+        self.dashboard_provider = GrafanaDashboardProvider(
+            charm=self,
+            relation_name="grafana-dashboard",
+        )
 
         for event in [
             self.on.install,
@@ -115,89 +144,96 @@ class Operator(CharmBase):
         self.model.unit.status = MaintenanceStatus("Setting pod spec")
 
         config = self.model.config
-        self.model.pod.set_spec(
-            {
-                "version": 3,
-                "containers": [
-                    {
-                        "name": "mlflow",
-                        "imageDetails": image_details,
-                        "ports": [{"name": "http", "containerPort": config["mlflow_port"]}],
-                        "args": [
-                            "--host",
-                            "0.0.0.0",
-                            "--backend-store-uri",
-                            "$(MLFLOW_TRACKING_URI)",
-                            "--default-artifact-root",
-                            f"s3://{default_artifact_root}/",
-                        ],
-                        "envConfig": {
-                            "db-secret": {"secret": {"name": f"{self.charm_name}-db-secret"}},
-                            "aws-secret": {"secret": {"name": f"{self.charm_name}-minio-secret"}},
-                            "AWS_DEFAULT_REGION": "us-east-1",
-                            "MLFLOW_S3_ENDPOINT_URL": "http://{service}.{namespace}:{port}".format(
-                                **obj_storage
-                            ),
-                        },
-                    }
-                ],
-                "kubernetesResources": {
-                    "secrets": secrets,
-                    "services": [
-                        {
-                            "name": "mlflow-external",
-                            "spec": {
-                                "type": "NodePort",
-                                "selector": {
-                                    "app.kubernetes.io/name": "mlflow",
-                                },
-                                "ports": [
-                                    {
-                                        "protocol": "TCP",
-                                        "port": config["mlflow_port"],
-                                        "targetPort": config["mlflow_port"],
-                                        "nodePort": config["mlflow_nodeport"],
-                                    }
-                                ],
-                            },
-                        },
-                        {
-                            "name": "kubeflow-external",
-                            "spec": {
-                                "type": "NodePort",
-                                "selector": {
-                                    "app.kubernetes.io/name": "istio-ingressgateway",
-                                },
-                                "ports": [
-                                    {
-                                        "protocol": "TCP",
-                                        "port": config["kubeflow_port"],
-                                        "targetPort": config["kubeflow_port"],
-                                        "nodePort": config["kubeflow_nodeport"],
-                                    }
-                                ],
-                            },
-                        },
-                        {
-                            "name": "kubeflow-external-lb",
-                            "spec": {
-                                "type": "LoadBalancer",
-                                "selector": {
-                                    "app.kubernetes.io/name": "istio-ingressgateway",
-                                },
-                                "ports": [
-                                    {
-                                        "protocol": "TCP",
-                                        "port": config["kubeflow_port"],
-                                        "targetPort": config["kubeflow_port"],
-                                    }
-                                ],
-                            },
-                        },
+
+        pod_spec = {
+            "version": 3,
+            "containers": [
+                {
+                    "name": "mlflow",
+                    "imageDetails": image_details,
+                    "ports": [{"name": "http", "containerPort": config["mlflow_port"]}],
+                    "args": [
+                        "--host",
+                        "0.0.0.0",
+                        "--backend-store-uri",
+                        "$(MLFLOW_TRACKING_URI)",
+                        "--default-artifact-root",
+                        f"s3://{default_artifact_root}/",
                     ],
-                },
+                    "envConfig": {
+                        "db-secret": {"secret": {"name": f"{self.charm_name}-db-secret"}},
+                        "aws-secret": {"secret": {"name": f"{self.charm_name}-minio-secret"}},
+                        "AWS_DEFAULT_REGION": "us-east-1",
+                        "MLFLOW_S3_ENDPOINT_URL": "http://{service}.{namespace}:{port}".format(
+                            **obj_storage
+                        ),
+                    },
+                }
+            ],
+            "kubernetesResources": {
+                "secrets": secrets,
+                "services": [
+                    {
+                        "name": "mlflow-external",
+                        "spec": {
+                            "type": "NodePort",
+                            "selector": {
+                                "app.kubernetes.io/name": "mlflow",
+                            },
+                            "ports": [
+                                {
+                                    "protocol": "TCP",
+                                    "port": config["mlflow_port"],
+                                    "targetPort": config["mlflow_port"],
+                                    "nodePort": config["mlflow_nodeport"],
+                                }
+                            ],
+                        },
+                    },
+                    {
+                        "name": "kubeflow-external",
+                        "spec": {
+                            "type": "NodePort",
+                            "selector": {
+                                "app.kubernetes.io/name": "istio-ingressgateway",
+                            },
+                            "ports": [
+                                {
+                                    "protocol": "TCP",
+                                    "port": config["kubeflow_port"],
+                                    "targetPort": config["kubeflow_port"],
+                                    "nodePort": config["kubeflow_nodeport"],
+                                }
+                            ],
+                        },
+                    },
+                    {
+                        "name": "kubeflow-external-lb",
+                        "spec": {
+                            "type": "LoadBalancer",
+                            "selector": {
+                                "app.kubernetes.io/name": "istio-ingressgateway",
+                            },
+                            "ports": [
+                                {
+                                    "protocol": "TCP",
+                                    "port": config["kubeflow_port"],
+                                    "targetPort": config["kubeflow_port"],
+                                }
+                            ],
+                        },
+                    },
+                ],
             },
-        )
+        }
+
+        prometheus_metrics = self.model.relations["metrics-endpoint"]
+        if len(prometheus_metrics) > 0:
+            pod_spec["containers"][0]["args"].extend(
+                ["--expose-prometheus", "{}".format(PROMETHEUS_PATH)]
+            )
+
+        self.model.pod.set_spec(pod_spec)
         self.model.unit.status = ActiveStatus()
 
     def _configure_mesh(self, interfaces):
