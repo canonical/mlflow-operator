@@ -33,6 +33,7 @@ from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
 PROMETHEUS_PATH = "/metrics"
 
+
 class Operator(CharmBase):
     """Charm for the ML Flow Server.
 
@@ -159,7 +160,8 @@ class Operator(CharmBase):
                             "$(MLFLOW_TRACKING_URI)",
                             "--default-artifact-root",
                             f"s3://{default_artifact_root}/",
-                            "--expose-prometheus", "{}".format(PROMETHEUS_PATH),
+                            "--expose-prometheus",
+                            "{}".format(PROMETHEUS_PATH),
                         ],
                         "envConfig": {
                             "db-secret": {"secret": {"name": f"{self.charm_name}-db-secret"}},

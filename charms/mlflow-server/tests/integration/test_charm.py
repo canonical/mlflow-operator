@@ -22,12 +22,7 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 from seleniumwire import webdriver
-from tenacity import (
-    Retrying,
-    stop_after_attempt,
-    stop_after_delay,
-    wait_exponential,
-)
+from tenacity import Retrying, stop_after_attempt, stop_after_delay, wait_exponential
 
 log = logging.getLogger(__name__)
 
