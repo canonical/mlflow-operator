@@ -68,10 +68,7 @@ class Operator(CharmBase):
             ],
         )
 
-        self.dashboard_provider = GrafanaDashboardProvider(
-            charm=self,
-            relation_name="grafana-dashboard",
-        )
+        self.dashboard_provider = GrafanaDashboardProvider(self)
 
         for event in [
             self.on.install,
