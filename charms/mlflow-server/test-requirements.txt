@@ -3,3 +3,4 @@ flake8
 pytest
 pytest-mock
 pytest-lazy-fixture
+pytest-operator<0.17.0
