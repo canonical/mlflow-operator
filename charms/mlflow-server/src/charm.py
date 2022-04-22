@@ -11,6 +11,8 @@ import json
 import logging
 from base64 import b64encode
 
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from oci_image import OCIImageResource, OCIImageResourceError
 from ops.charm import CharmBase
 from ops.main import main
@@ -29,6 +31,8 @@ from serialized_data_interface import (
 
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
+PROMETHEUS_PATH = "/metrics"
+
 
 class Operator(CharmBase):
     """Charm for the ML Flow Server.
@@ -42,6 +46,29 @@ class Operator(CharmBase):
         self.image = OCIImageResource(self, "oci-image")
         self.log = logging.getLogger(__name__)
         self.charm_name = self.model.app.name
+
+        self.prometheus_provider = MetricsEndpointProvider(
+            charm=self,
+            relation_name="metrics-endpoint",
+            jobs=[
+                {
+                    "metrics_path": PROMETHEUS_PATH,
+                    "static_configs": [
+                        {
+                            "targets": [
+                                "{}.{}.svc.cluster.local:{}".format(
+                                    self.model.app.name,
+                                    self.model.name,
+                                    self.config["mlflow_port"],
+                                )
+                            ]
+                        }
+                    ],
+                }
+            ],
+        )
+
+        self.dashboard_provider = GrafanaDashboardProvider(self)
 
         for event in [
             self.on.install,
@@ -130,6 +157,8 @@ class Operator(CharmBase):
                             "$(MLFLOW_TRACKING_URI)",
                             "--default-artifact-root",
                             f"s3://{default_artifact_root}/",
+                            "--expose-prometheus",
+                            "{}".format(PROMETHEUS_PATH),
                         ],
                         "envConfig": {
                             "db-secret": {"secret": {"name": f"{self.charm_name}-db-secret"}},

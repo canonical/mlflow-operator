@@ -1,6 +1,7 @@
 # Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+import json
 import logging
 from pathlib import Path
 from random import choices
@@ -8,6 +9,7 @@ from string import ascii_lowercase
 from time import sleep
 
 import pytest
+import requests
 import yaml
 from lightkube.core.client import Client
 from lightkube.models.rbac_v1 import PolicyRule
@@ -20,6 +22,7 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 from seleniumwire import webdriver
+from tenacity import Retrying, stop_after_attempt, stop_after_delay, wait_exponential
 
 log = logging.getLogger(__name__)
 
@@ -126,6 +129,59 @@ async def does_minio_bucket_exist(bucket_name, ops_test: OpsTest):
 def generate_random_string(length: int = 4):
     """Returns a random string of lower case alphabetic characters and given length."""
     return "".join(choices(ascii_lowercase, k=length))
+
+
+async def test_prometheus_grafana_integration(ops_test: OpsTest):
+    """Deploy prometheus, grafana and required relations, then test the metrics."""
+    prometheus = "prometheus-k8s"
+    grafana = "grafana-k8s"
+    prometheus_scrape_charm = "prometheus-scrape-config-k8s"
+    scrape_config = {"scrape_interval": "5s"}
+
+    await ops_test.model.deploy(prometheus, channel="latest/beta")
+    await ops_test.model.deploy(grafana, channel="latest/beta")
+    await ops_test.model.add_relation(prometheus, grafana)
+    await ops_test.model.add_relation(CHARM_NAME, grafana)
+    await ops_test.model.deploy(
+        prometheus_scrape_charm, channel="latest/beta", config=scrape_config
+    )
+    await ops_test.model.add_relation(CHARM_NAME, prometheus_scrape_charm)
+    await ops_test.model.add_relation(prometheus, prometheus_scrape_charm)
+
+    await ops_test.model.wait_for_idle(status="active", timeout=60 * 10)
+
+    status = await ops_test.model.get_status()
+    prometheus_unit_ip = status["applications"][prometheus]["units"][f"{prometheus}/0"][
+        "address"
+    ]
+    log.info(f"Prometheus available at http://{prometheus_unit_ip}:9090")
+
+    for attempt in retry_for_5_attempts:
+        log.info(
+            f"Testing prometheus deployment (attempt "
+            f"{attempt.retry_state.attempt_number})"
+        )
+        with attempt:
+            r = requests.get(
+                f'http://{prometheus_unit_ip}:9090/api/v1/query?'
+                f'query=up{{juju_application="{CHARM_NAME}"}}'
+            )
+            response = json.loads(r.content.decode("utf-8"))
+            response_status = response["status"]
+            log.info(f"Response status is {response_status}")
+            assert response_status == "success"
+
+            response_metric = response["data"]["result"][0]["metric"]
+            assert response_metric["juju_application"] == CHARM_NAME
+            assert response_metric["juju_model"] == ops_test.model_name
+
+
+# Helper to retry calling a function over 30 seconds or 5 attempts
+retry_for_5_attempts = Retrying(
+    stop=(stop_after_attempt(5) | stop_after_delay(30)),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    reraise=True,
+)
 
 
 @pytest.mark.abort_on_fail
