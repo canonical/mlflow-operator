@@ -21,19 +21,93 @@ jobs:
       - name: Get paths for all charms in repo
         id: get-charm-matrix-step
         run: bash ./.github/workflows/get-charm-paths.sh
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        charm:
+          - server
+    steps:
+      - uses: actions/checkout@v2
+      - run: python3 -m pip install tox
+      - run: tox -e ${{ matrix.charm }}-lint
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        charm:
+          - server
+    steps:
+      - uses: actions/checkout@v2
+      - run: python3 -m pip install tox
+      - run: tox -e ${{ matrix.charm }}-unit
+
+  integration:
+    name: Integration tests (microk8s)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        charm:
+          - server
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup operator environment
+        uses: charmed-kubernetes/actions-operator@main
+        with:
+          provider: microk8s
+          channel: 1.21/stable
+          charmcraft-channel: latest/candidate
+      - run: sg microk8s -c 'microk8s enable metallb:10.64.140.43-10.64.140.49'
+      - run: sudo apt install -y firefox-geckodriver
+
+      - run: |
+          sg microk8s -c "tox -e ${{ matrix.charm }}-integration"
+      # Collect debug logs if failed
+      - name: Dump Juju/k8s logs on failure
+        uses: canonical/charm-logdump-action@main
+        if: failure()
+        with:
+          app: ${{ matrix.charm }}
+          model: testing
+
+      - name: Upload HAR logs
+        uses: actions/upload-artifact@v2
+        with:
+          name: selenium-har
+          path: /tmp/selenium-*.har
+        if: failure()
+
   publish-charm:
     name: Publish Charm
     runs-on: ubuntu-latest
-    # Only publish to charmhub if we are pushing to a special branch or running PRs from something named `branch/*`
-    if: (github.event_name == 'push') ||  (startsWith( github.head_ref, 'branch/' ))
-    needs: get-charm-matrix
+    needs:
+      - get-charm-matrix
+      - lint
+      - unit
+      - integration
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.get-charm-matrix.outputs.charm_paths_json) }}
     steps:
-      - uses: actions/checkout@v2
-      - uses: canonical/charmhub-upload-action@0.2.0
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Select charmhub channel
+        uses: canonical/charming-actions/channel@1.0.3
+        id: channel
+      - name: Upload charm to charmhub
+        uses: canonical/charming-actions/upload-charm@1.0.3
         with:
           credentials: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
-          charm-path: ${{ matrix.charm-path }}
-          charmcraft-channel: latest/edge
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          charm-path: charms/${{ matrix.charm-path }}
+          channel: ${{ steps.channel.outputs.name }}
+          tag-prefix: ${{ matrix.charm-path }}
