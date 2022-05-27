@@ -1,3 +1,4 @@
+# reusable workflow triggered manually
 name: Release charm to other tracks and channels
 
 on:

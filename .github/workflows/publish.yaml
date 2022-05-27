@@ -1,100 +1,22 @@
+# reusable workflow triggered by other actions
 name: Publish
+
 on:
-  push:
-    branches:
-      - master
-      - main
-      - track/**
-  pull_request:
-    branches:
-      - master
-      - main
-      - track/**
+  workflow_call:
+    secrets:
+      charmcraft-credentials:
+        required: true
+
 jobs:
-  get-charm-matrix:
-    name: Generate the Charm Matrix
-    runs-on: ubuntu-latest
-    outputs:
-      charm_paths_json: ${{ steps.get-charm-matrix-step.outputs.CHARM_PATHS_JSON }}
-    steps:
-      - uses: actions/checkout@v2
-      - name: Get paths for all charms in repo
-        id: get-charm-matrix-step
-        run: bash ./.github/workflows/get-charm-paths.sh
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        charm:
-          - server
-    steps:
-      - uses: actions/checkout@v2
-      - run: python3 -m pip install tox
-      - run: tox -e ${{ matrix.charm }}-lint
-
-  unit:
-    name: Unit tests
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        charm:
-          - server
-    steps:
-      - uses: actions/checkout@v2
-      - run: python3 -m pip install tox
-      - run: tox -e ${{ matrix.charm }}-unit
-
-  integration:
-    name: Integration tests (microk8s)
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        charm:
-          - server
-    steps:
-      - uses: actions/checkout@v2
-      - name: Setup operator environment
-        uses: charmed-kubernetes/actions-operator@main
-        with:
-          provider: microk8s
-          channel: 1.21/stable
-          charmcraft-channel: latest/candidate
-      - run: sg microk8s -c 'microk8s enable metallb:10.64.140.43-10.64.140.49'
-      - run: sudo apt install -y firefox-geckodriver
-
-      - run: |
-          sg microk8s -c "tox -e ${{ matrix.charm }}-integration"
-      # Collect debug logs if failed
-      - name: Dump Juju/k8s logs on failure
-        uses: canonical/charm-logdump-action@main
-        if: failure()
-        with:
-          app: ${{ matrix.charm }}
-          model: testing
-
-      - name: Upload HAR logs
-        uses: actions/upload-artifact@v2
-        with:
-          name: selenium-har
-          path: /tmp/selenium-*.har
-        if: failure()
 
   publish-charm:
     name: Publish Charm
     runs-on: ubuntu-latest
-    needs:
-      - get-charm-matrix
-      - lint
-      - unit
-      - integration
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.get-charm-matrix.outputs.charm_paths_json) }}
+      matrix:
+        charm:
+          - mlflow-server
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -106,8 +28,8 @@ jobs:
       - name: Upload charm to charmhub
         uses: canonical/charming-actions/upload-charm@1.0.3
         with:
-          credentials: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
+          credentials: ${{ secrets.charmcraft-credentials }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          charm-path: charms/${{ matrix.charm-path }}
+          charm-path: charms/${{ matrix.charm }}
           channel: ${{ steps.channel.outputs.name }}
-          tag-prefix: ${{ matrix.charm-path }}
+          tag-prefix: ${{ matrix.charm }}
