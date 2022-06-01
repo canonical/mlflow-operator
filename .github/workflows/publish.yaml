@@ -1,39 +1,35 @@
+# reusable workflow triggered by other actions
 name: Publish
+
 on:
-  push:
-    branches:
-      - master
-      - main
-      - track/**
-  pull_request:
-    branches:
-      - master
-      - main
-      - track/**
+  workflow_call:
+    secrets:
+      charmcraft-credentials:
+        required: true
+
 jobs:
-  get-charm-matrix:
-    name: Generate the Charm Matrix
-    runs-on: ubuntu-latest
-    outputs:
-      charm_paths_json: ${{ steps.get-charm-matrix-step.outputs.CHARM_PATHS_JSON }}
-    steps:
-      - uses: actions/checkout@v2
-      - name: Get paths for all charms in repo
-        id: get-charm-matrix-step
-        run: bash ./.github/workflows/get-charm-paths.sh
+
   publish-charm:
     name: Publish Charm
     runs-on: ubuntu-latest
-    # Only publish to charmhub if we are pushing to a special branch or running PRs from something named `branch/*`
-    if: (github.event_name == 'push') ||  (startsWith( github.head_ref, 'branch/' ))
-    needs: get-charm-matrix
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.get-charm-matrix.outputs.charm_paths_json) }}
+      matrix:
+        charm:
+          - mlflow-server
     steps:
-      - uses: actions/checkout@v2
-      - uses: canonical/charmhub-upload-action@0.2.0
+      - name: Checkout
+        uses: actions/checkout@v2
         with:
-          credentials: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
-          charm-path: ${{ matrix.charm-path }}
-          charmcraft-channel: latest/edge
+          fetch-depth: 0
+      - name: Select charmhub channel
+        uses: canonical/charming-actions/channel@1.0.3
+        id: channel
+      - name: Upload charm to charmhub
+        uses: canonical/charming-actions/upload-charm@1.0.3
+        with:
+          credentials: ${{ secrets.charmcraft-credentials }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          charm-path: charms/${{ matrix.charm }}
+          channel: ${{ steps.channel.outputs.name }}
+          tag-prefix: ${{ matrix.charm }}

@@ -1,12 +1,28 @@
+# reusable workflow triggered by other actions
 name: CI
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
+  workflow_call:
+    secrets:
+      charmcraft-credentials:
+        required: true
 
 jobs:
+
+  lib-check:
+    name: Check libraries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Check libs
+        uses: canonical/charming-actions/check-libraries@1.0.3
+        with:
+          credentials: "${{ secrets.charmcraft-credentials }}"
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
