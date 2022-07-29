@@ -126,7 +126,7 @@ name". However unit name is associated only with wildcard targets but
 not with fully qualified targets.
 
 Multiple jobs with different metrics paths and labels are allowed, but
-each job must be given a unique name. For example
+each job must be given a unique name:
 
 ```
 [
@@ -162,14 +162,10 @@ For instance, if you include variable elements, like your `unit.name`, it may br
 the continuity of the metrics time series gathered by Prometheus when the leader unit
 changes (e.g. on upgrade or rescale).
 
-It is also possible to configure other scrape related parameters using
-these job specifications as described by the Prometheus
-[documentation](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config).
-The permissible subset of job specific scrape configuration parameters
-supported in a `MetricsEndpointProvider` job specification are:
+Additionally, it is also technically possible, but **strongly discouraged**, to
+configure the following scrape-related settings, which behave as described by the
+[Prometheus documentation](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config):
 
-- `job_name`
-- `metrics_path`
 - `static_configs`
 - `scrape_interval`
 - `scrape_timeout`
@@ -180,6 +176,11 @@ supported in a `MetricsEndpointProvider` job specification are:
 - `label_limit`
 - `label_name_length_limit`
 - `label_value_length_limit`
+
+The settings above are supported by the `prometheus_scrape` library only for the sake of
+specialized facilities like the [Prometheus Scrape Config](https://charmhub.io/prometheus-scrape-config-k8s)
+charm. Virtually no charms should use these settings, and charmers definitely **should not**
+expose them to the Juju administrator via configuration options.
 
 ## Consumer Library Usage
 
@@ -308,12 +309,14 @@ over unit relation data using the `prometheus_scrape_unit_name` and
 `scrape_jobs` and `alert_rules` keys in application relation data
 of Metrics provider charms hold eponymous information.
 
-"""
+"""  # noqa: W505
 
+import ipaddress
 import json
 import logging
 import os
 import platform
+import socket
 import subprocess
 from collections import OrderedDict
 from pathlib import Path
@@ -321,11 +324,9 @@ from typing import Dict, List, Optional, Union
 
 import yaml
 from ops.charm import CharmBase, RelationRole
-from ops.framework import EventBase, EventSource, Object, ObjectEvents
+from ops.framework import BoundEvent, EventBase, EventSource, Object, ObjectEvents
 
 # The unique Charmhub library identifier, never change it
-from ops.model import ModelError
-
 LIBID = "bc84295fef5f4049878f07b131968ee2"
 
 # Increment this major API version when introducing breaking changes
@@ -333,7 +334,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 17
+LIBPATCH = 20
 
 logger = logging.getLogger(__name__)
 
@@ -920,7 +921,7 @@ class AlertRules:
         elif path.is_file():
             self.alert_groups.extend(self._from_file(path.parent, path))
         else:
-            logger.warning("path does not exist: %s", path)
+            logger.debug("Alert rules path does not exist: %s", path)
 
     def as_dict(self) -> dict:
         """Return standard alert rules file in dict representation.
@@ -1087,7 +1088,7 @@ class MetricsEndpointConsumer(Object):
         """
         alerts = {}  # type: Dict[str, dict] # mapping b/w juju identifiers and alert rule files
         for relation in self._charm.model.relations[self._relation_name]:
-            if not relation.units:
+            if not relation.units or not relation.app:
                 continue
 
             alert_rules = json.loads(relation.data[relation.app].get("alert_rules", "{}"))
@@ -1127,7 +1128,7 @@ class MetricsEndpointConsumer(Object):
             rules: a dict of alert rules
         """
         if "groups" not in rules:
-            logger.warning("No alert groups were found in relation data")
+            logger.debug("No alert groups were found in relation data")
             return None
 
         # Construct an ID based on what's in the alert rules if they have labels
@@ -1429,6 +1430,7 @@ class MetricsEndpointProvider(Object):
         relation_name: str = DEFAULT_RELATION_NAME,
         jobs=None,
         alert_rules_path: str = DEFAULT_ALERT_RULES_RELATIVE_PATH,
+        refresh_event: Optional[Union[BoundEvent, List[BoundEvent]]] = None,
     ):
         """Construct a metrics provider for a Prometheus charm.
 
@@ -1522,6 +1524,8 @@ class MetricsEndpointProvider(Object):
                 files.  Defaults to "./prometheus_alert_rules",
                 resolved relative to the directory hosting the charm entry file.
                 The alert rules are automatically updated on charm upgrade.
+            refresh_event: an optional bound event or list of bound events which
+                will be observed to re-set scrape job data (IP address and others)
 
         Raises:
             RelationNotFoundError: If there is no relation in the charm's metadata.yaml
@@ -1540,7 +1544,7 @@ class MetricsEndpointProvider(Object):
         try:
             alert_rules_path = _resolve_dir_against_charm_path(charm, alert_rules_path)
         except InvalidAlertRulePathError as e:
-            logger.warning(
+            logger.debug(
                 "Invalid Prometheus alert rules folder at %s: %s",
                 e.alert_rules_absolute_path,
                 e.message,
@@ -1560,15 +1564,35 @@ class MetricsEndpointProvider(Object):
         self.framework.observe(events.relation_joined, self._set_scrape_job_spec)
         self.framework.observe(events.relation_changed, self._set_scrape_job_spec)
 
-        # dirty fix: set the ip address when the containers start, as a workaround
-        # for not being able to lookup the pod ip
-        for container_name in charm.unit.containers:
-            self.framework.observe(
-                charm.on[container_name].pebble_ready,
-                self._set_unit_ip,
-            )
+        if not refresh_event:
+            if len(self._charm.meta.containers) == 1:
+                if "kubernetes" in self._charm.meta.series:
+                    # This is a podspec charm
+                    refresh_event = [self._charm.on.update_status]
+                else:
+                    # This is a sidecar/pebble charm
+                    container = list(self._charm.meta.containers.values())[0]
+                    refresh_event = [self._charm.on[container.name.replace("-", "_")].pebble_ready]
+            else:
+                logger.warning(
+                    "%d containers are present in metadata.yaml and "
+                    "refresh_event was not specified. Defaulting to update_status. "
+                    "Metrics IP may not be set in a timely fashion.",
+                    len(self._charm.meta.containers),
+                )
+                refresh_event = [self._charm.on.update_status]
+
+        else:
+            if not isinstance(refresh_event, list):
+                refresh_event = [refresh_event]
+
+        for ev in refresh_event:
+            self.framework.observe(ev, self._set_unit_ip)
 
         self.framework.observe(self._charm.on.upgrade_charm, self._set_scrape_job_spec)
+
+        # If there is no leader during relation_joined we will still need to set alert rules.
+        self.framework.observe(self._charm.on.leader_elected, self._set_scrape_job_spec)
 
     def _set_scrape_job_spec(self, event):
         """Ensure scrape target information is made available to prometheus.
@@ -1610,12 +1634,26 @@ class MetricsEndpointProvider(Object):
         event is actually needed.
         """
         for relation in self._charm.model.relations[self._relation_name]:
-            relation.data[self._charm.unit]["prometheus_scrape_unit_address"] = str(
-                self._charm.model.get_binding(relation).network.bind_address
-            )
+            relation.data[self._charm.unit]["prometheus_scrape_unit_address"] = socket.getfqdn()
             relation.data[self._charm.unit]["prometheus_scrape_unit_name"] = str(
                 self._charm.model.unit.name
             )
+
+    def _is_valid_unit_address(self, address: str) -> bool:
+        """Validate a unit address.
+
+        At present only IP address validation is supported, but
+        this may be extended to DNS addresses also, as needed.
+
+        Args:
+            address: a string representing a unit address
+        """
+        try:
+            _ = ipaddress.ip_address(address)
+        except ValueError:
+            return False
+
+        return True
 
     @property
     def _scrape_jobs(self) -> list:
@@ -1672,7 +1710,7 @@ class PrometheusRulesProvider(Object):
         try:
             dir_path = _resolve_dir_against_charm_path(charm, dir_path)
         except InvalidAlertRulePathError as e:
-            logger.warning(
+            logger.debug(
                 "Invalid Prometheus alert rules folder at %s: %s",
                 e.alert_rules_absolute_path,
                 e.message,
@@ -1842,13 +1880,13 @@ class MetricsEndpointAggregator(Object):
         jobs = []  # list of scrape jobs, one per relation
         for relation in self.model.relations[self._target_relation]:
             targets = self._get_targets(relation)
-            if targets:
+            if targets and relation.app:
                 jobs.append(self._static_scrape_job(targets, relation.app.name))
 
         groups = []  # list of alert rule groups, one group per relation
         for relation in self.model.relations[self._alert_rules_relation]:
             unit_rules = self._get_alert_rules(relation)
-            if unit_rules:
+            if unit_rules and relation.app:
                 appname = relation.app.name
                 rules = self._label_alert_rules(unit_rules, appname)
                 group = {"name": self._group_name(appname), "rules": rules}
@@ -2243,7 +2281,7 @@ class PromqlTransformer:
         try:
             return self._exec(args)
         except Exception as e:
-            logger.debug('Applying the expression failed: "{}", falling back to the original', e)
+            logger.debug('Applying the expression failed: "%s", falling back to the original', e)
             return expression
 
     def _get_transformer_path(self) -> Optional[Path]:
@@ -2251,13 +2289,13 @@ class PromqlTransformer:
         arch = "amd64" if arch == "x86_64" else arch
         res = "promql-transform-{}".format(arch)
         try:
-            path = self._charm.model.resources.fetch(res)
-            os.chmod(path, 0o777)
+            path = Path(res).resolve()
+            path.chmod(0o777)
             return path
         except NotImplementedError:
             logger.debug("System lacks support for chmod")
-        except (NameError, ModelError):
-            logger.debug('No resource available for the platform "{}"'.format(arch))
+        except FileNotFoundError:
+            logger.debug('Could not locate promql transform at: "{}"'.format(res))
         return None
 
     def _exec(self, cmd):
