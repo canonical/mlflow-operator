@@ -11,7 +11,7 @@ jobs:
 
   tests:
     name: Run Tests
-    uses: ./.github/workflows/integration.yaml
+    uses: ./.github/workflows/integrate.yaml
     secrets:
       charmcraft-credentials: "${{ secrets.CHARMCRAFT_CREDENTIALS }}"
 
