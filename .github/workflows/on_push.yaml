@@ -1,4 +1,4 @@
-name: Publish to edge if tests passed
+name: On Push
 
 # On push to a "special" branch, we:
 # * always publish to charmhub at latest/edge/branchname
@@ -10,9 +10,9 @@ name: Publish to edge if tests passed
 on:
   push:
     branches:
-      - master
-      - main
-      - track/**
+    - master
+    - main
+    - track/**
 
 jobs:
 
@@ -20,7 +20,7 @@ jobs:
     name: Run Tests
     uses: ./.github/workflows/integrate.yaml
     secrets:
-      charmcraft-credentials: "${{ secrets.CHARMCRAFT_CREDENTIALS }}"
+      charmcraft-credentials: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
 
   # publish runs in series with tests, and only publishes if tests passes
   publish-charm:
@@ -28,4 +28,4 @@ jobs:
     needs: tests
     uses: ./.github/workflows/publish.yaml
     secrets:
-      charmcraft-credentials: "${{ secrets.CHARMCRAFT_CREDENTIALS }}"
+      CHARMCRAFT_CREDENTIALS: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
