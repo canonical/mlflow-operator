@@ -22,7 +22,7 @@ jobs:
       with:
         fetch-depth: 0
     - name: Check libs
-      uses: canonical/charming-actions/check-libraries@2.0.0-rc
+      uses: canonical/charming-actions/check-libraries@2.1.0
       with:
         charm-path: ./charms/${{ matrix.charm }}
         credentials: "${{ secrets.charmcraft-credentials }}"
