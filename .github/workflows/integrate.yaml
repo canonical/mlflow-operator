@@ -76,7 +76,7 @@ jobs:
       run: sudo apt install -y firefox-geckodriver
 
     - name: Run integration tests
-      run: tox -vve ${{ matrix.charm }}-integration -- --model testing
+    - run: sg microk8s -c "tox -e ${{ matrix.charm }}-integration"
 
       # Collect debug logs if failed
     - name: Dump Juju/k8s logs on failure
