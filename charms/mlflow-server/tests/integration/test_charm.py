@@ -138,32 +138,35 @@ async def test_prometheus_grafana_integration(ops_test: OpsTest):
     prometheus_scrape_charm = "prometheus-scrape-config-k8s"
     scrape_config = {"scrape_interval": "5s"}
 
-    await ops_test.model.deploy(prometheus, channel="latest/beta")
-    await ops_test.model.deploy(grafana, channel="latest/beta")
-    await ops_test.model.add_relation(prometheus, grafana)
-    await ops_test.model.add_relation(CHARM_NAME, grafana)
+    await ops_test.model.deploy(prometheus, channel="latest/edge", trust=True)
+    await ops_test.model.deploy(grafana, channel="latest/edge", trust=True)
     await ops_test.model.deploy(
         prometheus_scrape_charm, channel="latest/beta", config=scrape_config
     )
     await ops_test.model.add_relation(CHARM_NAME, prometheus_scrape_charm)
-    await ops_test.model.add_relation(prometheus, prometheus_scrape_charm)
+    await ops_test.model.add_relation(
+        f"{prometheus}:grafana-dashboard", f"{grafana}:grafana-dashboard"
+    )
+    await ops_test.model.add_relation(
+        f"{CHARM_NAME}:grafana-dashboard", f"{grafana}:grafana-dashboard"
+    )
+    await ops_test.model.add_relation(
+        f"{prometheus}:metrics-endpoint", f"{prometheus_scrape_charm}:metrics-endpoint"
+    )
 
     await ops_test.model.wait_for_idle(status="active", timeout=60 * 10)
 
     status = await ops_test.model.get_status()
-    prometheus_unit_ip = status["applications"][prometheus]["units"][f"{prometheus}/0"][
-        "address"
-    ]
+    prometheus_unit_ip = status["applications"][prometheus]["units"][f"{prometheus}/0"]["address"]
     log.info(f"Prometheus available at http://{prometheus_unit_ip}:9090")
 
     for attempt in retry_for_5_attempts:
         log.info(
-            f"Testing prometheus deployment (attempt "
-            f"{attempt.retry_state.attempt_number})"
+            f"Testing prometheus deployment (attempt " f"{attempt.retry_state.attempt_number})"
         )
         with attempt:
             r = requests.get(
-                f'http://{prometheus_unit_ip}:9090/api/v1/query?'
+                f"http://{prometheus_unit_ip}:9090/api/v1/query?"
                 f'query=up{{juju_application="{CHARM_NAME}"}}'
             )
             response = json.loads(r.content.decode("utf-8"))

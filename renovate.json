@@ -1,0 +1,30 @@
+{
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "rebaseWhen": "behind-base-branch",
+    "dependencyDashboard": false,
+    "pip-compile": {
+        "fileMatch": [
+            "(^|/)requirements.*\\.in$"
+        ],
+        "lockFileMaintenance": {
+            "schedule": null
+        }
+    },
+    "packageRules": [
+        {
+            "groupName": "testing deps",
+            "matchPackagePatterns": [
+                "^black$",
+                "flake8",
+                "pep8-naming",
+                "isort",
+                "codespell",
+                "pytest",
+                "pytest-asyncio",
+                "selenium",
+                "selenium-wire"
+            ],
+            "automerge": true
+        }
+    ]
+}
