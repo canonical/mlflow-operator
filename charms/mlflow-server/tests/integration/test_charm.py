@@ -251,6 +251,7 @@ async def test_deploy_with_ingress(ops_test: OpsTest):
 
 
 @pytest.fixture
+@pytest.mark.asyncio
 async def url_with_ingress(ops_test: OpsTest):
     status = await ops_test.model.get_status()
     url = f"http://{status['applications']['istio-gateway']['public-address']}.nip.io/mlflow/"
@@ -258,6 +259,7 @@ async def url_with_ingress(ops_test: OpsTest):
 
 
 @pytest.fixture
+@pytest.mark.asyncio
 async def url_without_ingress(ops_test: OpsTest):
     status = await ops_test.model.get_status()
     unit_name = ops_test.model.applications[CHARM_NAME].units[0].name
@@ -269,6 +271,7 @@ async def url_without_ingress(ops_test: OpsTest):
 @pytest.mark.parametrize(
     "url", [lazy_fixture("url_without_ingress"), lazy_fixture("url_with_ingress")]
 )
+@pytest.mark.asyncio
 async def test_access_dashboard(request, url):
     options = Options()
     options.headless = True
@@ -295,9 +298,8 @@ async def test_access_dashboard(request, url):
                 sleep(5)
         else:
             driver.get(url)
-        wait.until(
-            expected_conditions.presence_of_element_located(
-                (By.CLASS_NAME, "experiment-view-container")
-            )
-        )
+
+        yield driver, wait, url
+
         Path(f"/tmp/selenium-{request.node.name}.har").write_text(driver.har)
+        driver.get_screenshot_as_file(f'/tmp/selenium-{request.node.name}.png')
