@@ -65,16 +65,18 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Setup operator environment
-      uses: charmed-kubernetes/actions-operator@main
+      uses: claudiubelu/actions-operator@18ebf92ae3043bd3dd15238e5d9b662d7ba08daf
       with:
         provider: microk8s
-        channel: 1.21/stable
-        charmcraft-channel: latest/candidate
-    - run: sg microk8s -c 'microk8s enable metallb:10.64.140.43-10.64.140.49'
-    - run: sudo apt install -y firefox-geckodriver
+        channel: 1.22/stable
+        # Pinned until this bug is resolved: https://bugs.launchpad.net/juju/+bug/1992833
+        bootstrap-options: "--agent-version=2.9.34"
+        microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
+    - name: Install firefox-geckodriver
+      run: sudo apt install -y firefox-geckodriver
 
-    - run: |
-        sg microk8s -c "tox -e ${{ matrix.charm }}-integration"
+    - name: Run integration tests
+      run: tox -vve ${{ matrix.charm }}-integration -- --model testing
 
       # Collect debug logs if failed
     - name: Dump Juju/k8s logs on failure
