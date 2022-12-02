@@ -371,5 +371,5 @@ def test_install_with_all_inputs(harness, mocker):
     )
     assert (
         mlflow_pod_defaults_minio_data["MLFLOW_TRACKING_URI"]
-        == f"http://{harness.model.app.name}.{harness.model.name}.svc.cluster.local:{harness.charm.config['mlflow_port']}"
+        == f"http://{harness.model.app.name}.{harness.model.name}.svc.cluster.local:{harness.charm.config['mlflow_port']}"  # noqa: E501
     )

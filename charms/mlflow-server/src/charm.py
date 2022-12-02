@@ -16,18 +16,8 @@ from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from oci_image import OCIImageResource, OCIImageResourceError
 from ops.charm import CharmBase
 from ops.main import main
-from ops.model import (
-    ActiveStatus,
-    BlockedStatus,
-    MaintenanceStatus,
-    StatusBase,
-    WaitingStatus,
-)
-from serialized_data_interface import (
-    NoCompatibleVersions,
-    NoVersionsListed,
-    get_interfaces,
-)
+from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, StatusBase, WaitingStatus
+from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, get_interfaces
 
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
@@ -311,9 +301,9 @@ class Operator(CharmBase):
                     )
             else:
                 raise CheckFailedError(
-                    "Error with default S3 artifact store - bucket not accessible or does not exist."
-                    "  Set create_default_artifact_root_if_missing=True to automatically create a "
-                    "missing default bucket",
+                    "Error with default S3 artifact store - bucket not accessible or does not "
+                    "exist. Set create_default_artifact_root_if_missing=True to automatically "
+                    "create a missing default bucket",
                     BlockedStatus,
                 )
 
