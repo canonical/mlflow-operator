@@ -64,8 +64,11 @@ jobs:
         - server
     steps:
     - uses: actions/checkout@v2
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.10.5'
     - name: Setup operator environment
-      uses: claudiubelu/actions-operator@18ebf92ae3043bd3dd15238e5d9b662d7ba08daf
+      uses: charmed-kubernetes/actions-operator@main
       with:
         provider: microk8s
         channel: 1.22/stable
@@ -74,9 +77,14 @@ jobs:
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
     - name: Install firefox-geckodriver
       run: sudo apt install -y firefox-geckodriver
+    
+    - name: remove bad tox and install correct one
+      run: |
+        sudo /usr/bin/pip uninstall -y tox
+        /opt/hostedtoolcache/Python/3.10.5/x64/bin/pip install tox
 
     - run: |
-        sg microk8s -c "tox -e ${{ matrix.charm }}-integration"
+        /opt/hostedtoolcache/Python/3.10.5/x64/bin/tox -e ${{ matrix.charm }}-integration
 
       # Collect debug logs if failed
     - name: Dump Juju/k8s logs on failure
