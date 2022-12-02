@@ -64,27 +64,17 @@ jobs:
         - server
     steps:
     - uses: actions/checkout@v2
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.10.5'
     - name: Setup operator environment
       uses: charmed-kubernetes/actions-operator@main
       with:
-        provider: microk8s
-        channel: 1.22/stable
-        # Pinned until this bug is resolved: https://bugs.launchpad.net/juju/+bug/1992833
-        bootstrap-options: "--agent-version=2.9.34"
-        microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
-    - name: Install firefox-geckodriver
-      run: sudo apt install -y firefox-geckodriver
-    
-    - name: remove bad tox and install correct one
-      run: |
-        sudo /usr/bin/pip uninstall -y tox
-        /opt/hostedtoolcache/Python/3.10.5/x64/bin/pip install tox
+          provider: microk8s
+          channel: 1.22/stable
+          charmcraft-channel: latest/candidate
+    - run: sg microk8s -c 'microk8s enable metallb:10.64.140.43-10.64.140.49'
+    - run: sudo apt install -y firefox-geckodriver
 
     - run: |
-        /opt/hostedtoolcache/Python/3.10.5/x64/bin/tox -e ${{ matrix.charm }}-integration
+        sg microk8s -c "tox -e ${{ matrix.charm }}-integration"
 
       # Collect debug logs if failed
     - name: Dump Juju/k8s logs on failure
