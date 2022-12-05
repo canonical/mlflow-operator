@@ -10,6 +10,7 @@
             "schedule": null
         }
     },
+    "automergeType": "branch",
     "packageRules": [
         {
             "groupName": "testing deps",
