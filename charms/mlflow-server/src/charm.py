@@ -342,7 +342,7 @@ def _b64_encode_dict(d):
 def _minio_credentials_dict(obj_storage):
     """Returns a dict of minio credentials with the values base64 encoded."""
     minio_credentials = {
-        "AWS_ENDPOINT_URL": f"http://{obj_storage['service']}:{obj_storage['port']}",
+        "AWS_ENDPOINT_URL": f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}",
         "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
         "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
         "USE_SSL": str(obj_storage["secure"]).lower(),
@@ -357,7 +357,7 @@ def _seldon_credentials_dict(obj_storage):
         "RCLONE_CONFIG_S3_PROVIDER": "minio",
         "RCLONE_CONFIG_S3_ACCESS_KEY_ID": obj_storage["access-key"],
         "RCLONE_CONFIG_S3_SECRET_ACCESS_KEY": obj_storage["secret-key"],
-        "RCLONE_CONFIG_S3_ENDPOINT": f"http://{obj_storage['service']}:{obj_storage['port']}",
+        "RCLONE_CONFIG_S3_ENDPOINT": f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}",
         "RCLONE_CONFIG_S3_ENV_AUTH": "false",
     }
     return _b64_encode_dict(credentials)
