@@ -71,17 +71,15 @@ async def test_relation_and_secrets(ops_test: OpsTest):
     assert minio_secret is not None
 
     seldon_secret = lightkube_client.get(
-        Secret,
-        name=f"{CHARM_NAME}-seldon-init-container-s3-credentials",
-        namespace=test_namespace
+        Secret, name=f"{CHARM_NAME}-seldon-init-container-s3-credentials", namespace=test_namespace
     )
     assert seldon_secret is not None
 
     # check base64 encoding of endpoint URL
     test_storage_url = f"http://minio.{test_namespace}:9000"
     test_storage_url_b64 = b64encode(test_storage_url.encode("utf-8")).decode("utf-8")
-    assert minio_secret.data['AWS_ENDPOINT_URL'] == test_storage_url_b64
-    assert seldon_secret.data['RCLONE_CONFIG_S3_ENDPOINT'] == test_storage_url_b64
+    assert minio_secret.data["AWS_ENDPOINT_URL"] == test_storage_url_b64
+    assert seldon_secret.data["RCLONE_CONFIG_S3_ENDPOINT"] == test_storage_url_b64
 
 
 async def test_default_bucket_created(ops_test: OpsTest):
@@ -302,4 +300,4 @@ async def test_access_dashboard(request, url):
         yield driver, wait, url
 
         Path(f"/tmp/selenium-{request.node.name}.har").write_text(driver.har)
-        driver.get_screenshot_as_file(f'/tmp/selenium-{request.node.name}.png')
+        driver.get_screenshot_as_file(f"/tmp/selenium-{request.node.name}.png")

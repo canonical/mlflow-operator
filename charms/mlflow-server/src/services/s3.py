@@ -75,7 +75,7 @@ def validate_s3_bucket_name(name):
     """Returns True if name is a valid S3 bucket name, else False."""
     # regex from https://stackoverflow.com/a/50484916/5394584
     if re.match(
-        r"(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)",
+        r"(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)",  # noqa:
         name,
     ):
         return True

@@ -16,18 +16,8 @@ from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from oci_image import OCIImageResource, OCIImageResourceError
 from ops.charm import CharmBase
 from ops.main import main
-from ops.model import (
-    ActiveStatus,
-    BlockedStatus,
-    MaintenanceStatus,
-    StatusBase,
-    WaitingStatus,
-)
-from serialized_data_interface import (
-    NoCompatibleVersions,
-    NoVersionsListed,
-    get_interfaces,
-)
+from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, StatusBase, WaitingStatus
+from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, get_interfaces
 
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
@@ -311,9 +301,9 @@ class Operator(CharmBase):
                     )
             else:
                 raise CheckFailedError(
-                    "Error with default S3 artifact store - bucket not accessible or does not exist."
-                    "  Set create_default_artifact_root_if_missing=True to automatically create a "
-                    "missing default bucket",
+                    "Error with default S3 artifact store - bucket not accessible or does not "
+                    "exist. Set create_default_artifact_root_if_missing=True to automatically "
+                    "create a missing default bucket",
                     BlockedStatus,
                 )
 
@@ -352,7 +342,7 @@ def _b64_encode_dict(d):
 def _minio_credentials_dict(obj_storage):
     """Returns a dict of minio credentials with the values base64 encoded."""
     minio_credentials = {
-        "AWS_ENDPOINT_URL": f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}",
+        "AWS_ENDPOINT_URL": f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}",  # noqa: E501
         "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
         "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
         "USE_SSL": str(obj_storage["secure"]).lower(),
@@ -367,7 +357,7 @@ def _seldon_credentials_dict(obj_storage):
         "RCLONE_CONFIG_S3_PROVIDER": "minio",
         "RCLONE_CONFIG_S3_ACCESS_KEY_ID": obj_storage["access-key"],
         "RCLONE_CONFIG_S3_SECRET_ACCESS_KEY": obj_storage["secret-key"],
-        "RCLONE_CONFIG_S3_ENDPOINT": f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}",
+        "RCLONE_CONFIG_S3_ENDPOINT": f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}",  # noqa: E501
         "RCLONE_CONFIG_S3_ENV_AUTH": "false",
     }
     return _b64_encode_dict(credentials)
