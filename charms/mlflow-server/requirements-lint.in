@@ -1,5 +1,5 @@
 codespell
-flake8<6
+flake8<7
 flake8-builtins
 # Pinned because `flake8-copyright==0.2.3` is incompatible with `flake8>=6`.  Can unpin this
 # when https://github.com/savoirfairelinux/flake8-copyright/pull/20 or a similar fix is released
