@@ -373,3 +373,80 @@ def test_install_with_all_inputs(harness, mocker):
         mlflow_pod_defaults_minio_data["MLFLOW_TRACKING_URI"]
         == f"http://{harness.model.app.name}.{harness.model.name}.svc.cluster.local:{harness.charm.config['mlflow_port']}"  # noqa: E501
     )
+
+
+def test_install_without_nodeport_and_lb_services(harness, mocker):
+    harness.set_leader(True)
+    harness.add_oci_resource(
+        "oci-image",
+        {
+            "registrypath": "ci-test",
+            "username": "",
+            "password": "",
+        },
+    )
+
+    # mysql relation data
+    mysql_data = {
+        "database": "database",
+        "host": "host",
+        "root_password": "lorem-ipsum",
+        "port": "port",
+    }
+    rel_id = harness.add_relation("db", "mysql_app")
+    harness.add_relation_unit(rel_id, "mysql_app/0")
+    harness.update_relation_data(rel_id, "mysql_app/0", mysql_data)
+
+    harness.update_config(
+        {
+            "default_artifact_root": "not-a-typical-bucket-name",
+            "enable_mlflow_nodeport": False,
+            "enable_kubeflow_nodeport": False,
+            "enable_kubeflow_loadbalancer": False,
+        }
+    )
+
+    # object storage
+    os_data_dict = {
+        "access-key": "minio-access-key",
+        "namespace": "namespace",
+        "port": 1234,
+        "secret-key": "minio-super-secret-key",
+        "secure": True,
+        "service": "service",
+    }
+    os_data = {"_supported_versions": "- v1", "data": yaml.dump(os_data_dict)}
+    os_rel_id = harness.add_relation("object-storage", "storage-provider")
+    harness.add_relation_unit(os_rel_id, "storage-provider/0")
+    harness.update_relation_data(os_rel_id, "storage-provider", os_data)
+
+    # ingress
+    ingress_relation_name = "ingress"
+    relation_version_data = {"_supported_versions": "- v1"}
+    ingress_rel_id = harness.add_relation(
+        ingress_relation_name, f"{ingress_relation_name}-subscriber"
+    )
+    harness.add_relation_unit(ingress_rel_id, f"{ingress_relation_name}-subscriber/0")
+    harness.update_relation_data(
+        ingress_rel_id, f"{ingress_relation_name}-subscriber", relation_version_data
+    )
+
+    # Mock away _validate_default_s3_bucket to avoid using boto3/creating clients
+    mocked_validate_default_s3_bucket = mocker.patch("charm.Operator._validate_default_s3_bucket")
+    bucket_name = harness._backend.config_get()["default_artifact_root"]
+    mocked_validate_default_s3_bucket.return_value = bucket_name
+
+    # pod defaults relations setup
+    pod_defaults_rel_name = "pod-defaults"
+    pod_defaults_rel_id = harness.add_relation(
+        "pod-defaults", f"{pod_defaults_rel_name}-subscriber"
+    )
+    harness.add_relation_unit(pod_defaults_rel_id, f"{pod_defaults_rel_name}-subscriber/0")
+
+    harness.begin_with_initial_hooks()
+
+    pod_spec = harness.get_pod_spec()
+    yaml.safe_dump(pod_spec)
+    assert harness.charm.model.unit.status == ActiveStatus()
+
+    assert pod_spec[0]["kubernetesResources"]["services"] == []

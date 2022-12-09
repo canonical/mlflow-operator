@@ -53,3 +53,15 @@ options:
       The nodeport for Kubeflow (istio-ingressgateway)
     type: int
     default: 30600
+  enable_mlflow_nodeport:
+    description: Deploy the NodePort service for MLFlow
+    type: boolean
+    default: true
+  enable_kubeflow_nodeport:
+    description: Deploy the NodePort service for Kubeflow
+    type: boolean
+    default: true
+  enable_kubeflow_loadbalancer:
+    description: Deploy the LoadBalancer service for Kubeflow
+    type: boolean
+    default: true
