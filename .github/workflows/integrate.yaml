@@ -74,7 +74,7 @@ jobs:
         bootstrap-options: "--agent-version=2.9.34"
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
     - name: Install firefox-geckodriver
-      run: sudo apt install -y firefox-geckodriver
+      run: sudo apt install -y firefox
 
     - name: Run integration tests
       run: sg microk8s -c "tox -e ${{ matrix.charm }}-integration"
