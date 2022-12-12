@@ -2,6 +2,7 @@
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
     "rebaseWhen": "behind-base-branch",
     "dependencyDashboard": false,
+    "branchPrefix": "renovate-",
     "constraints": {
         "python": "3.8.0"
     },
