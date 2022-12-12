@@ -17,7 +17,7 @@ on:
 jobs:
   promote-charm:
     name: Promote charm
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
       - name: Release charm to channel
