@@ -172,6 +172,7 @@ class Operator(CharmBase):
         self.model.unit.status = ActiveStatus()
 
     def _get_pod_spec_services(self, config):
+        """Returns service list for pod spec based on enabled service flags."""
         pod_spec_services = []
         if self.config["enable_mlflow_nodeport"]:
             pod_spec_services.append(

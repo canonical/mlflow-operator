@@ -376,6 +376,7 @@ def test_install_with_all_inputs(harness, mocker):
 
 
 def test_install_without_nodeport_and_lb_services(harness, mocker):
+    """Test deployment without LB services."""
     harness.set_leader(True)
     harness.add_oci_resource(
         "oci-image",
