@@ -27,7 +27,7 @@ blinker==1.5
     # via selenium-wire
 boto3==1.26.22
     # via -r ./requirements.txt
-botocore==1.29.22
+botocore==1.29.29
     # via
     #   -r ./requirements.txt
     #   boto3
