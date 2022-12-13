@@ -233,7 +233,7 @@ pyyaml==5.4
     #   ops
     #   pytest-operator
     #   serialized-data-interface
-requests==2.25.0
+requests==2.28.1
     # via
     #   -r ./requirements.txt
     #   kubernetes
