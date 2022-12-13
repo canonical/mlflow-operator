@@ -148,7 +148,7 @@ ops-lib-mysql==1.0
     # via -r ./requirements.txt
 outcome==1.2.0
     # via trio
-packaging==21.3
+packaging==22.0
     # via pytest
 paramiko==2.12.0
     # via juju
