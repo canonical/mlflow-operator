@@ -85,7 +85,7 @@ hyperframe==6.0.1
     # via
     #   h2
     #   selenium-wire
-idna==2.10
+idna==3.4
     # via
     #   -r ./requirements.txt
     #   anyio
