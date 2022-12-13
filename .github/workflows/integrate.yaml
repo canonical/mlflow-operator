@@ -73,7 +73,7 @@ jobs:
         # Pinned until this bug is resolved: https://bugs.launchpad.net/juju/+bug/1992833
         bootstrap-options: "--agent-version=2.9.34"
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
-    - name: Install firefox-geckodriver
+    - name: Install firefox
       run: sudo apt install -y firefox
 
     - name: Run integration tests
