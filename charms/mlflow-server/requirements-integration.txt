@@ -94,7 +94,7 @@ idna==2.10
     #   trio
 iniconfig==1.1.1
     # via pytest
-ipdb==0.13.9
+ipdb==0.13.11
     # via pytest-operator
 ipython==8.7.0
     # via ipdb
