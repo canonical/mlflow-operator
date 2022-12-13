@@ -290,7 +290,7 @@ tomli==2.0.1
     # via pytest
 toposort==1.7
     # via juju
-traitlets==5.6.0
+traitlets==5.7.1
     # via
     #   ipython
     #   matplotlib-inline
