@@ -36,7 +36,7 @@ brotli==1.0.9
     # via selenium-wire
 cachetools==5.2.0
     # via google-auth
-certifi==2022.9.24
+certifi==2022.12.7
     # via
     #   -r ./requirements.txt
     #   httpcore
