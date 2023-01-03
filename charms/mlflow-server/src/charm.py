@@ -132,6 +132,9 @@ class Operator(CharmBase):
         self.model.unit.status = MaintenanceStatus("Setting pod spec")
 
         config = self.model.config
+
+        pod_spec_services = self._get_pod_spec_services(config)
+
         self.model.pod.set_spec(
             {
                 "version": 3,
@@ -162,62 +165,75 @@ class Operator(CharmBase):
                 ],
                 "kubernetesResources": {
                     "secrets": secrets,
-                    "services": [
-                        {
-                            "name": "mlflow-external",
-                            "spec": {
-                                "type": "NodePort",
-                                "selector": {
-                                    "app.kubernetes.io/name": "mlflow",
-                                },
-                                "ports": [
-                                    {
-                                        "protocol": "TCP",
-                                        "port": config["mlflow_port"],
-                                        "targetPort": config["mlflow_port"],
-                                        "nodePort": config["mlflow_nodeport"],
-                                    }
-                                ],
-                            },
-                        },
-                        {
-                            "name": "kubeflow-external",
-                            "spec": {
-                                "type": "NodePort",
-                                "selector": {
-                                    "app.kubernetes.io/name": "istio-ingressgateway",
-                                },
-                                "ports": [
-                                    {
-                                        "protocol": "TCP",
-                                        "port": config["kubeflow_port"],
-                                        "targetPort": config["kubeflow_port"],
-                                        "nodePort": config["kubeflow_nodeport"],
-                                    }
-                                ],
-                            },
-                        },
-                        {
-                            "name": "kubeflow-external-lb",
-                            "spec": {
-                                "type": "LoadBalancer",
-                                "selector": {
-                                    "app.kubernetes.io/name": "istio-ingressgateway",
-                                },
-                                "ports": [
-                                    {
-                                        "protocol": "TCP",
-                                        "port": config["kubeflow_port"],
-                                        "targetPort": config["kubeflow_port"],
-                                    }
-                                ],
-                            },
-                        },
-                    ],
+                    "services": pod_spec_services,
                 },
             },
         )
         self.model.unit.status = ActiveStatus()
+
+    def _get_pod_spec_services(self, config):
+        """Returns service list for pod spec based on enabled service flags."""
+        pod_spec_services = []
+        if self.config["enable_mlflow_nodeport"]:
+            pod_spec_services.append(
+                {
+                    "name": "mlflow-external",
+                    "spec": {
+                        "type": "NodePort",
+                        "selector": {
+                            "app.kubernetes.io/name": "mlflow",
+                        },
+                        "ports": [
+                            {
+                                "protocol": "TCP",
+                                "port": config["mlflow_port"],
+                                "targetPort": config["mlflow_port"],
+                                "nodePort": config["mlflow_nodeport"],
+                            }
+                        ],
+                    },
+                }
+            )
+        if self.config["enable_kubeflow_nodeport"]:
+            pod_spec_services.append(
+                {
+                    "name": "kubeflow-external",
+                    "spec": {
+                        "type": "NodePort",
+                        "selector": {
+                            "app.kubernetes.io/name": "istio-ingressgateway",
+                        },
+                        "ports": [
+                            {
+                                "protocol": "TCP",
+                                "port": config["kubeflow_port"],
+                                "targetPort": config["kubeflow_port"],
+                                "nodePort": config["kubeflow_nodeport"],
+                            }
+                        ],
+                    },
+                }
+            )
+        if self.config["enable_kubeflow_loadbalancer"]:
+            pod_spec_services.append(
+                {
+                    "name": "kubeflow-external-lb",
+                    "spec": {
+                        "type": "LoadBalancer",
+                        "selector": {
+                            "app.kubernetes.io/name": "istio-ingressgateway",
+                        },
+                        "ports": [
+                            {
+                                "protocol": "TCP",
+                                "port": config["kubeflow_port"],
+                                "targetPort": config["kubeflow_port"],
+                            }
+                        ],
+                    },
+                }
+            )
+        return pod_spec_services
 
     def _configure_mesh(self, interfaces):
         if interfaces["ingress"]:
