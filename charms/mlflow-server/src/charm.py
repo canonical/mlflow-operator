@@ -298,7 +298,7 @@ class Operator(CharmBase):
         s3_wrapper = S3BucketWrapper(
             access_key=obj_storage["access-key"],
             secret_access_key=obj_storage["secret-key"],
-            s3_service=obj_storage["service"],
+            s3_service=f"{obj_storage['service']}.{obj_storage['namespace']}",
             s3_port=obj_storage["port"],
         )
 
