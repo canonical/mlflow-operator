@@ -5,5 +5,4 @@ pytest-lazy-fixture
 selenium
 selenium-wire
 tenacity
-websockets>=9.0
 -r requirements.txt
