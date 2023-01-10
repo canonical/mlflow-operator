@@ -330,6 +330,12 @@ def test_install_with_all_inputs(harness, mocker):
         ).decode("utf-8")
         == os_data_dict["secret-key"]
     )
+    assert (
+        b64decode(secrets_dict[f"{charm_name}-minio-secret"]["data"]["AWS_ENDPOINT_URL"]).decode(
+            "utf-8"
+        )
+        == f"http://{os_data_dict['service']}.{os_data_dict['namespace']}:{os_data_dict['port']}"
+    )
 
     # Spot check for seldon init-container credentials
     assert (
@@ -341,6 +347,14 @@ def test_install_with_all_inputs(harness, mocker):
         == os_data_dict["access-key"]
     )
     assert len(secrets_dict[f"{charm_name}-seldon-init-container-s3-credentials"]["data"]) == 6
+    assert (
+        b64decode(
+            secrets_dict[f"{charm_name}-seldon-init-container-s3-credentials"]["data"][
+                "RCLONE_CONFIG_S3_ENDPOINT"
+            ]
+        ).decode("utf-8")
+        == f"http://{os_data_dict['service']}.{os_data_dict['namespace']}:{os_data_dict['port']}"
+    )
 
     # Confirm default_artifact_root config
     args = pod_spec[0]["containers"][0]["args"]
