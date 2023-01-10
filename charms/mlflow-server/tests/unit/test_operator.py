@@ -77,6 +77,7 @@ def sample_object_storage():
         "access-key": "access-key-value",
         "secret-key": "secret-key-value",
         "service": "service-value",
+        "namespace": "namespace-value",
         "port": "port-value",
     }
 
@@ -132,7 +133,7 @@ def test_validate_default_s3_bucket__missing__do_not_create_if_missing(
     mocked_s3bucketwrapper_class.assert_called_with(
         access_key=obj_storage["access-key"],
         secret_access_key=obj_storage["secret-key"],
-        s3_service=obj_storage["service"],
+        s3_service=f"{obj_storage['service']}.{obj_storage['namespace']}",
         s3_port=obj_storage["port"],
     )
 
@@ -172,7 +173,7 @@ def test_validate_default_s3_bucket__missing__fail_to_create_if_missing(
     mocked_s3bucketwrapper_class.assert_called_with(
         access_key=obj_storage["access-key"],
         secret_access_key=obj_storage["secret-key"],
-        s3_service=obj_storage["service"],
+        s3_service=f"{obj_storage['service']}.{obj_storage['namespace']}",
         s3_port=obj_storage["port"],
     )
 
@@ -209,7 +210,7 @@ def test_validate_default_s3_bucket__missing__create_if_missing(
     mocked_s3bucketwrapper_class.assert_called_with(
         access_key=obj_storage["access-key"],
         secret_access_key=obj_storage["secret-key"],
-        s3_service=obj_storage["service"],
+        s3_service=f"{obj_storage['service']}.{obj_storage['namespace']}",
         s3_port=obj_storage["port"],
     )
 
