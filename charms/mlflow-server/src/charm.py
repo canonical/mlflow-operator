@@ -155,9 +155,7 @@ class Operator(CharmBase):
                             "db-secret": {"secret": {"name": f"{self.charm_name}-db-secret"}},
                             "aws-secret": {"secret": {"name": f"{self.charm_name}-minio-secret"}},
                             "AWS_DEFAULT_REGION": "us-east-1",
-                            "MLFLOW_S3_ENDPOINT_URL": "http://{service}.{namespace}:{port}".format(
-                                **obj_storage
-                            ),
+                            "MLFLOW_S3_ENDPOINT_URL": _gen_obj_storage_endpoint_url(obj_storage),
                         },
                     }
                 ],
