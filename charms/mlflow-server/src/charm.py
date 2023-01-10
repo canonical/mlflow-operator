@@ -78,7 +78,6 @@ class Operator(CharmBase):
         ]:
             self.framework.observe(event, self._on_pod_defaults_relation_changed)
 
-
     def _on_pod_defaults_relation_changed(self, event):
         try:
             interfaces = self._get_interfaces()
@@ -351,6 +350,7 @@ class CheckFailedError(Exception):
 def _gen_obj_storage_endpoint_url(obj_storage):
     """Generate object storage endpoint URL."""
     return f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}"
+
 
 def _b64_encode_dict(d):
     """Returns the dict with values being base64 encoded."""

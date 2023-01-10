@@ -330,9 +330,9 @@ def test_install_with_all_inputs(harness, mocker):
         == os_data_dict["secret-key"]
     )
     assert (
-        b64decode(
-            secrets_dict[f"{charm_name}-minio-secret"]["data"]["AWS_ENDPOINT_URL"]
-        ).decode("utf-8")
+        b64decode(secrets_dict[f"{charm_name}-minio-secret"]["data"]["AWS_ENDPOINT_URL"]).decode(
+            "utf-8"
+        )
         == f"http://{os_data_dict['service']}.{os_data_dict['namespace']}:{os_data_dict['port']}"
     )
 
