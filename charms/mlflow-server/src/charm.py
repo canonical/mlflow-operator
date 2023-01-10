@@ -78,6 +78,7 @@ class Operator(CharmBase):
         ]:
             self.framework.observe(event, self._on_pod_defaults_relation_changed)
 
+
     def _on_pod_defaults_relation_changed(self, event):
         try:
             interfaces = self._get_interfaces()
@@ -87,9 +88,7 @@ class Operator(CharmBase):
 
         obj_storage = list(interfaces["object-storage"].get_data().values())[0]
         config = self.model.config
-        endpoint = (
-            f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}"
-        )
+        endpoint = _gen_obj_storage_endpoint_url(obj_storage)
         tracking = f"{self.model.app.name}.{self.model.name}.svc.cluster.local"
         tracking = f"http://{tracking}:{config['mlflow_port']}"
         event.relation.data[self.app]["pod-defaults"] = json.dumps(
@@ -349,6 +348,10 @@ class CheckFailedError(Exception):
         self.status = status_type(self.msg)
 
 
+def _gen_obj_storage_endpoint_url(obj_storage):
+    """Generate object storage endpoint URL."""
+    return f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}"
+
 def _b64_encode_dict(d):
     """Returns the dict with values being base64 encoded."""
     # Why do we encode and decode in utf-8 first?
@@ -358,7 +361,7 @@ def _b64_encode_dict(d):
 def _minio_credentials_dict(obj_storage):
     """Returns a dict of minio credentials with the values base64 encoded."""
     minio_credentials = {
-        "AWS_ENDPOINT_URL": f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}",  # noqa: E501
+        "AWS_ENDPOINT_URL": _gen_obj_storage_endpoint_url(obj_storage),
         "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
         "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
         "USE_SSL": str(obj_storage["secure"]).lower(),
@@ -373,7 +376,7 @@ def _seldon_credentials_dict(obj_storage):
         "RCLONE_CONFIG_S3_PROVIDER": "minio",
         "RCLONE_CONFIG_S3_ACCESS_KEY_ID": obj_storage["access-key"],
         "RCLONE_CONFIG_S3_SECRET_ACCESS_KEY": obj_storage["secret-key"],
-        "RCLONE_CONFIG_S3_ENDPOINT": f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}",  # noqa: E501
+        "RCLONE_CONFIG_S3_ENDPOINT": _gen_obj_storage_endpoint_url(obj_storage),
         "RCLONE_CONFIG_S3_ENV_AUTH": "false",
     }
     return _b64_encode_dict(credentials)

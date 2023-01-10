@@ -3,3 +3,4 @@ ops
 oci-image
 ops-lib-mysql
 serialized-data-interface
+websockets>=9.0
