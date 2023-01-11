@@ -28,7 +28,7 @@ on:
 jobs:
   get-charm-paths:
     name: Generate the Charm Matrix
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     outputs:
       charm_paths_list: ${{ steps.get-charm-paths.outputs.CHARM_PATHS_LIST }}
     steps:
@@ -43,7 +43,7 @@ jobs:
 
   publish-charm:
     name: Publish Charm
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     needs: get-charm-paths
     strategy:
       fail-fast: false
