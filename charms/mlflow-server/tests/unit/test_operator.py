@@ -378,8 +378,6 @@ def test_install_with_all_inputs(harness, mocker):
         mlflow_pod_defaults_data[charm_name]["pod-defaults"]
     )["minio"]["env"]
 
-    assert mlflow_pod_defaults_minio_data["AWS_ACCESS_KEY_ID"] == os_data_dict["access-key"]
-    assert mlflow_pod_defaults_minio_data["AWS_SECRET_ACCESS_KEY"] == os_data_dict["secret-key"]
     assert (
         mlflow_pod_defaults_minio_data["MLFLOW_S3_ENDPOINT_URL"]
         == f"http://{os_data_dict['service']}.{os_data_dict['namespace']}:{os_data_dict['port']}"

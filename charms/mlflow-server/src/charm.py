@@ -94,8 +94,6 @@ class Operator(CharmBase):
             {
                 "minio": {
                     "env": {
-                        "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
-                        "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
                         "MLFLOW_S3_ENDPOINT_URL": endpoint,
                         "MLFLOW_TRACKING_URI": tracking,
                     }
