@@ -14,6 +14,14 @@ class S3BucketWrapper:
     def __init__(
         self, access_key: str, secret_access_key: str, s3_service: str, s3_port: Union[str, int]
     ):
+        """Initialize S3 Bucket Wrapper.
+
+        access_key - S3 access key ID
+        secret_access_key - S3 secret access key
+        s3_service - S3 service URL that can include namespace
+        s3_port - S3 service port
+        """
+
         self.access_key: str = access_key
         self.secret_access_key: str = secret_access_key
         self.s3_service: str = s3_service
