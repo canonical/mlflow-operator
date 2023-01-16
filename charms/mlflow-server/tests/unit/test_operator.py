@@ -11,6 +11,7 @@ from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.testing import Harness
 
 from charm import CheckFailedError, Operator
+from services.s3 import S3BucketWrapper
 
 
 @pytest.fixture
@@ -464,3 +465,18 @@ def test_install_without_nodeport_and_lb_services(harness, mocker):
     assert harness.charm.model.unit.status == ActiveStatus()
 
     assert pod_spec[0]["kubernetesResources"]["services"] == []
+
+
+def test_storage_endpoint_generation(harness, sample_object_storage):
+    """Test S3 storage URL for correct generation in S3 service and in charm code."""
+    harness.begin()
+    s3_wrapper = S3BucketWrapper(
+        access_key=sample_object_storage["access-key"],
+        secret_access_key=sample_object_storage["secret-key"],
+        s3_service=f"{sample_object_storage['service']}.{sample_object_storage['namespace']}",
+        s3_port=sample_object_storage["port"],
+    )
+
+    assert s3_wrapper.s3_url == harness.charm._gen_obj_storage_endpoint_url(
+        obj_storage=sample_object_storage
+    )
