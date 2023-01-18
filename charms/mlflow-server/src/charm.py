@@ -331,6 +331,7 @@ class Operator(CharmBase):
             {"name": f"{self.charm_name}-db-secret", "data": _db_secret_dict(mysql=mysql)},
         ]
 
+   @property
     def _gen_obj_storage_endpoint_url(self, obj_storage):
         """Generate object storage endpoint URL."""
         return f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}"
