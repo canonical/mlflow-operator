@@ -331,10 +331,20 @@ class Operator(CharmBase):
             {"name": f"{self.charm_name}-db-secret", "data": _db_secret_dict(mysql=mysql)},
         ]
 
-   @property
     def _gen_obj_storage_endpoint_url(self, obj_storage):
-        """Generate object storage endpoint URL."""
-        return f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}"
+        """Generate object storage endpoint URL.
+
+        URL generated only if 'service' is set, otherwise it returns empty string.
+        """
+        endpoint_url = ""
+        if "service" in obj_storage and len(obj_storage["service"]) > 0:
+            endpoint_url = f"http://{obj_storage['service']}"
+            if "namespace" in obj_storage and len(obj_storage["namespace"]) > 0:
+                endpoint_url += f".{obj_storage['namespace']}"
+            if "port" in obj_storage and len(obj_storage["port"]) > 0:
+                endpoint_url += f":{obj_storage['port']}"
+
+        return endpoint_url
 
 
 class CheckFailedError(Exception):
