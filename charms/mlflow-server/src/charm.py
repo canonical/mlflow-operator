@@ -139,7 +139,9 @@ class Operator(CharmBase):
                         "name": "mlflow",
                         "imageDetails": image_details,
                         "ports": [{"name": "http", "containerPort": config["mlflow_port"]}],
-                        "args": [
+                        "command": [
+                            "mlflow",
+                            "server",
                             "--host",
                             "0.0.0.0",
                             "--backend-store-uri",

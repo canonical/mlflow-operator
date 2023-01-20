@@ -11,7 +11,7 @@ resources:
   oci-image:
     type: oci-image
     description: Backing OCI image
-    upstream-source: quay.io/helix-ml/mlflow:1.13.1
+    upstream-source: docker.io/misohu/mlflow-tracking-server:2.1.1_test
 requires:
   db:
     interface: mysql
