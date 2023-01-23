@@ -358,12 +358,12 @@ def test_install_with_all_inputs(harness, mocker):
     )
 
     # Confirm default_artifact_root config
-    args = pod_spec[0]["containers"][0]["args"]
-    default_artifact_root_arg_index = args.index("--default-artifact-root")
+    command = pod_spec[0]["containers"][0]["command"]
+    default_artifact_root_arg_index = command.index("--default-artifact-root")
     expected_bucket_name = f"s3://{default_artifact_root}/"
-    actual_bucket_name = args[default_artifact_root_arg_index + 1]
+    actual_bucket_name = command[default_artifact_root_arg_index + 1]
     assert actual_bucket_name == expected_bucket_name, (
-        f"pod_spec container args have unexpected default-artifact-root."
+        f"pod_spec container command have unexpected default-artifact-root."
         f"  Expected {expected_bucket_name}, found {actual_bucket_name}"
     )
 
