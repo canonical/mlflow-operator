@@ -1,8 +1,0 @@
-juju
-lightkube
-pytest-operator
-pytest-lazy-fixture
-selenium
-selenium-wire
-tenacity
--r requirements.txt
