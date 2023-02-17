@@ -81,7 +81,6 @@ def s3_wrapper_empty():
 def test_check_if_bucket_accessible(
     expected_returned, mocked_client, context_raised, s3_wrapper_empty
 ):
-
     with context_raised:
         s3_wrapper_empty._client = mocked_client
 

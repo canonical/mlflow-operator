@@ -6,6 +6,8 @@
 import logging
 
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
+from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
+from lightkube.models.core_v1 import ServicePort
 from ops.charm import CharmBase
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
@@ -22,21 +24,49 @@ class CharmedMlflowCharm(CharmBase):
         super().__init__(*args)
 
         self.logger = logging.getLogger(__name__)
+        self._port = self.model.config["mlflow_port"]
         self._container_name = "charmed-mlflow"
         self._container = self.unit.get_container(self._container_name)
 
         self.framework.observe(self.on.upgrade_charm, self._on_event)
         self.framework.observe(self.on.config_changed, self._on_event)
-        self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.charmed_mlflow_pebble_ready, self._on_pebble_ready)
 
         for rel in self.model.relations.keys():
             self.framework.observe(self.on[rel].relation_changed, self._on_event)
+        self._create_service()
 
     @property
     def container(self):
         """Return container."""
         return self._container
+
+    def _create_service(self):
+        if self.config["enable_mlflow_nodeport"]:
+            self.logger.info("I am Michal Hucko")
+            self._node_port = self.model.config["mlflow_nodeport"]
+            port = ServicePort(
+                int(self._port),
+                name=f"{self.app.name}",
+                targetPort=int(self._port),
+                nodePort=int(self._node_port),
+            )
+            self.service_patcher = KubernetesServicePatch(
+                self,
+                [port],
+                service_type="NodePort",
+                service_name=f"{self.model.app.name}",
+                refresh_event=self.on.config_changed,
+            )
+        else:
+            port = ServicePort(int(self._port), name=f"{self.app.name}")
+            self.service_patcher = KubernetesServicePatch(
+                self,
+                [port],
+                service_type="ClusterIP",
+                service_name=f"{self.model.app.name}",
+                refresh_event=self.on.config_changed,
+            )
 
     def _charmed_mlflow_layer(self, env_vars, default_artifact_root) -> Layer:
         """Create and return Pebble framework layer."""
@@ -53,6 +83,8 @@ class CharmedMlflowCharm(CharmBase):
                         "server "
                         "--host "
                         "0.0.0.0 "
+                        "--port "
+                        f"{self._port} "
                         "--backend-store-uri "
                         "$(MLFLOW_TRACKING_URI) "
                         "--default-artifact-root "
@@ -115,12 +147,12 @@ class CharmedMlflowCharm(CharmBase):
         """Return environment variables based on model configuration."""
 
         ret_env_vars = {
-            "AWS_ENDPOINT_URL": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",
+            "AWS_ENDPOINT_URL": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
             "AWS_ACCESS_KEY_ID": object_storage_data["access-key"],
             "AWS_SECRET_ACCESS_KEY": object_storage_data["secret-key"],
             "USE_SSL": str(object_storage_data["secure"]).lower(),
             "DB_ROOT_PASSWORD": relational_db_data["root_password"],
-            "MLFLOW_TRACKING_URI": f"mysql+pymysql://root:{relational_db_data['root_password']}@{relational_db_data['host']}:{relational_db_data['port']}/{relational_db_data['database']}",
+            "MLFLOW_TRACKING_URI": f"mysql+pymysql://root:{relational_db_data['root_password']}@{relational_db_data['host']}:{relational_db_data['port']}/{relational_db_data['database']}",  # noqa: E501
         }
         return ret_env_vars
 
@@ -191,9 +223,6 @@ class CharmedMlflowCharm(CharmBase):
 
         # proceed with other actions
         self._on_event(_)
-
-    def _on_install(self, _):
-        pass
 
     def _on_event(self, event) -> None:
         """Perform all required actions for the Charm."""

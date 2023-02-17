@@ -1,6 +1,7 @@
 aiohttp
 jinja2
-juju
+juju==3.0.4
+mlflow
 pytest-operator
 requests
 -r requirements.txt
