@@ -64,6 +64,7 @@ jobs:
       with:
         provider: microk8s
         channel: 1.22/stable
+        bootstrap-options: "--agent-version=2.9.34"
         # Pinned until this bug is resolved: https://bugs.launchpad.net/juju/+bug/1992833
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
 
@@ -85,4 +86,9 @@ jobs:
 
     - name: Get operator logs
       run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager
+      if: failure()
+    
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
+      timeout-minutes: 40
       if: failure()
