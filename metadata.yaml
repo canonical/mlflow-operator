@@ -1,12 +1,12 @@
 # Copyright 2020 Luke Marsden
 # See LICENSE file for licensing details.
-name: charmed-mlflow
+name: mlflow-server
 description: |
   MLflow
 summary: |
   A charm which provides a Kubernetes installation of the MLflow (https://mlflow.org/) server.
 containers:
-  charmed-mlflow:
+  mlflow-server:
     resource: oci-image
 resources:
   oci-image:

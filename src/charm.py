@@ -17,7 +17,7 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, ge
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
 
-class CharmedMlflowCharm(CharmBase):
+class MlflowCharm(CharmBase):
     """A Juju Charm for Training Operator"""
 
     def __init__(self, *args):
@@ -25,12 +25,12 @@ class CharmedMlflowCharm(CharmBase):
 
         self.logger = logging.getLogger(__name__)
         self._port = self.model.config["mlflow_port"]
-        self._container_name = "charmed-mlflow"
+        self._container_name = "mlflow-server"
         self._container = self.unit.get_container(self._container_name)
 
         self.framework.observe(self.on.upgrade_charm, self._on_event)
         self.framework.observe(self.on.config_changed, self._on_event)
-        self.framework.observe(self.on.charmed_mlflow_pebble_ready, self._on_pebble_ready)
+        self.framework.observe(self.on.mlflow_server_pebble_ready, self._on_pebble_ready)
 
         for rel in self.model.relations.keys():
             self.framework.observe(self.on[rel].relation_changed, self._on_event)
@@ -72,12 +72,12 @@ class CharmedMlflowCharm(CharmBase):
         """Create and return Pebble framework layer."""
 
         layer_config = {
-            "summary": "charmed-mlflow layer",
-            "description": "Pebble config layer for charmed-mlflow",
+            "summary": "mlflow-server layer",
+            "description": "Pebble config layer for mlflow-server",
             "services": {
                 self._container_name: {
                     "override": "replace",
-                    "summary": "Entrypoint of charmed-mlflow image",
+                    "summary": "Entrypoint of mlflow-server image",
                     "command": (
                         "mlflow "
                         "server "
@@ -243,4 +243,4 @@ class CharmedMlflowCharm(CharmBase):
 
 
 if __name__ == "__main__":
-    main(CharmedMlflowCharm)
+    main(MlflowCharm)

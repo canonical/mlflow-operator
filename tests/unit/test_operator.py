@@ -11,10 +11,10 @@ from ops.pebble import ChangeError
 from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
-from charm import CharmedMlflowCharm
+from charm import MlflowCharm
 
 BUCKET_NAME = "test-bucket"
-CHARM_NAME = "charmed-mlflow"
+CHARM_NAME = "mlflow-server"
 
 OBJECT_STORAGE_DATA = {
     "access-key": "minio-access-key",
@@ -58,10 +58,10 @@ class _FakeChangeError(ChangeError):
 def harness() -> Harness:
     """Create and return Harness for testing."""
 
-    harness = Harness(CharmedMlflowCharm)
+    harness = Harness(MlflowCharm)
 
     # setup container networking simulation
-    harness.set_can_connect("charmed-mlflow", True)
+    harness.set_can_connect("mlflow-server", True)
 
     return harness
 
@@ -111,8 +111,8 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     def tests_on_pebble_ready_failure(self):
-        harness = Harness(CharmedMlflowCharm)
-        harness.set_can_connect("charmed-mlflow", False)
+        harness = Harness(MlflowCharm)
+        harness.set_can_connect("mlflow-server", False)
         harness.begin()
         with pytest.raises(ErrorWithStatus):
             harness.charm._on_pebble_ready(None)
@@ -177,7 +177,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.CharmedMlflowCharm._get_interfaces")
+    @patch("charm.MlflowCharm._get_interfaces")
     def test_get_object_storage_data_failure_missing_storage_object(
         self, _get_interfaces: MagicMock, harness: Harness
     ):
@@ -192,7 +192,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.CharmedMlflowCharm._get_interfaces")
+    @patch("charm.MlflowCharm._get_interfaces")
     def test_get_object_storage_data_failure_bad_storage_object(
         self, _get_interfaces: MagicMock, harness: Harness
     ):
@@ -220,7 +220,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.CharmedMlflowCharm._validate_default_s3_bucket")
+    @patch("charm.MlflowCharm._validate_default_s3_bucket")
     def test_get_relational_db_data_success(
         self, validate_default_s3_bucket: MagicMock, relational_db_relation: Harness
     ):
@@ -231,7 +231,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.CharmedMlflowCharm._validate_default_s3_bucket")
+    @patch("charm.MlflowCharm._validate_default_s3_bucket")
     def test_get_relational_db_data_failure_multiple_relations(
         self, validate_default_s3_bucket: MagicMock, relational_db_relation: Harness
     ):
@@ -249,7 +249,7 @@ class TestCharm:
     )
     @patch("charm.S3BucketWrapper.__init__")
     @patch("charm.S3BucketWrapper.check_if_bucket_accessible")
-    @patch("charm.CharmedMlflowCharm._update_layer")
+    @patch("charm.MlflowCharm._update_layer")
     def test_validate_default_s3_bucket_success_bucket_exists(
         self,
         update_layer: MagicMock,
@@ -269,7 +269,7 @@ class TestCharm:
     )
     @patch("charm.S3BucketWrapper.__init__")
     @patch("charm.S3BucketWrapper.check_if_bucket_accessible")
-    @patch("charm.CharmedMlflowCharm._update_layer")
+    @patch("charm.MlflowCharm._update_layer")
     @patch("charm.S3BucketWrapper.create_bucket")
     def test_validate_default_s3_bucket_success_bucket_created(
         self,
@@ -353,8 +353,8 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.CharmedMlflowCharm.container")
-    @patch("charm.CharmedMlflowCharm._validate_default_s3_bucket")
+    @patch("charm.MlflowCharm.container")
+    @patch("charm.MlflowCharm._validate_default_s3_bucket")
     def test_update_layer_failure_container_problem(
         self,
         _: MagicMock,
@@ -373,8 +373,8 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.CharmedMlflowCharm._validate_default_s3_bucket")
-    @patch("charm.CharmedMlflowCharm._update_layer")
+    @patch("charm.MlflowCharm._validate_default_s3_bucket")
+    @patch("charm.MlflowCharm._update_layer")
     def test_environament_variables(
         self,
         update_layer: MagicMock,
@@ -389,7 +389,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.CharmedMlflowCharm._validate_default_s3_bucket")
+    @patch("charm.MlflowCharm._validate_default_s3_bucket")
     def test_update_layer_success(
         self,
         _: MagicMock,
