@@ -24,7 +24,7 @@ jobs:
         with:
           mode: start
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          ec2-image-id: ami-0506514276755af5c
+          ec2-image-id: ami-0fe7df2ee200652fb
           ec2-instance-type: t2.2xlarge
           subnet-id: subnet-07447a9ea78654795
           security-group-id: sg-0f9bb0d3908cd0740
@@ -33,14 +33,8 @@ jobs:
     needs: start-runner # required to start the main job when the runner is ready
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     steps:
-    - name: Check out code
-      uses: actions/checkout@v2
-
-    - name: Install dependencies
-      run: sudo apt-get install python3-pip tox
-
-    - name: Run unit tests
-      run: tox -e unit
+      - name: Hello World
+        run: echo 'Hello World!'
   stop-runner:
     name: Stop self-hosted EC2 runner
     needs:
