@@ -82,7 +82,7 @@ ruamel-yaml-clib==0.2.7
     # via ruamel-yaml
 s3transfer==0.6.0
     # via boto3
-serialized-data-interface==0.4.0
+serialized-data-interface==0.3.5
     # via -r ./requirements.in
 six==1.16.0
     # via
