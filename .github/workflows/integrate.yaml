@@ -33,14 +33,37 @@ jobs:
     needs: start-runner # required to start the main job when the runner is ready
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     steps:
-    - name: Check out code
+    - name: Check out repo
       uses: actions/checkout@v2
 
-    - name: Install dependencies
-      run: sudo apt-get install -y python3-pip tox
+    - name: Setup operator environment
+      uses: claudiubelu/actions-operator@18ebf92ae3043bd3dd15238e5d9b662d7ba08daf
+      with:
+        provider: microk8s
+        channel: 1.22/stable
+        bootstrap-options: "--agent-version=2.9.34"
+        # Pinned until this bug is resolved: https://bugs.launchpad.net/juju/+bug/1992833
+        microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
 
-    - name: Run unit tests
-      run: tox -e unit
+    - name: Run integration tests
+      run: tox -vve integration -- --model testing
+
+    # On failure, capture debugging resources
+    - name: Get all
+      run: kubectl get all -A
+      if: failure()
+
+    - name: Get juju status
+      run: juju status
+      if: failure()
+
+    - name: Get workload logs
+      run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager
+      if: failure()
+
+    - name: Get operator logs
+      run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager
+      if: failure()
   stop-runner:
     name: Stop self-hosted EC2 runner
     needs:
