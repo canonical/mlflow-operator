@@ -2,7 +2,7 @@
 name: CI
 
 on:
-  workflow_call:
+  pull_request:
 
 jobs:
   start-runner:

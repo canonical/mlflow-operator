@@ -1,23 +1,23 @@
-name: On Pull Request
+# name: On Pull Request
 
 # On pull_request, we:
 # * always publish to charmhub at latest/edge/branchname
 # * always run tests
 
-on:
-  pull_request:
+# on:
+#   pull_request:
 
-jobs:
+# jobs:
 
-  tests:
-    name: Run Tests
-    uses: ./.github/workflows/integrate.yaml
-    secrets:
-      charmcraft-credentials: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
+#   tests:
+#     name: Run Tests
+#     uses: ./.github/workflows/integrate.yaml
+#     secrets:
+#       charmcraft-credentials: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
 
-  # publish runs in parallel with tests, as we always publish in this situation
-  publish-charm:
-    name: Publish Charm
-    uses: ./.github/workflows/publish.yaml
-    secrets:
-      CHARMCRAFT_CREDENTIALS: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
+#   # publish runs in parallel with tests, as we always publish in this situation
+#   publish-charm:
+#     name: Publish Charm
+#     uses: ./.github/workflows/publish.yaml
+#     secrets:
+#       CHARMCRAFT_CREDENTIALS: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
