@@ -3,92 +3,148 @@ name: CI
 
 on:
   workflow_call:
-    secrets:
-      charmcraft-credentials:
-        required: true
 
 jobs:
-
-  lib-check:
-    name: Check libraries
-    runs-on: ubuntu-20.04
+  start-runner:
+    name: Start self-hosted EC2 runner
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.start-ec2-runner.outputs.label }}
+      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          fetch-depth: 0
-      - name: Check libs
-        uses: canonical/charming-actions/check-libraries@2.1.1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Start EC2 runner
+        id: start-ec2-runner
+        uses: machulav/ec2-github-runner@v2
         with:
-          credentials: "${{ secrets.charmcraft-credentials }}"
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
-
-  lint:
-    name: Lint Check
-    runs-on: ubuntu-20.04
-
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ami-0506514276755af5c
+          ec2-instance-type: t2.2xlarge
+          subnet-id: subnet-07447a9ea78654795
+          security-group-id: sg-0f9bb0d3908cd0740
+  do-the-job:
+    name: Do the job on the runner
+    needs: start-runner # required to start the main job when the runner is ready
+    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
     steps:
-    - name: Check out code
-      uses: actions/checkout@v2
-
-    - name: Install dependencies
-      run: sudo apt-get install python3-pip tox
-
-    - name: Lint code
-      run: tox -e lint
-
-  unit:
-    name: Unit Test
-    runs-on: ubuntu-20.04
-
+      - name: Hello World
+        run: echo 'Hello World!'
+  stop-runner:
+    name: Stop self-hosted EC2 runner
+    needs:
+      - start-runner # required to get output from the start-runner job
+      - do-the-job # required to wait when the main job is done
+    runs-on: ubuntu-latest
+    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
     steps:
-    - name: Check out code
-      uses: actions/checkout@v2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Stop EC2 runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
 
-    - name: Install dependencies
-      run: sudo apt-get install python3-pip tox
+# on:
+#   workflow_call:
+#     secrets:
+#       charmcraft-credentials:
+#         required: true
 
-    - name: Run unit tests
-      run: tox -e unit
+# jobs:
 
-  integration:
-    name: Integration Test (build and deploy)
-    runs-on: ubuntu-20.04
+#   lib-check:
+#     name: Check libraries
+#     runs-on: ubuntu-20.04
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v2
+#         with:
+#           fetch-depth: 0
+#       - name: Check libs
+#         uses: canonical/charming-actions/check-libraries@2.1.1
+#         with:
+#           credentials: "${{ secrets.charmcraft-credentials }}"
+#           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-    steps:
-    - name: Check out repo
-      uses: actions/checkout@v2
+#   lint:
+#     name: Lint Check
+#     runs-on: ubuntu-20.04
 
-    - name: Setup operator environment
-      uses: claudiubelu/actions-operator@18ebf92ae3043bd3dd15238e5d9b662d7ba08daf
-      with:
-        provider: microk8s
-        channel: 1.22/stable
-        bootstrap-options: "--agent-version=2.9.34"
-        # Pinned until this bug is resolved: https://bugs.launchpad.net/juju/+bug/1992833
-        microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
+#     steps:
+#     - name: Check out code
+#       uses: actions/checkout@v2
 
-    - name: Run integration tests
-      run: tox -vve integration -- --model testing
+#     - name: Install dependencies
+#       run: sudo apt-get install python3-pip tox
 
-    # On failure, capture debugging resources
-    - name: Get all
-      run: kubectl get all -A
-      if: failure()
+#     - name: Lint code
+#       run: tox -e lint
 
-    - name: Get juju status
-      run: juju status
-      if: failure()
+#   unit:
+#     name: Unit Test
+#     runs-on: ubuntu-20.04
 
-    - name: Get workload logs
-      run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager
-      if: failure()
+#     steps:
+#     - name: Check out code
+#       uses: actions/checkout@v2
 
-    - name: Get operator logs
-      run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager
-      if: failure()
+#     - name: Install dependencies
+#       run: sudo apt-get install python3-pip tox
+
+#     - name: Run unit tests
+#       run: tox -e unit
+
+#   integration:
+#     name: Integration Test (build and deploy)
+#     runs-on: ubuntu-20.04
+
+#     steps:
+#     - name: Check out repo
+#       uses: actions/checkout@v2
+
+#     - name: Setup operator environment
+#       uses: claudiubelu/actions-operator@18ebf92ae3043bd3dd15238e5d9b662d7ba08daf
+#       with:
+#         provider: microk8s
+#         channel: 1.22/stable
+#         bootstrap-options: "--agent-version=2.9.34"
+#         # Pinned until this bug is resolved: https://bugs.launchpad.net/juju/+bug/1992833
+#         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
+
+#     - name: Run integration tests
+#       run: tox -vve integration -- --model testing
+
+#     # On failure, capture debugging resources
+#     - name: Get all
+#       run: kubectl get all -A
+#       if: failure()
+
+#     - name: Get juju status
+#       run: juju status
+#       if: failure()
+
+#     - name: Get workload logs
+#       run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager
+#       if: failure()
+
+#     - name: Get operator logs
+#       run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager
+#       if: failure()
     
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
-      timeout-minutes: 40
-      if: failure()
+#     - name: Setup tmate session
+#       uses: mxschmitt/action-tmate@v3
+#       timeout-minutes: 40
+#       if: failure()
