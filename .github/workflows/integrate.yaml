@@ -61,10 +61,10 @@ jobs:
         sudo snap install juju-crashdump --classic --channel=latest/stable
         sudo snap install microk8s --classic --channel=1.22/stable
         bash -c 'sudo usermod -a -G microk8s $USER'
-        sg microk8s -c 'microk8s enable dns storage rbac metallb:10.64.140.43-10.64.140.49'
-        sg microk8s -c 'microk8s kubectl -n kube-system rollout status deployment/hostpath-provisioner'
-        sg microk8s -c 'juju bootstrap --debug --verbose microk8s github-pr-11e39 --model-default test-mode=true --model-default automatically-retry-hooks=false --model-default logging-config="<root>=DEBUG" --agent-version=2.9.34 --bootstrap-constraints=""'
-        sg microk8s -c 'juju add-model testing'
+        sudo microk8s enable dns storage rbac metallb:10.64.140.43-10.64.140.49
+        sudo microk8s kubectl -n kube-system rollout status deployment/hostpath-provisioner
+        sudo juju bootstrap --debug --verbose microk8s github-pr-11e39 --model-default test-mode=true --model-default automatically-retry-hooks=false --model-default logging-config="<root>=DEBUG" --agent-version=2.9.34 --bootstrap-constraints=""
+        sudo juju add-model testing
         sudo snap install kubectl --classic
         sudo mkdir -p /home/ubuntu/.kube
 
