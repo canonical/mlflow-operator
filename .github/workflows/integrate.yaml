@@ -40,7 +40,7 @@ jobs:
       env:
         USER: ubuntu
         HOME: /home/ubuntu
-      run: su ubuntu -s .github/workflows/setup_environment.sh
+      run: sudo -u ubuntu -c "./.github/workflows/setup_environment.sh"
     - name: Run integration tests
       run: |
         su ubuntu
