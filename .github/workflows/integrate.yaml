@@ -41,75 +41,78 @@ jobs:
         USER: ubuntu
         HOME: /home/ubuntu
       run: |
-        sudo snap install core
-        sudo apt-get remove -qy lxd lxd-client
-        sudo snap install lxd --channel=latest/stable
-        sudo snap refresh lxd --channel=latest/stable
-        sudo lxd waitready
-        sudo lxd init --auto
-        sudo chmod a+wr /var/snap/lxd/common/lxd/unix.socket
-        lxc network set lxdbr0 ipv6.address none
-        bash -c 'sudo usermod -a -G lxd $USER'
-        sudo apt-get update -yqq
-        sudo apt-get install -yqq python3-pip
-        sudo --preserve-env=http_proxy,https_proxy,no_proxy pip3 install tox
-        sudo snap install juju --classic --channel=latest/stable
-        sudo snap install jq
-        sudo snap install charm --classic --channel=latest/stable
-        sudo snap install charmcraft --classic --channel=latest/stable
-        sudo snap install juju-bundle --classic --channel=latest/stable
-        sudo snap install juju-crashdump --classic --channel=latest/stable
-        sudo snap install microk8s --classic --channel=1.22/stable
-        sudo snap refresh charmcraft --channel latest/candidate
-        usermod -a -G microk8s ubuntu
-        su ubuntu
-        microk8s enable dns storage rbac metallb:10.64.140.43-10.64.140.49
-        microk8s kubectl -n kube-system rollout status deployment/hostpath-provisioner
-        juju bootstrap --debug --verbose microk8s uk8s-controller --model-default test-mode=true --model-default automatically-retry-hooks=false --model-default logging-config="<root>=DEBUG" --agent-version=2.9.34 --bootstrap-constraints=""
-        juju add-model testing
-        sudo snap install kubectl --classic
-        sudo chown -f -R ubuntu /home/ubuntu/.kube
+        whoami
+        echo $USER
+        echo $HOME
+    #     sudo snap install core
+    #     sudo apt-get remove -qy lxd lxd-client
+    #     sudo snap install lxd --channel=latest/stable
+    #     sudo snap refresh lxd --channel=latest/stable
+    #     sudo lxd waitready
+    #     sudo lxd init --auto
+    #     sudo chmod a+wr /var/snap/lxd/common/lxd/unix.socket
+    #     lxc network set lxdbr0 ipv6.address none
+    #     bash -c 'sudo usermod -a -G lxd $USER'
+    #     sudo apt-get update -yqq
+    #     sudo apt-get install -yqq python3-pip
+    #     sudo --preserve-env=http_proxy,https_proxy,no_proxy pip3 install tox
+    #     sudo snap install juju --classic --channel=latest/stable
+    #     sudo snap install jq
+    #     sudo snap install charm --classic --channel=latest/stable
+    #     sudo snap install charmcraft --classic --channel=latest/stable
+    #     sudo snap install juju-bundle --classic --channel=latest/stable
+    #     sudo snap install juju-crashdump --classic --channel=latest/stable
+    #     sudo snap install microk8s --classic --channel=1.22/stable
+    #     sudo snap refresh charmcraft --channel latest/candidate
+    #     usermod -a -G microk8s ubuntu
+    #     su ubuntu
+    #     microk8s enable dns storage rbac metallb:10.64.140.43-10.64.140.49
+    #     microk8s kubectl -n kube-system rollout status deployment/hostpath-provisioner
+    #     juju bootstrap --debug --verbose microk8s uk8s-controller --model-default test-mode=true --model-default automatically-retry-hooks=false --model-default logging-config="<root>=DEBUG" --agent-version=2.9.34 --bootstrap-constraints=""
+    #     juju add-model testing
+    #     sudo snap install kubectl --classic
+    #     sudo chown -f -R ubuntu /home/ubuntu/.kube
 
-    - name: Run integration tests
-      run: sudo tox -vve integration -- --model testing
+    # - name: Run integration tests
+    #   run: sudo tox -vve integration -- --model testing
 
-    # On failure, capture debugging resources
-    - name: Get all
-      run: kubectl get all -A
-      if: failure()
+    # # On failure, capture debugging resources
+    # - name: Get all
+    #   run: kubectl get all -A
+    #   if: failure()
 
-    - name: Get juju status
-      run: juju status
-      if: failure()
+    # - name: Get juju status
+    #   run: juju status
+    #   if: failure()
 
-    - name: Get workload logs
-      run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager
-      if: failure()
+    # - name: Get workload logs
+    #   run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager
+    #   if: failure()
 
-    - name: Get operator logs
-      run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager
-      if: failure()
-  # stop-runner:
-  #   name: Stop self-hosted EC2 runner
-  #   needs:
-  #     - start-runner # required to get output from the start-runner job
-  #     - do-the-job # required to wait when the main job is done
-  #   runs-on: ubuntu-latest
-  #   if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
-  #   steps:
-  #     - name: Configure AWS credentials
-  #       uses: aws-actions/configure-aws-credentials@v1
-  #       with:
-  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  #         aws-region: ${{ secrets.AWS_REGION }}
-  #     - name: Stop EC2 runner
-  #       uses: machulav/ec2-github-runner@v2
-  #       with:
-  #         mode: stop
-  #         github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-  #         label: ${{ needs.start-runner.outputs.label }}
-  #         ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
+    # - name: Get operator logs
+    #   run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager
+    #   if: failure()
+  stop-runner:
+    name: Stop self-hosted EC2 runner
+    needs:
+      - start-runner # required to get output from the start-runner job
+      - do-the-job # required to wait when the main job is done
+    runs-on: ubuntu-latest
+    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Stop EC2 runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
 
 # on:
 #   workflow_call:
