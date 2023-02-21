@@ -41,9 +41,9 @@ jobs:
         USER: ubuntu
         HOME: /home/ubuntu
       run: |
-        whoami
-        echo $USER
-        echo $HOME
+        sudo -u ubuntu 'whoami'
+        sudo -u ubuntu 'echo $USER'
+        sudo -u ubuntu 'echo $HOME'
     #     sudo snap install core
     #     sudo apt-get remove -qy lxd lxd-client
     #     sudo snap install lxd --channel=latest/stable
