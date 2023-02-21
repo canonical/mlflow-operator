@@ -24,7 +24,7 @@ jobs:
         with:
           mode: start
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          ec2-image-id: ami-0fe7df2ee200652fb
+          ec2-image-id: ami-09cd747c78a9add63 
           ec2-instance-type: t2.2xlarge
           subnet-id: subnet-07447a9ea78654795
           security-group-id: sg-0f9bb0d3908cd0740
@@ -46,6 +46,7 @@ jobs:
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
       env:
         USER: ubuntu
+        HOME: /home/ubuntu
 
     - name: Run integration tests
       run: tox -vve integration -- --model testing
