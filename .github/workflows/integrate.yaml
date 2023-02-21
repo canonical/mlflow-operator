@@ -71,7 +71,7 @@ jobs:
         sudo chown -f -R ubuntu /home/ubuntu/.kube
 
     - name: Run integration tests
-      run: tox -vve integration -- --model testing
+      run: sudo tox -vve integration -- --model testing
 
     # On failure, capture debugging resources
     - name: Get all
