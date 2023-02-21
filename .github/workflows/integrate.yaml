@@ -41,9 +41,13 @@ jobs:
         chmod 777 .
         /bin/su -c "$(pwd)/.github/workflows/setup_environment.sh" - ubuntu
     - name: Setup microk8s
-      run: /bin/su -c "$(pwd)/.github/workflows/setup_microk8s.sh" - ubuntu
+      run: |
+        chmod 777 .
+        /bin/su -c "$(pwd)/.github/workflows/setup_microk8s.sh" - ubuntu
     - name: Run integration tests
-      run: /bin/su -c "cd $(pwd) && tox -vve integration -- --model testing" - ubuntu 
+      run: |
+        chmod 777 .
+        /bin/su -c "cd $(pwd) && tox -vve integration -- --model testing" - ubuntu 
 
     # On failure, capture debugging resources
     - name: Get all
