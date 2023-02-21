@@ -10,8 +10,7 @@ lxd init --auto
 chmod a+wr /var/snap/lxd/common/lxd/unix.socket
 lxc network set lxdbr0 ipv6.address none
 sudo usermod -a -G lxd ubuntu
-sudo chown -f -R ubuntu /home/ubuntu/.kube
-su ubuntu
+newgrp lxd
 sudo apt-get update -yqq
 sudo apt-get install -yqq python3-pip
 sudo --preserve-env=http_proxy,https_proxy,no_proxy pip3 install tox
@@ -25,6 +24,7 @@ sudo snap install microk8s --classic --channel=1.22/stable
 sudo snap refresh charmcraft --channel latest/candidate
 sudo usermod -a -G microk8s ubuntu
 sudo chown -f -R ubuntu /home/ubuntu/.kube
+newgrp microk8s
 microk8s enable dns storage rbac metallb:10.64.140.43-10.64.140.49
 microk8s kubectl -n kube-system rollout status deployment/hostpath-provisioner
 juju bootstrap --debug --verbose microk8s uk8s-controller --model-default test-mode=true --model-default automatically-retry-hooks=false --model-default logging-config="<root>=DEBUG" --agent-version=2.9.34 --bootstrap-constraints=""
