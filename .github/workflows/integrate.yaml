@@ -37,10 +37,7 @@ jobs:
       uses: actions/checkout@v2
 
     - name: Setup operator environment
-      env:
-        USER: ubuntu
-        HOME: /home/ubuntu
-      run: sudo -u ubuntu -c "./.github/workflows/setup_environment.sh"
+      run: /bin/su -c ".github/workflows/setup_environment.sh" - ubuntu
     - name: Run integration tests
       run: |
         su ubuntu
