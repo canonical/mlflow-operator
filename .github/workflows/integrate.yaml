@@ -37,13 +37,11 @@ jobs:
       uses: actions/checkout@v2
 
     - name: Setup operator environment
-      run: /bin/su -c ".github/workflows/setup_environment.sh" - ubuntu
-    - name: Run integration tests
       run: |
-        su ubuntu
-        whoami
-
-        tox -vve integration -- --model testing
+        chmod 777 .
+        /bin/su -c "$(pwd)/.github/workflows/setup_environment.sh" - ubuntu
+    - name: Run integration tests
+      run: /bin/su -c "cd $(pwd) && tox -vve integration -- --model testing" - ubuntu 
 
     # On failure, capture debugging resources
     - name: Get all

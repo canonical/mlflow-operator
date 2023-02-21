@@ -9,7 +9,8 @@ lxd waitready
 lxd init --auto
 chmod a+wr /var/snap/lxd/common/lxd/unix.socket
 lxc network set lxdbr0 ipv6.address none
-usermod -a -G lxd ubuntu
+sudo usermod -a -G lxd ubuntu
+sudo chown -f -R ubuntu /home/ubuntu/.kube
 su ubuntu
 sudo apt-get update -yqq
 sudo apt-get install -yqq python3-pip
@@ -22,8 +23,8 @@ sudo snap install juju-bundle --classic --channel=latest/stable
 sudo snap install juju-crashdump --classic --channel=latest/stable
 sudo snap install microk8s --classic --channel=1.22/stable
 sudo snap refresh charmcraft --channel latest/candidate
-usermod -a -G microk8s ubuntu
-su ubuntu
+sudo usermod -a -G microk8s ubuntu
+sudo chown -f -R ubuntu /home/ubuntu/.kube
 microk8s enable dns storage rbac metallb:10.64.140.43-10.64.140.49
 microk8s kubectl -n kube-system rollout status deployment/hostpath-provisioner
 juju bootstrap --debug --verbose microk8s uk8s-controller --model-default test-mode=true --model-default automatically-retry-hooks=false --model-default logging-config="<root>=DEBUG" --agent-version=2.9.34 --bootstrap-constraints=""
