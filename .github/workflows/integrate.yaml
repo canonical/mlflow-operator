@@ -68,7 +68,6 @@ jobs:
         juju bootstrap --debug --verbose microk8s uk8s-controller --model-default test-mode=true --model-default automatically-retry-hooks=false --model-default logging-config="<root>=DEBUG" --agent-version=2.9.34 --bootstrap-constraints=""
         juju add-model testing
         sudo snap install kubectl --classic
-        sudo mkdir /home/ubuntu/.kube
         sudo chown -f -R ubuntu /home/ubuntu/.kube
 
     - name: Run integration tests
