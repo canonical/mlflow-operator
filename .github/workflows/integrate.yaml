@@ -70,25 +70,25 @@ jobs:
         mkdir -p /home/root/.kube
         chown -f -R ubuntu /home/root/.kube
 
-    # - name: Run integration tests
-    #   run: sudo tox -vve integration -- --model testing
+    - name: Run integration tests
+      run: sudo tox -vve integration -- --model testing
 
-    # # On failure, capture debugging resources
-    # - name: Get all
-    #   run: kubectl get all -A
-    #   if: failure()
+    # On failure, capture debugging resources
+    - name: Get all
+      run: kubectl get all -A
+      if: failure()
 
-    # - name: Get juju status
-    #   run: juju status
-    #   if: failure()
+    - name: Get juju status
+      run: juju status
+      if: failure()
 
-    # - name: Get workload logs
-    #   run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager
-    #   if: failure()
+    - name: Get workload logs
+      run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager
+      if: failure()
 
-    # - name: Get operator logs
-    #   run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager
-    #   if: failure()
+    - name: Get operator logs
+      run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager
+      if: failure()
   stop-runner:
     name: Stop self-hosted EC2 runner
     needs:
