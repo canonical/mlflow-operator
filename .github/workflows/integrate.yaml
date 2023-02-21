@@ -60,13 +60,16 @@ jobs:
         sudo snap install juju-bundle --classic --channel=latest/stable
         sudo snap install juju-crashdump --classic --channel=latest/stable
         sudo snap install microk8s --classic --channel=1.22/stable
-        bash -c 'sudo usermod -a -G microk8s $USER'
-        sudo microk8s enable dns storage rbac metallb:10.64.140.43-10.64.140.49
-        sudo microk8s kubectl -n kube-system rollout status deployment/hostpath-provisioner
-        sudo juju bootstrap --debug --verbose microk8s github-pr-11e39 --model-default test-mode=true --model-default automatically-retry-hooks=false --model-default logging-config="<root>=DEBUG" --agent-version=2.9.34 --bootstrap-constraints=""
-        sudo juju add-model testing
+        sudo snap refresh charmcraft --channel latest/candidate
+        usermod -a -G microk8s ubuntu
+        su ubuntu
+        microk8s enable dns storage rbac metallb:10.64.140.43-10.64.140.49
+        microk8s kubectl -n kube-system rollout status deployment/hostpath-provisioner
+        juju bootstrap --debug --verbose microk8s uk8s-controller --model-default test-mode=true --model-default automatically-retry-hooks=false --model-default logging-config="<root>=DEBUG" --agent-version=2.9.34 --bootstrap-constraints=""
+        juju add-model testing
         sudo snap install kubectl --classic
-        sudo mkdir -p /home/ubuntu/.kube
+        sudo mkdir /home/ubuntu/.kube
+        sudo chown -f -R ubuntu /home/ubuntu/.kube
 
     - name: Run integration tests
       run: tox -vve integration -- --model testing
