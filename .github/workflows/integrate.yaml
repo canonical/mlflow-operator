@@ -1,110 +1,110 @@
-# reusable workflow triggered by other actions
-name: CI
+# # reusable workflow triggered by other actions
+# name: CI
 
-on:
-  pull_request:
+# on:
+#   pull_request:
 
-jobs:
-  start-runner:
-    name: Start self-hosted EC2 runner
-    runs-on: ubuntu-latest
-    outputs:
-      label: ${{ steps.start-ec2-runner.outputs.label }}
-      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-      - name: Start EC2 runner
-        id: start-ec2-runner
-        uses: machulav/ec2-github-runner@v2
-        with:
-          mode: start
-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          ec2-image-id: ami-0fe7df2ee200652fb
-          ec2-instance-type: t2.2xlarge
-          subnet-id: subnet-07447a9ea78654795
-          security-group-id: sg-0f9bb0d3908cd0740
-  lint:
-    name: Run lint
-    needs: start-runner
-    runs-on: ${{ needs.start-runner.outputs.label }}
-    steps:
-    - name: Check out repo
-      uses: actions/checkout@v2
-    - name: Install dependencies
-      run: sudo apt-get install -y python3-pip tox
-    - name: Lint code
-      run: tox -e lint
-  unit-tests:
-    name: Run unit tests
-    needs: [start-runner, lint]  
-    runs-on: ${{ needs.start-runner.outputs.label }}
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v2
+# jobs:
+#   start-runner:
+#     name: Start self-hosted EC2 runner
+#     runs-on: ubuntu-latest
+#     outputs:
+#       label: ${{ steps.start-ec2-runner.outputs.label }}
+#       ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
+#     steps:
+#       - name: Configure AWS credentials
+#         uses: aws-actions/configure-aws-credentials@v1
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-region: ${{ secrets.AWS_REGION }}
+#       - name: Start EC2 runner
+#         id: start-ec2-runner
+#         uses: machulav/ec2-github-runner@v2
+#         with:
+#           mode: start
+#           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+#           ec2-image-id: ami-0fe7df2ee200652fb
+#           ec2-instance-type: t2.2xlarge
+#           subnet-id: subnet-07447a9ea78654795
+#           security-group-id: sg-0f9bb0d3908cd0740
+#   lint:
+#     name: Run lint
+#     needs: start-runner
+#     runs-on: ${{ needs.start-runner.outputs.label }}
+#     steps:
+#     - name: Check out repo
+#       uses: actions/checkout@v2
+#     - name: Install dependencies
+#       run: sudo apt-get install -y python3-pip tox
+#     - name: Lint code
+#       run: tox -e lint
+#   unit-tests:
+#     name: Run unit tests
+#     needs: [start-runner, lint]  
+#     runs-on: ${{ needs.start-runner.outputs.label }}
+#     steps:
+#     - name: Check out code
+#       uses: actions/checkout@v2
 
-    - name: Install dependencies
-      run: sudo apt-get install -y python3-pip tox
+#     - name: Install dependencies
+#       run: sudo apt-get install -y python3-pip tox
 
-    - name: Run unit tests
-      run: tox -e unit
-  integration-tests:
-    name: Run integration tests
-    needs: [start-runner, lint, unit-tests]
-    runs-on: ${{ needs.start-runner.outputs.label }} 
-    steps:
-    - name: Check out repo
-      uses: actions/checkout@v2
+#     - name: Run unit tests
+#       run: tox -e unit
+#   integration-tests:
+#     name: Run integration tests
+#     needs: [start-runner, lint, unit-tests]
+#     runs-on: ${{ needs.start-runner.outputs.label }} 
+#     steps:
+#     - name: Check out repo
+#       uses: actions/checkout@v2
 
-    - name: Setup operator environment
-      run: |
-        chmod 777 .
-        /bin/su -c "$(pwd)/.github/workflows/setup_environment.sh" - ubuntu
-    - name: Setup microk8s
-      run: /bin/su -c "$(pwd)/.github/workflows/setup_microk8s.sh" - ubuntu
-    - name: Run integration tests
-      run: /bin/su -c "cd $(pwd) && tox -vve integration -- --model kubeflow" - ubuntu 
+#     - name: Setup operator environment
+#       run: |
+#         chmod 777 .
+#         /bin/su -c "$(pwd)/.github/workflows/setup_environment.sh" - ubuntu
+#     - name: Setup microk8s
+#       run: /bin/su -c "$(pwd)/.github/workflows/setup_microk8s.sh" - ubuntu
+#     - name: Run integration tests
+#       run: /bin/su -c "cd $(pwd) && tox -vve integration -- --model kubeflow" - ubuntu 
 
-    # On failure, capture debugging resources
-    - name: Get all
-      run: /bin/su -c "kubectl get all -A" - ubuntu 
-      if: failure()
+#     # On failure, capture debugging resources
+#     - name: Get all
+#       run: /bin/su -c "kubectl get all -A" - ubuntu 
+#       if: failure()
 
-    - name: Get juju status
-      run: /bin/su -c "juju status" - ubuntu 
-      if: failure()
+#     - name: Get juju status
+#       run: /bin/su -c "juju status" - ubuntu 
+#       if: failure()
 
-    - name: Get workload logs
-      run: /bin/su -c "kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager" - ubuntu 
-      if: failure()
+#     - name: Get workload logs
+#       run: /bin/su -c "kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager" - ubuntu 
+#       if: failure()
 
-    - name: Get operator logs
-      run: /bin/su -c "kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager" - ubuntu
-      if: failure()
-  stop-runner:
-    name: Stop self-hosted EC2 runner
-    needs:
-      - start-runner 
-      - lint
-      - unit-tests
-      - integration-tests
-    runs-on: ubuntu-latest
-    if: ${{ always() }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-      - name: Stop EC2 runner
-        uses: machulav/ec2-github-runner@v2
-        with:
-          mode: stop
-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          label: ${{ needs.start-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
+#     - name: Get operator logs
+#       run: /bin/su -c "kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager" - ubuntu
+#       if: failure()
+#   stop-runner:
+#     name: Stop self-hosted EC2 runner
+#     needs:
+#       - start-runner 
+#       - lint
+#       - unit-tests
+#       - integration-tests
+#     runs-on: ubuntu-latest
+#     if: ${{ always() }}
+#     steps:
+#       - name: Configure AWS credentials
+#         uses: aws-actions/configure-aws-credentials@v1
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-region: ${{ secrets.AWS_REGION }}
+#       - name: Stop EC2 runner
+#         uses: machulav/ec2-github-runner@v2
+#         with:
+#           mode: stop
+#           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+#           label: ${{ needs.start-runner.outputs.label }}
+#           ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
