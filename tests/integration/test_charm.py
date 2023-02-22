@@ -36,7 +36,7 @@ async def test_build_and_deploy(ops_test: OpsTest):
     Assert on the unit status.
     """
     # charm_under_test = await ops_test.build_charm(".")
-    charm_under_test = ""
+    charm_under_test = "/home/ubuntu/mlflow-operator/mlflow-server_ubuntu-20.04-amd64.charm"
     image_path = METADATA["resources"]["oci-image"]["upstream-source"]
     resources = {"oci-image": image_path}
 
