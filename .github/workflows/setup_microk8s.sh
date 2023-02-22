@@ -1,8 +1,8 @@
 #!/bin/bash
-microk8s enable dns storage rbac metallb:10.64.140.43-10.64.140.49
-microk8s kubectl -n kube-system rollout status deployment/hostpath-provisioner
-juju bootstrap --debug --verbose microk8s uk8s-controller --model-default test-mode=true --model-default automatically-retry-hooks=false --model-default logging-config="<root>=DEBUG" --agent-version=2.9.34 --bootstrap-constraints=""
-juju add-model testing
+microk8s enable rbac dns storage metallb:10.64.140.43-10.64.140.49
+microk8s kubectl rollout status deployment/hostpath-provisioner -n kube-system
+juju bootstrap --agent-version=2.9.34 --no-gui microk8s uk8sx
+juju add-model kubeflow
 sudo snap install kubectl --classic
 mkdir -p /home/ubuntu/.kube
 chown -f -R ubuntu /home/ubuntu/.kube
