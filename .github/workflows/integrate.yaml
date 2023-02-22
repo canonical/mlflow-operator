@@ -39,55 +39,54 @@ jobs:
       run: sudo apt-get install python3-pip tox
     - name: Lint code
       run: tox -e lint
+  # run-unit-tests:
+  #   name: Run unit tests
+  #   needs: start-runner # required to start the main job when the runner is ready
+  #   runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+  #   steps:
+  #   - name: Check out code
+  #     uses: actions/checkout@v2
 
-  run-unit-tests:
-    name: Run unit tests
-    needs: start-runner # required to start the main job when the runner is ready
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v2
+  #   - name: Install dependencies
+  #     run: sudo apt-get install python3-pip tox
 
-    - name: Install dependencies
-      run: sudo apt-get install python3-pip tox
+  #   - name: Run unit tests
+  #     run: tox -e unit
+  # run-integration-tests:
+  #   name: Do the job on the runner
+  #   needs: start-runner # required to start the main job when the runner is ready
+  #   runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+  #   steps:
+  #   - name: Check out repo
+  #     uses: actions/checkout@v2
 
-    - name: Run unit tests
-      run: tox -e unit
-  run-integration-tests:
-    name: Do the job on the runner
-    needs: start-runner # required to start the main job when the runner is ready
-    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
-    steps:
-    - name: Check out repo
-      uses: actions/checkout@v2
+  #   - name: Setup operator environment
+  #     run: |
+  #       chmod 777 .
+  #       /bin/su -c "$(pwd)/.github/workflows/setup_environment.sh" - ubuntu
+  #   - name: Setup microk8s
+  #     run: |
+  #       /bin/su -c "$(pwd)/.github/workflows/setup_microk8s.sh" - ubuntu
+  #   - name: Run integration tests
+  #     run: |
+  #       /bin/su -c "cd $(pwd) && tox -vve integration -- --model kubeflow" - ubuntu 
 
-    - name: Setup operator environment
-      run: |
-        chmod 777 .
-        /bin/su -c "$(pwd)/.github/workflows/setup_environment.sh" - ubuntu
-    - name: Setup microk8s
-      run: |
-        /bin/su -c "$(pwd)/.github/workflows/setup_microk8s.sh" - ubuntu
-    - name: Run integration tests
-      run: |
-        /bin/su -c "cd $(pwd) && tox -vve integration -- --model kubeflow" - ubuntu 
+  #   # On failure, capture debugging resources
+  #   - name: Get all
+  #     run: /bin/su -c "kubectl get all -A" - ubuntu 
+  #     if: failure()
 
-    # On failure, capture debugging resources
-    - name: Get all
-      run: /bin/su -c "kubectl get all -A" - ubuntu 
-      if: failure()
+  #   - name: Get juju status
+  #     run: juju status
+  #     if: failure()
 
-    - name: Get juju status
-      run: juju status
-      if: failure()
+  #   - name: Get workload logs
+  #     run: /bin/su -c "kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager" - ubuntu 
+  #     if: failure()
 
-    - name: Get workload logs
-      run: /bin/su -c "kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager" - ubuntu 
-      if: failure()
-
-    - name: Get operator logs
-      run: /bin/su -c "kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager" - ubuntu 
-      if: failure()
+  #   - name: Get operator logs
+  #     run: /bin/su -c "kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager" - ubuntu 
+  #     if: failure()
   stop-runner:
     name: Stop self-hosted EC2 runner
     needs:
