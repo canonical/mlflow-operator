@@ -47,7 +47,7 @@ jobs:
     - name: Run integration tests
       run: |
         chmod 777 .
-        /bin/su -c "cd $(pwd) && tox -vve integration -- --model testing" - ubuntu 
+        /bin/su -c "cd $(pwd) && tox -vve integration -- --model kubeflow" - ubuntu 
 
     # On failure, capture debugging resources
     - name: Get all
