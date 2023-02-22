@@ -28,6 +28,30 @@ jobs:
           ec2-instance-type: t2.2xlarge
           subnet-id: subnet-07447a9ea78654795
           security-group-id: sg-0f9bb0d3908cd0740
+  lint:
+    name: Run lint
+    needs: start-runner # required to start the main job when the runner is ready
+    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    steps:
+    - name: Check out repo
+      uses: actions/checkout@v2
+    - name: Install dependencies
+      run: sudo apt-get install python3-pip tox
+    - name: Lint code
+      run: tox -e lint
+  run-unit-tests:
+    name: Run unit tests
+    needs: start-runner # required to start the main job when the runner is ready
+    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: sudo apt-get install python3-pip tox
+
+    - name: Run unit tests
+      run: tox -e unit
   integration-tests:
     name: Run integration tests
     needs: start-runner # required to start the main job when the runner is ready
@@ -65,6 +89,7 @@ jobs:
     name: Stop self-hosted EC2 runner
     needs:
       - start-runner # required to get output from the start-runner job
+      - lint
       - integration-tests # required to wait when the main job is done
     runs-on: ubuntu-latest
     if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
