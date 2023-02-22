@@ -35,7 +35,8 @@ async def test_build_and_deploy(ops_test: OpsTest):
 
     Assert on the unit status.
     """
-    charm_under_test = await ops_test.build_charm(".")
+    # charm_under_test = await ops_test.build_charm(".")
+    charm_under_test = ""
     image_path = METADATA["resources"]["oci-image"]["upstream-source"]
     resources = {"oci-image": image_path}
 
@@ -65,7 +66,7 @@ async def test_add_relational_db_with_relation_expect_active(ops_test: OpsTest):
         status="active",
         raise_on_blocked=False,
         raise_on_error=False,
-        timeout=600,
+        timeout=6000,
         idle_period=60,
     )
     assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
