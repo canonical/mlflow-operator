@@ -26,7 +26,9 @@ requires:
             access-key:
               type: string
             namespace:
-              type: ['string', 'null']
+              type:
+              - string
+              - 'null'
             port:
               type: number
             secret-key:
@@ -36,11 +38,11 @@ requires:
             service:
               type: string
           required:
-            - access-key
-            - port
-            - secret-key
-            - secure
-            - service
-    __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
+          - access-key
+          - port
+          - secret-key
+          - secure
+          - service
     versions: [v1]
+    __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
   

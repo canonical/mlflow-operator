@@ -143,7 +143,7 @@ s3transfer==0.6.0
     # via
     #   -r ./requirements.txt
     #   boto3
-serialized-data-interface==0.3.5
+serialized-data-interface==0.4.0
     # via -r ./requirements.txt
 six==1.16.0
     # via
