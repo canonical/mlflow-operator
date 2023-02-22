@@ -138,7 +138,7 @@ class TestCharm:
         relation = MagicMock()
         relation.name = "A"
         relation.id = "1"
-        get_interfaces.side_effect = NoVersionsListed(relation, [])
+        get_interfaces.side_effect = NoVersionsListed(relation)
         harness.begin()
         with pytest.raises(ErrorWithStatus) as e_info:
             harness.charm._get_interfaces()
@@ -156,7 +156,7 @@ class TestCharm:
         relation_error = MagicMock()
         relation_error.name = "A"
         relation_error.id = "1"
-        get_interfaces.side_effect = NoCompatibleVersions(relation_error, apps=[])
+        get_interfaces.side_effect = NoCompatibleVersions(relation_error, [], [])
         harness.begin()
         with pytest.raises(ErrorWithStatus) as e_info:
             harness.charm._get_interfaces()

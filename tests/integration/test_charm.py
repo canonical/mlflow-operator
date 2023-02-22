@@ -58,7 +58,12 @@ async def test_add_relational_db_with_relation_expect_active(ops_test: OpsTest):
     await ops_test.model.deploy(OBJECT_STORAGE_CHARM_NAME, config=OBJECT_STORAGE_CONFIG)
     await ops_test.model.deploy(RELATIONAL_DB_CHARM_NAME, channel="latest/edge", trust=True)
     await ops_test.model.wait_for_idle(
-        apps=[OBJECT_STORAGE_CHARM_NAME], status="active", raise_on_blocked=False, raise_on_error=False, timeout=600, idle_period=300
+        apps=[OBJECT_STORAGE_CHARM_NAME],
+        status="active",
+        raise_on_blocked=False,
+        raise_on_error=False,
+        timeout=600,
+        idle_period=300,
     )
     await ops_test.model.relate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
     await ops_test.model.relate(RELATIONAL_DB_CHARM_NAME, CHARM_NAME)
