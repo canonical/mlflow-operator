@@ -70,6 +70,8 @@ jobs:
         with: 
           fetch-depth: 0
           ref: ${{ inputs.source_branch }}
+      - name: Install jq
+        run: sudo snap install jq
       - name: Get paths for all charms in repo
         id: get-charm-paths
         run: bash .github/workflows/get-charm-paths.sh
