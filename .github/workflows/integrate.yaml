@@ -36,10 +36,10 @@ jobs:
     - name: Check out repo
       uses: actions/checkout@v2
     - name: Install dependencies
-      run: sudo apt-get install python3-pip tox
+      run: sudo apt-get install -y python3-pip tox
     - name: Lint code
       run: tox -e lint
-  run-unit-tests:
+  runit-tests:
     name: Run unit tests
     needs: start-runner # required to start the main job when the runner is ready
     runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
@@ -48,7 +48,7 @@ jobs:
       uses: actions/checkout@v2
 
     - name: Install dependencies
-      run: sudo apt-get install python3-pip tox
+      run: sudo apt-get install -y python3-pip tox
 
     - name: Run unit tests
       run: tox -e unit
@@ -90,6 +90,7 @@ jobs:
     needs:
       - start-runner # required to get output from the start-runner job
       - lint
+      - unit-tests
       - integration-tests # required to wait when the main job is done
     runs-on: ubuntu-latest
     if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
