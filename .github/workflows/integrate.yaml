@@ -16,8 +16,6 @@ on:
         required: true
       GH_PERSONAL_ACCESS_TOKEN:
         required: true
-# on:
-#   pull_request:
 
 jobs:
   start-runner:
@@ -39,10 +37,10 @@ jobs:
         with:
           mode: start
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          ec2-image-id: ami-0fe7df2ee200652fb
-          ec2-instance-type: t2.2xlarge
-          subnet-id: subnet-07447a9ea78654795
-          security-group-id: sg-0f9bb0d3908cd0740
+          ec2-image-id: ${{ vars.AWS_EC2_IMAGE_ID }}
+          ec2-instance-type: ${{ vars.AWS_EC2_INSTANCE_TYPE }}
+          subnet-id: ${{ vars.AWS_DEFAULT_SUBNET_ID }}
+          security-group-id: ${{ vars.AWS_SECURITY_GROUP_ID }}
   lint:
     name: Run lint
     needs: start-runner
@@ -76,6 +74,7 @@ jobs:
       uses: actions/checkout@v2
 
     - name: Setup operator environment
+      # The runner will run the code as root. There is problem when using juju under rood so here is small workaround to exec as ubuntu user
       run: |
         chmod 777 .
         /bin/su -c "$(pwd)/.github/workflows/setup_environment.sh" - ubuntu
