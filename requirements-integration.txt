@@ -4,27 +4,30 @@
 #
 #    pip-compile --resolver=backtracking ./requirements-integration.in
 #
+aiohttp==3.8.3
+    # via -r ./requirements-integration.in
+aiosignal==1.3.1
+    # via aiohttp
+alembic==1.9.4
+    # via mlflow
 anyio==3.6.2
-    # via httpcore
+    # via
+    #   -r ./requirements.txt
+    #   httpcore
 asttokens==2.2.1
     # via stack-data
-async-generator==1.10
-    # via
-    #   trio
-    #   trio-websocket
+async-timeout==4.0.2
+    # via aiohttp
 attrs==22.1.0
     # via
     #   -r ./requirements.txt
+    #   aiohttp
     #   jsonschema
-    #   outcome
     #   pytest
-    #   trio
 backcall==0.2.0
     # via ipython
 bcrypt==4.0.1
     # via paramiko
-blinker==1.5
-    # via selenium-wire
 boto3==1.26.27
     # via -r ./requirements.txt
 botocore==1.29.27
@@ -32,8 +35,6 @@ botocore==1.29.27
     #   -r ./requirements.txt
     #   boto3
     #   s3transfer
-brotli==1.0.9
-    # via selenium-wire
 cachetools==5.2.0
     # via google-auth
 certifi==2022.12.7
@@ -43,8 +44,6 @@ certifi==2022.12.7
     #   httpx
     #   kubernetes
     #   requests
-    #   selenium
-    #   selenium-wire
 cffi==1.15.1
     # via
     #   cryptography
@@ -53,60 +52,116 @@ chardet==3.0.4
     # via
     #   -r ./requirements.txt
     #   requests
-cryptography==38.0.4
+charmed-kubeflow-chisme==0.0.5
+    # via -r ./requirements.txt
+charset-normalizer==2.1.1
+    # via aiohttp
+click==8.1.3
     # via
-    #   paramiko
-    #   pyopenssl
+    #   databricks-cli
+    #   flask
+    #   mlflow
+cloudpickle==2.2.1
+    # via
+    #   mlflow
+    #   shap
+contourpy==1.0.7
+    # via matplotlib
+cryptography==38.0.4
+    # via paramiko
+cycler==0.11.0
+    # via matplotlib
+databricks-cli==0.17.4
+    # via mlflow
 decorator==5.1.1
     # via
     #   ipdb
     #   ipython
-exceptiongroup==1.0.4
+deepdiff==6.2.1
     # via
-    #   pytest
-    #   trio
+    #   -r ./requirements.txt
+    #   charmed-kubeflow-chisme
+docker==5.0.3
+    # via mlflow
+entrypoints==0.4
+    # via mlflow
+exceptiongroup==1.0.4
+    # via pytest
 executing==1.2.0
     # via stack-data
+flask==2.2.3
+    # via mlflow
+fonttools==4.38.0
+    # via matplotlib
+frozenlist==1.3.3
+    # via
+    #   aiohttp
+    #   aiosignal
+gitdb==4.0.10
+    # via gitpython
+gitpython==3.1.31
+    # via mlflow
 google-auth==2.15.0
     # via kubernetes
+greenlet==2.0.2
+    # via sqlalchemy
+gunicorn==20.1.0
+    # via mlflow
 h11==0.14.0
     # via
+    #   -r ./requirements.txt
     #   httpcore
-    #   wsproto
-h2==4.1.0
-    # via selenium-wire
-hpack==4.0.0
-    # via h2
 httpcore==0.16.2
-    # via httpx
-httpx==0.23.1
-    # via lightkube
-hyperframe==6.0.1
     # via
-    #   h2
-    #   selenium-wire
+    #   -r ./requirements.txt
+    #   httpx
+httpx==0.23.1
+    # via
+    #   -r ./requirements.txt
+    #   lightkube
 idna==2.10
     # via
     #   -r ./requirements.txt
     #   anyio
     #   requests
     #   rfc3986
-    #   trio
+    #   yarl
+importlib-metadata==5.2.0
+    # via
+    #   alembic
+    #   flask
+    #   markdown
+    #   mlflow
+    #   numba
+importlib-resources==5.10.2
+    # via
+    #   alembic
+    #   matplotlib
 iniconfig==1.1.1
     # via pytest
 ipdb==0.13.9
     # via pytest-operator
 ipython==8.7.0
     # via ipdb
+itsdangerous==2.1.2
+    # via flask
 jedi==0.18.2
     # via ipython
 jinja2==3.1.2
-    # via pytest-operator
+    # via
+    #   -r ./requirements-integration.in
+    #   -r ./requirements.txt
+    #   charmed-kubeflow-chisme
+    #   flask
+    #   mlflow
+    #   pytest-operator
 jmespath==1.0.1
     # via
     #   -r ./requirements.txt
     #   boto3
     #   botocore
+joblib==1.2.0
+    # via scikit-learn
 jsonschema==3.2.0
     # via
     #   -r ./requirements.txt
@@ -117,39 +172,84 @@ juju==3.0.4
     #   pytest-operator
 jujubundlelib==0.5.7
     # via theblues
-kaitaistruct==0.10
-    # via selenium-wire
+kiwisolver==1.4.4
+    # via matplotlib
 kubernetes==17.17.0
     # via juju
 lightkube==0.11.0
-    # via -r ./requirements-integration.in
+    # via
+    #   -r ./requirements.txt
+    #   charmed-kubeflow-chisme
 lightkube-models==1.25.4.4
-    # via lightkube
+    # via
+    #   -r ./requirements.txt
+    #   lightkube
+llvmlite==0.39.1
+    # via numba
 macaroonbakery==1.3.1
     # via
     #   juju
     #   theblues
+mako==1.2.4
+    # via alembic
+markdown==3.4.1
+    # via mlflow
 markupsafe==2.1.1
-    # via jinja2
+    # via
+    #   -r ./requirements.txt
+    #   jinja2
+    #   mako
+    #   werkzeug
+matplotlib==3.7.0
+    # via mlflow
 matplotlib-inline==0.1.6
     # via ipython
+mlflow==2.1.1
+    # via -r ./requirements-integration.in
+multidict==6.0.3
+    # via
+    #   aiohttp
+    #   yarl
 mypy-extensions==0.4.3
     # via typing-inspect
+numba==0.56.4
+    # via shap
+numpy==1.23.5
+    # via
+    #   contourpy
+    #   matplotlib
+    #   mlflow
+    #   numba
+    #   pandas
+    #   pyarrow
+    #   scikit-learn
+    #   scipy
+    #   shap
 oauthlib==3.2.2
-    # via requests-oauthlib
+    # via
+    #   databricks-cli
+    #   requests-oauthlib
 oci-image==1.0.0
     # via -r ./requirements.txt
 ops==1.5.4
     # via
     #   -r ./requirements.txt
-    #   ops-lib-mysql
+    #   charmed-kubeflow-chisme
     #   serialized-data-interface
-ops-lib-mysql==1.0
-    # via -r ./requirements.txt
-outcome==1.2.0
-    # via trio
-packaging==21.3
-    # via pytest
+ordered-set==4.1.0
+    # via
+    #   -r ./requirements.txt
+    #   deepdiff
+packaging==22.0
+    # via
+    #   matplotlib
+    #   mlflow
+    #   pytest
+    #   shap
+pandas==1.5.3
+    # via
+    #   mlflow
+    #   shap
 paramiko==2.12.0
     # via juju
 parso==0.8.3
@@ -158,28 +258,35 @@ pexpect==4.8.0
     # via ipython
 pickleshare==0.7.5
     # via ipython
+pillow==9.4.0
+    # via matplotlib
 pluggy==1.0.0
     # via pytest
-prompt-toolkit==3.0.33
+prompt-toolkit==3.0.36
     # via ipython
 protobuf==3.20.3
-    # via macaroonbakery
+    # via
+    #   macaroonbakery
+    #   mlflow
 ptyprocess==0.7.0
     # via pexpect
 pure-eval==0.2.2
     # via stack-data
+pyarrow==10.0.1
+    # via mlflow
 pyasn1==0.4.8
     # via
     #   juju
     #   pyasn1-modules
     #   rsa
-    #   selenium-wire
 pyasn1-modules==0.2.8
     # via google-auth
 pycparser==2.21
     # via cffi
 pygments==2.13.0
     # via ipython
+pyjwt==2.6.0
+    # via databricks-cli
 pymacaroons==0.13.0
     # via macaroonbakery
 pynacl==1.5.0
@@ -187,12 +294,8 @@ pynacl==1.5.0
     #   macaroonbakery
     #   paramiko
     #   pymacaroons
-pyopenssl==22.1.0
-    # via selenium-wire
 pyparsing==3.0.9
-    # via
-    #   packaging
-    #   selenium-wire
+    # via matplotlib
 pyrfc3339==1.1
     # via
     #   juju
@@ -201,19 +304,12 @@ pyrsistent==0.19.2
     # via
     #   -r ./requirements.txt
     #   jsonschema
-pysocks==1.7.1
-    # via
-    #   selenium-wire
-    #   urllib3
 pytest==7.2.0
     # via
     #   pytest-asyncio
-    #   pytest-lazy-fixture
     #   pytest-operator
 pytest-asyncio==0.20.2
     # via pytest-operator
-pytest-lazy-fixture==0.6.3
-    # via -r ./requirements-integration.in
 pytest-operator==0.22.0
     # via -r ./requirements-integration.in
 python-dateutil==2.8.2
@@ -221,8 +317,13 @@ python-dateutil==2.8.2
     #   -r ./requirements.txt
     #   botocore
     #   kubernetes
+    #   matplotlib
+    #   pandas
 pytz==2022.6
-    # via pyrfc3339
+    # via
+    #   mlflow
+    #   pandas
+    #   pyrfc3339
 pyyaml==5.4
     # via
     #   -r ./requirements.txt
@@ -230,39 +331,62 @@ pyyaml==5.4
     #   jujubundlelib
     #   kubernetes
     #   lightkube
+    #   mlflow
     #   ops
     #   pytest-operator
     #   serialized-data-interface
+querystring-parser==1.2.4
+    # via mlflow
 requests==2.25.0
     # via
+    #   -r ./requirements-integration.in
     #   -r ./requirements.txt
+    #   databricks-cli
+    #   docker
     #   kubernetes
     #   macaroonbakery
+    #   mlflow
     #   requests-oauthlib
     #   serialized-data-interface
     #   theblues
 requests-oauthlib==1.3.1
     # via kubernetes
 rfc3986[idna2008]==1.5.0
-    # via httpx
+    # via
+    #   -r ./requirements.txt
+    #   httpx
 rsa==4.9
     # via google-auth
+ruamel-yaml==0.17.21
+    # via
+    #   -r ./requirements.txt
+    #   charmed-kubeflow-chisme
+ruamel-yaml-clib==0.2.7
+    # via
+    #   -r ./requirements.txt
+    #   ruamel-yaml
 s3transfer==0.6.0
     # via
     #   -r ./requirements.txt
     #   boto3
-selenium==4.7.2
+scikit-learn==1.2.1
     # via
-    #   -r ./requirements-integration.in
-    #   selenium-wire
-selenium-wire==5.1.0
-    # via -r ./requirements-integration.in
+    #   mlflow
+    #   shap
+scipy==1.10.0
+    # via
+    #   mlflow
+    #   scikit-learn
+    #   shap
 serialized-data-interface==0.4.0
     # via -r ./requirements.txt
+shap==0.41.0
+    # via mlflow
 six==1.16.0
     # via
     #   -r ./requirements.txt
     #   asttokens
+    #   databricks-cli
     #   google-auth
     #   jsonschema
     #   kubernetes
@@ -270,59 +394,71 @@ six==1.16.0
     #   paramiko
     #   pymacaroons
     #   python-dateutil
+    #   querystring-parser
+slicer==0.0.7
+    # via shap
+smmap==5.0.0
+    # via gitdb
 sniffio==1.3.0
     # via
+    #   -r ./requirements.txt
     #   anyio
     #   httpcore
     #   httpx
-    #   trio
-sortedcontainers==2.4.0
-    # via trio
+sqlalchemy==1.4.46
+    # via
+    #   alembic
+    #   mlflow
+sqlparse==0.4.3
+    # via mlflow
 stack-data==0.6.2
     # via ipython
+tabulate==0.9.0
+    # via databricks-cli
 tenacity==8.1.0
-    # via -r ./requirements-integration.in
+    # via -r ./requirements.txt
 theblues==0.5.2
     # via juju
+threadpoolctl==3.1.0
+    # via scikit-learn
 toml==0.10.2
     # via ipdb
 tomli==2.0.1
     # via pytest
 toposort==1.7
     # via juju
+tqdm==4.64.1
+    # via shap
 traitlets==5.6.0
     # via
     #   ipython
     #   matplotlib-inline
-trio==0.22.0
-    # via
-    #   selenium
-    #   trio-websocket
-trio-websocket==0.9.2
-    # via selenium
 typing-extensions==4.4.0
     # via typing-inspect
 typing-inspect==0.8.0
     # via juju
-urllib3[socks]==1.26.13
+urllib3==1.26.13
     # via
     #   -r ./requirements.txt
     #   botocore
     #   kubernetes
     #   requests
-    #   selenium
 wcwidth==0.2.5
     # via prompt-toolkit
 websocket-client==1.4.2
-    # via kubernetes
+    # via
+    #   docker
+    #   kubernetes
 websockets==7.0
     # via juju
-wsproto==1.2.0
+werkzeug==2.2.3
+    # via flask
+yarl==1.8.2
+    # via aiohttp
+zipp==3.13.0
     # via
-    #   selenium-wire
-    #   trio-websocket
-zstandard==0.19.0
-    # via selenium-wire
+    #   importlib-metadata
+    #   importlib-resources
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools

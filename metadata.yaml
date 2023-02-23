@@ -3,17 +3,18 @@
 name: mlflow-server
 description: |
   MLflow
-min-juju-version: "2.9.0"
-series: [kubernetes]
 summary: |
   A charm which provides a Kubernetes installation of the MLflow (https://mlflow.org/) server.
+containers:
+  mlflow-server:
+    resource: oci-image
 resources:
   oci-image:
     type: oci-image
     description: Backing OCI image
-    upstream-source: quay.io/helix-ml/mlflow:1.13.1
+    upstream-source: docker.io/charmed/base-mlflow
 requires:
-  db:
+  relational-db:
     interface: mysql
   object-storage:
     interface: object-storage
@@ -44,50 +45,4 @@ requires:
           - service
     versions: [v1]
     __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
-  ingress:
-    interface: ingress
-    schema:
-      v2:
-        requires:
-          type: object
-          properties:
-            service:
-              type: string
-            port:
-              type: integer
-            namespace:
-              type: string
-            prefix:
-              type: string
-            rewrite:
-              type: string
-          required:
-          - service
-          - port
-          - namespace
-          - prefix
-      v1:
-        requires:
-          type: object
-          properties:
-            service:
-              type: string
-            port:
-              type: integer
-            prefix:
-              type: string
-            rewrite:
-              type: string
-          required:
-          - service
-          - port
-          - prefix
-    versions: [v1]
-    __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/ingress.yaml
-  pod-defaults:
-    interface: pod-defaults
-provides:
-  metrics-endpoint:
-    interface: prometheus_scrape
-  grafana-dashboard:
-    interface: grafana_dashboard
+  
