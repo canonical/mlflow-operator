@@ -12,7 +12,7 @@ resources:
   oci-image:
     type: oci-image
     description: Backing OCI image
-    upstream-source: docker.io/charmed/base-mlflow
+    upstream-source: ghcr.io/mlflow/mlflow:v2.1.1
 requires:
   relational-db:
     interface: mysql
