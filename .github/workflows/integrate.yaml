@@ -76,7 +76,7 @@ jobs:
     - name: Setup operator environment
       # The runner will run the code as root. There is problem when using juju under rood so here is small workaround to exec as ubuntu user
       run: |
-        chmod 777 .
+        chmod 755 .
         /bin/su -c "$(pwd)/.github/workflows/setup_environment.sh" - ubuntu
     - name: Setup microk8s
       run: /bin/su -c "$(pwd)/.github/workflows/setup_microk8s.sh" - ubuntu
