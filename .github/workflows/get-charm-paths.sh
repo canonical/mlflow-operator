@@ -1,12 +1,12 @@
 #!/bin/bash -x
 
-# Finds the charms in this repo, outputing them as JSON
+# Finds the charms in this repo, outputting them as JSON
 # Will return one of:
 # * the relative paths of the directories listed in `./charms`, if that directory exists
 # * "./", if the root directory has a "metadata.yaml" file
 # * otherwise, error
 #
-# Modifed from: https://stackoverflow.com/questions/63517732/github-actions-build-matrix-for-lambda-functions/63736071#63736071
+# Modified from: https://stackoverflow.com/questions/63517732/github-actions-build-matrix-for-lambda-functions/63736071#63736071
 CHARMS_DIR="./charms"
 if [ -d "$CHARMS_DIR" ];
 then
