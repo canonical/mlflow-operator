@@ -37,6 +37,7 @@ async def test_build_and_deploy(ops_test: OpsTest):
     )
     assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
+
 @pytest.mark.abort_on_fail
 async def test_can_create_experiment_with_mlflow_library(ops_test: OpsTest):
     config = await ops_test.model.applications[CHARM_NAME].get_config()
