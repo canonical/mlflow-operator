@@ -14,7 +14,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 !lib/charms/*
 lib64/
 parts/
