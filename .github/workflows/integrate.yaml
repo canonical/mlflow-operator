@@ -93,11 +93,11 @@ jobs:
       if: failure()
 
     - name: Get workload logs
-      run: /bin/su -c "kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager" - ubuntu 
+      run: /bin/su -c "kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server-manager" - ubuntu 
       if: failure()
 
     - name: Get operator logs
-      run: /bin/su -c "kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager" - ubuntu
+      run: /bin/su -c "kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server-manager" - ubuntu
       if: failure()
   stop-runner:
     name: Stop self-hosted EC2 runner
