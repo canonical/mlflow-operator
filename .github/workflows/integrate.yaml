@@ -4,86 +4,121 @@ name: CI
 on:
   workflow_call:
     secrets:
-      charmcraft-credentials:
+      CHARMCRAFT_CREDENTIALS:
+        required: true
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_DEFAULT_REGION:
+        required: true
+      AWS_REGION:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      GH_PERSONAL_ACCESS_TOKEN:
         required: true
 
 jobs:
-
-  lib-check:
-    name: Check libraries
-    runs-on: ubuntu-20.04
+  start-runner:
+    name: Start self-hosted EC2 runner
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.start-ec2-runner.outputs.label }}
+      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          fetch-depth: 0
-      - name: Check libs
-        uses: canonical/charming-actions/check-libraries@2.1.1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Start EC2 runner
+        id: start-ec2-runner
+        uses: machulav/ec2-github-runner@v2
         with:
-          credentials: "${{ secrets.charmcraft-credentials }}"
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
-
+          mode: start
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          ec2-image-id: ${{ vars.AWS_EC2_IMAGE_ID }}
+          ec2-instance-type: ${{ vars.AWS_EC2_INSTANCE_TYPE }}
+          subnet-id: ${{ vars.AWS_DEFAULT_SUBNET_ID }}
+          security-group-id: ${{ vars.AWS_SECURITY_GROUP_ID }}
   lint:
-    name: Lint Check
-    runs-on: ubuntu-20.04
-
+    name: Run lint
+    needs: start-runner
+    runs-on: ${{ needs.start-runner.outputs.label }}
     steps:
-    - name: Check out code
+    - name: Check out repo
       uses: actions/checkout@v2
-
     - name: Install dependencies
-      run: sudo apt-get install python3-pip tox
-
+      run: sudo apt-get install -y python3-pip tox
     - name: Lint code
       run: tox -e lint
-
-  unit:
-    name: Unit Test
-    runs-on: ubuntu-20.04
-
+  unit-tests:
+    name: Run unit tests
+    needs: [start-runner, lint]  
+    runs-on: ${{ needs.start-runner.outputs.label }}
     steps:
     - name: Check out code
       uses: actions/checkout@v2
 
     - name: Install dependencies
-      run: sudo apt-get install python3-pip tox
+      run: sudo apt-get install -y python3-pip tox
 
     - name: Run unit tests
       run: tox -e unit
-
-  integration:
-    name: Integration Test (build and deploy)
-    runs-on: ubuntu-20.04
-
+  integration-tests:
+    name: Run integration tests
+    needs: [start-runner, lint, unit-tests]
+    runs-on: ${{ needs.start-runner.outputs.label }} 
     steps:
     - name: Check out repo
       uses: actions/checkout@v2
 
     - name: Setup operator environment
-      uses: claudiubelu/actions-operator@18ebf92ae3043bd3dd15238e5d9b662d7ba08daf
-      with:
-        provider: microk8s
-        channel: 1.24/stable
-        # Pinned until this bug is resolved: https://bugs.launchpad.net/juju/+bug/1992833
-        bootstrap-options: "--agent-version=2.9.34"
-        microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
-
+      # The runner will run the code as root. There is problem when using juju under rood so here is small workaround to exec as ubuntu user
+      run: |
+        chmod 777 .
+        /bin/su -c "$(pwd)/.github/workflows/setup_environment.sh" - ubuntu
+    - name: Setup microk8s
+      run: /bin/su -c "$(pwd)/.github/workflows/setup_microk8s.sh" - ubuntu
     - name: Run integration tests
-      run: tox -vve integration -- --model testing
+      run: /bin/su -c "cd $(pwd) && tox -vve integration -- --model kubeflow" - ubuntu 
 
     # On failure, capture debugging resources
     - name: Get all
-      run: kubectl get all -A
+      run: /bin/su -c "kubectl get all -A" - ubuntu 
       if: failure()
 
     - name: Get juju status
-      run: juju status
+      run: /bin/su -c "juju status" - ubuntu 
       if: failure()
 
     - name: Get workload logs
-      run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server
+      run: /bin/su -c "kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager" - ubuntu 
       if: failure()
 
     - name: Get operator logs
-      run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server
+      run: /bin/su -c "kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager" - ubuntu
       if: failure()
+  stop-runner:
+    name: Stop self-hosted EC2 runner
+    needs:
+      - start-runner 
+      - lint
+      - unit-tests
+      - integration-tests
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Stop EC2 runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
