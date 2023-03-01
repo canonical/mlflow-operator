@@ -26,14 +26,14 @@ jobs:
       ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v1.7.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
       - name: Start EC2 runner
         id: start-ec2-runner
-        uses: machulav/ec2-github-runner@v2
+        uses: machulav/ec2-github-runner@v2.3.3
         with:
           mode: start
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
@@ -74,7 +74,7 @@ jobs:
       uses: actions/checkout@v2
 
     - name: Setup operator environment
-      # The runner will run the code as root. There is problem when using juju under rood so here is small workaround to exec as ubuntu user
+      # The runner will run the code as root. There is problem when using juju under root so here is small workaround to exec as ubuntu user
       run: |
         chmod 777 .
         /bin/su -c "$(pwd)/.github/workflows/setup_environment.sh" - ubuntu
@@ -93,11 +93,11 @@ jobs:
       if: failure()
 
     - name: Get workload logs
-      run: /bin/su -c "kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=seldon-controller-manager" - ubuntu 
+      run: /bin/su -c "kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server-manager" - ubuntu 
       if: failure()
 
     - name: Get operator logs
-      run: /bin/su -c "kubectl logs --tail 100 -ntesting -loperator.juju.is/name=seldon-controller-manager" - ubuntu
+      run: /bin/su -c "kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server-manager" - ubuntu
       if: failure()
   stop-runner:
     name: Stop self-hosted EC2 runner
@@ -110,13 +110,13 @@ jobs:
     if: ${{ always() }}
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v1.7.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
       - name: Stop EC2 runner
-        uses: machulav/ec2-github-runner@v2
+        uses: machulav/ec2-github-runner@v2.3.3
         with:
           mode: stop
           github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
