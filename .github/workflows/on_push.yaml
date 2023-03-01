@@ -15,7 +15,6 @@ on:
     - track/**
 
 jobs:
-
   tests:
     name: Run Tests
     uses: ./.github/workflows/integrate.yaml
