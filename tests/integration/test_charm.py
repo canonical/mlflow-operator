@@ -33,7 +33,7 @@ async def test_build_and_deploy(ops_test: OpsTest):
     )
 
     await ops_test.model.wait_for_idle(
-        apps=[CHARM_NAME], status="active", raise_on_blocked=True, timeout=300
+        apps=[CHARM_NAME], status="active", raise_on_blocked=True, timeout=300, idle_period=60
     )
     assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
