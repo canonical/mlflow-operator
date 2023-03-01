@@ -99,26 +99,26 @@ jobs:
     - name: Get operator logs
       run: /bin/su -c "kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server-manager" - ubuntu
       if: failure()
-  stop-runner:
-    name: Stop self-hosted EC2 runner
-    needs:
-      - start-runner 
-      - lint
-      - unit-tests
-      - integration-tests
-    runs-on: ubuntu-latest
-    if: ${{ always() }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1.7.0
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-      - name: Stop EC2 runner
-        uses: machulav/ec2-github-runner@v2.3.3
-        with:
-          mode: stop
-          github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          label: ${{ needs.start-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
+  # stop-runner:
+  #   name: Stop self-hosted EC2 runner
+  #   needs:
+  #     - start-runner 
+  #     - lint
+  #     - unit-tests
+  #     - integration-tests
+  #   runs-on: ubuntu-latest
+  #   if: ${{ always() }}
+  #   steps:
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v1.7.0
+  #       with:
+  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #         aws-region: ${{ secrets.AWS_REGION }}
+  #     - name: Stop EC2 runner
+  #       uses: machulav/ec2-github-runner@v2.3.3
+  #       with:
+  #         mode: stop
+  #         github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+  #         label: ${{ needs.start-runner.outputs.label }}
+  #         ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
