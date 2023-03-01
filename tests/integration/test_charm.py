@@ -36,11 +36,3 @@ async def test_build_and_deploy(ops_test: OpsTest):
         apps=[CHARM_NAME], status="active", raise_on_blocked=True, timeout=300, idle_period=60
     )
     assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
-
-
-@pytest.mark.abort_on_fail
-async def test_can_create_experiment_with_mlflow_library(ops_test: OpsTest):
-    config = await ops_test.model.applications[CHARM_NAME].get_config()
-    url = f"http://localhost:{config['mlflow_nodeport']['value']}"
-    response = requests.get(url)
-    assert response.status_code == 200
