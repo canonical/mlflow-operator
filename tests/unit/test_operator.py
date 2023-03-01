@@ -13,7 +13,7 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import MlflowCharm
 
-BUCKET_NAME = "test-bucket"
+BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
 
 OBJECT_STORAGE_DATA = {
@@ -220,20 +220,19 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._validate_default_s3_bucket")
+    @patch("charm.MlflowCharm._validate_default_s3_bucket_name_and_access")
     def test_get_relational_db_data_success(
         self, validate_default_s3_bucket: MagicMock, relational_db_relation: Harness
     ):
         relational_db_relation.begin_with_initial_hooks()
-        validate_default_s3_bucket.assert_called_with(OBJECT_STORAGE_DATA)
+        validate_default_s3_bucket.assert_called()
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._validate_default_s3_bucket")
     def test_get_relational_db_data_failure_multiple_relations(
-        self, validate_default_s3_bucket: MagicMock, relational_db_relation: Harness
+        self, relational_db_relation: Harness
     ):
         rel_id = relational_db_relation.add_relation("relational-db", "mysql_app2")
         relational_db_relation.add_relation_unit(rel_id, "mysql_app2/0")
@@ -354,7 +353,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.MlflowCharm.container")
-    @patch("charm.MlflowCharm._validate_default_s3_bucket")
+    @patch("charm.MlflowCharm._validate_default_s3_bucket_name_and_access")
     def test_update_layer_failure_container_problem(
         self,
         _: MagicMock,
@@ -373,15 +372,15 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._validate_default_s3_bucket")
+    @patch("charm.MlflowCharm._validate_default_s3_bucket_name_and_access")
     @patch("charm.MlflowCharm._update_layer")
     def test_environament_variables(
         self,
         update_layer: MagicMock,
-        validate_default_s3_bucket: MagicMock,
+        validate_default_s3_bucket_name_and_access: MagicMock,
         relational_db_relation: Harness,
     ):
-        validate_default_s3_bucket.return_value = BUCKET_NAME
+        validate_default_s3_bucket_name_and_access.return_value = True
         relational_db_relation.begin_with_initial_hooks()
         update_layer.assert_called_with(EXPECTED_ENVIRONMENT, BUCKET_NAME)
 
@@ -389,7 +388,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._validate_default_s3_bucket")
+    @patch("charm.MlflowCharm._validate_default_s3_bucket_name_and_access")
     def test_update_layer_success(
         self,
         _: MagicMock,
