@@ -10,6 +10,4 @@ juju add-model kubeflow
 
 # Install + setup kubectl
 sudo snap install kubectl --classic
-mkdir -p /home/ubuntu/.kube
-chown -f -R ubuntu /home/ubuntu/.kube
 microk8s config > /home/ubuntu/.kube/config
