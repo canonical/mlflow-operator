@@ -156,10 +156,34 @@ class MlflowCharm(CharmBase):
         }
         return ret_env_vars
 
-    def _validate_default_s3_bucket(self, obj_storage_data):
-        """Validates the default S3 store, ensuring bucket is accessible and creating if needed."""
-        # Validate the bucket name
-        bucket_name = self.config["default_artifact_root"]
+    def _create_default_s3_bucket(self, s3_wrapper: S3BucketWrapper, bucket_name: str) -> None:
+        """Creates an s3 bucket using the default_artifact_root config value.
+        Raises:
+        ErrorWithStatus: ...
+        """
+        try:
+            s3_wrapper.create_bucket(bucket_name)
+        except Exception as e:
+            raise ErrorWithStatus(
+                "Error with default S3 artifact store - bucket not accessible or "
+                f"cannot be created.  Caught error: '{str(e)}",
+                BlockedStatus,
+            )
+
+    def _validate_default_s3_bucket_name_and_access(
+        self, bucket_name: str, s3_wrapper: S3BucketWrapper
+    ) -> bool:
+        """Validates the default s3 bucket name is valid and the bucket is accessible.
+        If it is not accessible and the `create_default_artifact_root_if_missing` config value
+        is True, returns False; True otherwise.
+
+        Args:
+        bucket_name: ...
+        s3_wrapper: ...
+        Raises:
+        ErrorWithStatus ...
+
+        """
         if not validate_s3_bucket_name(bucket_name):
             msg = (
                 f"Invalid value for config default_artifact_root '{bucket_name}'"
@@ -167,34 +191,22 @@ class MlflowCharm(CharmBase):
             )
             raise ErrorWithStatus(msg, BlockedStatus)
 
-        # Ensure the bucket exists, creating it if missing and create_root_if_not_exists==True
-        s3_wrapper = S3BucketWrapper(
-            access_key=obj_storage_data["access-key"],
-            secret_access_key=obj_storage_data["secret-key"],
-            s3_service=f"{obj_storage_data['service']}.{obj_storage_data['namespace']}",
-            s3_port=obj_storage_data["port"],
-        )
-
-        if s3_wrapper.check_if_bucket_accessible(bucket_name):
-            return bucket_name
-        else:
-            if self.config["create_default_artifact_root_if_missing"]:
-                try:
-                    s3_wrapper.create_bucket(bucket_name)
-                    return bucket_name
-                except Exception as e:
-                    raise ErrorWithStatus(
-                        "Error with default S3 artifact store - bucket not accessible or "
-                        f"cannot be created.  Caught error: '{str(e)}",
-                        BlockedStatus,
-                    )
-            else:
-                raise ErrorWithStatus(
-                    "Error with default S3 artifact store - bucket not accessible or does not "
-                    "exist. Set create_default_artifact_root_if_missing=True to automatically "
-                    "create a missing default bucket",
-                    BlockedStatus,
-                )
+        if (
+            not s3_wrapper.check_if_bucket_accessible(bucket_name)
+            and not self.config["create_default_artifact_root_if_missing"]
+        ):
+            raise ErrorWithStatus(
+                "Error with default S3 artifact store - bucket not accessible or does not "
+                "exist. Set create_default_artifact_root_if_missing=True to automatically "
+                "create a missing default bucket",
+                BlockedStatus,
+            )
+        elif (
+            not s3_wrapper.check_if_bucket_accessible(bucket_name)
+            and self.config["create_default_artifact_root_if_missing"]
+        ):
+            return False
+        return True
 
     def _check_leader(self):
         """Check if this unit is a leader."""
@@ -232,8 +244,19 @@ class MlflowCharm(CharmBase):
             object_storage_data = self._get_object_storage_data(interfaces)
             relational_db_data = self._get_relational_db_data()
             envs = self._get_env_vars(relational_db_data, object_storage_data)
-            default_artifact_root = self._validate_default_s3_bucket(object_storage_data)
-            self._update_layer(envs, default_artifact_root)
+
+            s3_wrapper = S3BucketWrapper(
+                access_key=object_storage_data["access-key"],
+                secret_access_key=object_storage_data["secret-key"],
+                s3_service=f"{object_storage_data['service']}.{object_storage_data['namespace']}",
+                s3_port=object_storage_data["port"],
+            )
+            bucket_name = self.config["default_artifact_root"]
+            if not self._validate_default_s3_bucket_name_and_access(
+                bucket_name=bucket_name, s3_wrapper=s3_wrapper
+            ):
+                self._create_default_s3_bucket(s3_wrapper, bucket_name)
+            self._update_layer(envs, bucket_name)
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
             self.logger.info(f"Failed to handle {event} with error: {str(err)}")
