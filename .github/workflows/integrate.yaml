@@ -49,7 +49,7 @@ jobs:
     - name: Check out repo
       uses: actions/checkout@v2
     - name: Install dependencies
-      run: sudo apt-get install -y python3-pip tox
+      run: sudo apt-get update && sudo apt-get install -y python3-pip tox
     - name: Lint code
       run: tox -e lint
   unit-tests:
