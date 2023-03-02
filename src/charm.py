@@ -256,7 +256,6 @@ class MlflowCharm(CharmBase):
             self.model.unit.status = err.status
             self.logger.info(f"Event {event} stopped early with message: {str(err)}")
             return
-
         self.model.unit.status = ActiveStatus()
 
 
