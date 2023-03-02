@@ -63,6 +63,20 @@ class MlflowCharm(CharmBase):
             refresh_event=self.on.config_changed,
         )
 
+    @staticmethod
+    def _get_env_vars(relational_db_data, object_storage_data):
+        """Return environment variables based on model configuration."""
+
+        ret_env_vars = {
+            "AWS_ENDPOINT_URL": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
+            "AWS_ACCESS_KEY_ID": object_storage_data["access-key"],
+            "AWS_SECRET_ACCESS_KEY": object_storage_data["secret-key"],
+            "USE_SSL": str(object_storage_data["secure"]).lower(),
+            "DB_ROOT_PASSWORD": relational_db_data["root_password"],
+            "MLFLOW_TRACKING_URI": f"mysql+pymysql://root:{relational_db_data['root_password']}@{relational_db_data['host']}:{relational_db_data['port']}/{relational_db_data['database']}",  # noqa: E501
+        }
+        return ret_env_vars
+
     def _charmed_mlflow_layer(self, env_vars, default_artifact_root) -> Layer:
         """Create and return Pebble framework layer."""
 
@@ -108,7 +122,9 @@ class MlflowCharm(CharmBase):
     ):
         relational_db = self.model.relations["relational-db"]
         if len(relational_db) > 1:
-            raise ErrorWithStatus(f"Too many mysql relations {len(relational_db)}", BlockedStatus)
+            raise ErrorWithStatus(
+                f"Too many mysql relations. Found {len(relational_db)}, expected 1", BlockedStatus
+            )
 
         try:
             relational_db = relational_db[0]
@@ -116,8 +132,10 @@ class MlflowCharm(CharmBase):
             relational_db = relational_db.data[db_unit]
             relational_db["database"]
             return relational_db
-        except (IndexError, KeyError):
+        except IndexError:
             raise ErrorWithStatus("Waiting for relational-db relation data", WaitingStatus)
+        except KeyError:
+            raise ErrorWithStatus("Missing data in relational-db relation", WaitingStatus)
 
     def _get_object_storage_data(self, interfaces):
         """Unpacks and returns the object-storage relation data.
@@ -137,19 +155,6 @@ class MlflowCharm(CharmBase):
             )
 
         return obj_storage
-
-    def _get_env_vars(self, relational_db_data, object_storage_data):
-        """Return environment variables based on model configuration."""
-
-        ret_env_vars = {
-            "AWS_ENDPOINT_URL": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
-            "AWS_ACCESS_KEY_ID": object_storage_data["access-key"],
-            "AWS_SECRET_ACCESS_KEY": object_storage_data["secret-key"],
-            "USE_SSL": str(object_storage_data["secure"]).lower(),
-            "DB_ROOT_PASSWORD": relational_db_data["root_password"],
-            "MLFLOW_TRACKING_URI": f"mysql+pymysql://root:{relational_db_data['root_password']}@{relational_db_data['host']}:{relational_db_data['port']}/{relational_db_data['database']}",  # noqa: E501
-        }
-        return ret_env_vars
 
     def _create_default_s3_bucket(self, s3_wrapper: S3BucketWrapper, bucket_name: str) -> None:
         """Creates an s3 bucket using the default_artifact_root config value.

@@ -42,11 +42,6 @@ EXPECTED_ENVIRONMENT = {
 }
 
 
-class _FakeNoVersionsListed(NoVersionsListed):
-    def __init__(self):
-        super().__init__(MagicMock())
-
-
 class _FakeChangeError(ChangeError):
     """Used to simulate a ChangeError during testing."""
 
@@ -66,8 +61,16 @@ def harness() -> Harness:
     return harness
 
 
-@pytest.fixture(scope="function")
-def obejct_storage_relation(harness: Harness) -> Harness:
+def add_relational_db_to_harness(harness: Harness) -> Harness:
+    """Helper function to handle relational db relation"""
+    rel_id = harness.add_relation("relational-db", "mysql_app")
+    harness.add_relation_unit(rel_id, "mysql_app/0")
+    harness.update_relation_data(rel_id, "mysql_app/0", RELATIONAL_DB_DATA)
+    return harness
+
+
+def add_object_storage_to_harness(harness: Harness):
+    """Helper function to handle object storage relation"""
     object_storage_data = {"_supported_versions": "- v1", "data": yaml.dump(OBJECT_STORAGE_DATA)}
     harness.set_leader(True)
     object_storage_relation_id = harness.add_relation("object-storage", "storage-provider")
@@ -76,14 +79,6 @@ def obejct_storage_relation(harness: Harness) -> Harness:
         object_storage_relation_id, "storage-provider", object_storage_data
     )
     return harness
-
-
-@pytest.fixture(scope="function")
-def relational_db_relation(obejct_storage_relation: Harness) -> Harness:
-    rel_id = obejct_storage_relation.add_relation("relational-db", "mysql_app")
-    obejct_storage_relation.add_relation_unit(rel_id, "mysql_app/0")
-    obejct_storage_relation.update_relation_data(rel_id, "mysql_app/0", RELATIONAL_DB_DATA)
-    return obejct_storage_relation
 
 
 class TestCharm:
@@ -210,9 +205,10 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_object_storage_data_success(self, obejct_storage_relation: Harness):
-        obejct_storage_relation.begin_with_initial_hooks()
-        assert obejct_storage_relation.charm.model.unit.status == WaitingStatus(
+    def test_get_object_storage_data_success(self, harness: Harness):
+        harness = add_object_storage_to_harness(harness)
+        harness.begin_with_initial_hooks()
+        assert harness.charm.model.unit.status == WaitingStatus(
             "Waiting for relational-db relation data"
         )
 
@@ -222,24 +218,26 @@ class TestCharm:
     )
     @patch("charm.MlflowCharm._validate_default_s3_bucket_name_and_access")
     def test_get_relational_db_data_success(
-        self, validate_default_s3_bucket: MagicMock, relational_db_relation: Harness
+        self, validate_default_s3_bucket: MagicMock, harness: Harness
     ):
-        relational_db_relation.begin_with_initial_hooks()
+        harness = add_object_storage_to_harness(harness)
+        harness = add_relational_db_to_harness(harness)
+        harness.begin_with_initial_hooks()
         validate_default_s3_bucket.assert_called()
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_relational_db_data_failure_multiple_relations(
-        self, relational_db_relation: Harness
-    ):
-        rel_id = relational_db_relation.add_relation("relational-db", "mysql_app2")
-        relational_db_relation.add_relation_unit(rel_id, "mysql_app2/0")
-        relational_db_relation.update_relation_data(rel_id, "mysql_app2/0", RELATIONAL_DB_DATA)
-        relational_db_relation.begin_with_initial_hooks()
-        assert relational_db_relation.charm.model.unit.status == BlockedStatus(
-            "Too many mysql relations 2"
+    def test_get_relational_db_data_failure_multiple_relations(self, harness: Harness):
+        harness = add_object_storage_to_harness(harness)
+        harness = add_relational_db_to_harness(harness)
+        rel_id = harness.add_relation("relational-db", "mysql_app2")
+        harness.add_relation_unit(rel_id, "mysql_app2/0")
+        harness.update_relation_data(rel_id, "mysql_app2/0", RELATIONAL_DB_DATA)
+        harness.begin_with_initial_hooks()
+        assert harness.charm.model.unit.status == BlockedStatus(
+            "Too many mysql relations. Found 2, expected 1"
         )
 
     @patch(
@@ -254,13 +252,15 @@ class TestCharm:
         update_layer: MagicMock,
         check_if_bucket_accessible: MagicMock,
         init: MagicMock,
-        relational_db_relation: Harness,
+        harness: Harness,
     ):
+        harness = add_object_storage_to_harness(harness)
+        harness = add_relational_db_to_harness(harness)
         check_if_bucket_accessible.return_value = True
         init.return_value = None
-        relational_db_relation.begin_with_initial_hooks()
+        harness.begin_with_initial_hooks()
         update_layer.assert_called_with(EXPECTED_ENVIRONMENT, "mlflow")
-        assert relational_db_relation.charm.model.unit.status == ActiveStatus()
+        assert harness.charm.model.unit.status == ActiveStatus()
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -276,13 +276,15 @@ class TestCharm:
         update_layer: MagicMock,
         check_if_bucket_accessible: MagicMock,
         init: MagicMock,
-        relational_db_relation: Harness,
+        harness: Harness,
     ):
+        harness = add_object_storage_to_harness(harness)
+        harness = add_relational_db_to_harness(harness)
         check_if_bucket_accessible.return_value = False
         init.return_value = None
-        relational_db_relation.begin_with_initial_hooks()
+        harness.begin_with_initial_hooks()
         update_layer.assert_called_with(EXPECTED_ENVIRONMENT, "mlflow")
-        assert relational_db_relation.charm.model.unit.status == ActiveStatus()
+        assert harness.charm.model.unit.status == ActiveStatus()
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -290,11 +292,13 @@ class TestCharm:
     )
     @patch("charm.validate_s3_bucket_name")
     def test_validate_default_s3_bucket_failure_wrong_name(
-        self, validate_s3_bucket_name: MagicMock, relational_db_relation: Harness
+        self, validate_s3_bucket_name: MagicMock, harness: Harness
     ):
+        harness = add_object_storage_to_harness(harness)
+        harness = add_relational_db_to_harness(harness)
         validate_s3_bucket_name.return_value = False
-        relational_db_relation.begin_with_initial_hooks()
-        assert relational_db_relation.charm.model.unit.status == BlockedStatus(
+        harness.begin_with_initial_hooks()
+        assert harness.charm.model.unit.status == BlockedStatus(
             "Invalid value for config default_artifact_root 'mlflow' "
             "- value must be a valid S3 bucket name"
         )
@@ -311,13 +315,15 @@ class TestCharm:
         create_bucket: MagicMock,
         check_if_bucket_accessible: MagicMock,
         init: MagicMock,
-        relational_db_relation: Harness,
+        harness: Harness,
     ):
+        harness = add_object_storage_to_harness(harness)
+        harness = add_relational_db_to_harness(harness)
         check_if_bucket_accessible.return_value = False
         init.return_value = None
         create_bucket.side_effect = Exception()
-        relational_db_relation.begin_with_initial_hooks()
-        assert relational_db_relation.charm.model.unit.status == BlockedStatus(
+        harness.begin_with_initial_hooks()
+        assert harness.charm.model.unit.status == BlockedStatus(
             "Error with default S3 artifact store - bucket "
             "not accessible or cannot be created.  Caught error: '"
         )
@@ -334,14 +340,16 @@ class TestCharm:
         create_bucket: MagicMock,
         check_if_bucket_accessible: MagicMock,
         init: MagicMock,
-        relational_db_relation: Harness,
+        harness: Harness,
     ):
-        relational_db_relation.update_config({"create_default_artifact_root_if_missing": False})
+        harness = add_object_storage_to_harness(harness)
+        harness = add_relational_db_to_harness(harness)
+        harness.update_config({"create_default_artifact_root_if_missing": False})
         check_if_bucket_accessible.return_value = False
         init.return_value = None
         create_bucket.side_effect = Exception()
-        relational_db_relation.begin_with_initial_hooks()
-        assert relational_db_relation.charm.model.unit.status == BlockedStatus(
+        harness.begin_with_initial_hooks()
+        assert harness.charm.model.unit.status == BlockedStatus(
             "Error with default S3 artifact store - "
             "bucket not accessible or does not exist. "
             "Set create_default_artifact_root_if_missing=True "
@@ -358,13 +366,15 @@ class TestCharm:
         self,
         _: MagicMock,
         container: MagicMock,
-        relational_db_relation: Harness,
+        harness: Harness,
     ):
+        harness = add_object_storage_to_harness(harness)
+        harness = add_relational_db_to_harness(harness)
         change = MagicMock()
         change.tasks = []
         container.replan.side_effect = _FakeChangeError("Fake problem during layer update", change)
-        relational_db_relation.begin_with_initial_hooks()
-        assert relational_db_relation.charm.model.unit.status == BlockedStatus(
+        harness.begin_with_initial_hooks()
+        assert harness.charm.model.unit.status == BlockedStatus(
             "Failed to replan with error: Fake problem during layer update"
         )
 
@@ -378,10 +388,12 @@ class TestCharm:
         self,
         update_layer: MagicMock,
         validate_default_s3_bucket_name_and_access: MagicMock,
-        relational_db_relation: Harness,
+        harness: Harness,
     ):
+        harness = add_object_storage_to_harness(harness)
+        harness = add_relational_db_to_harness(harness)
         validate_default_s3_bucket_name_and_access.return_value = True
-        relational_db_relation.begin_with_initial_hooks()
+        harness.begin_with_initial_hooks()
         update_layer.assert_called_with(EXPECTED_ENVIRONMENT, BUCKET_NAME)
 
     @patch(
@@ -392,7 +404,9 @@ class TestCharm:
     def test_update_layer_success(
         self,
         _: MagicMock,
-        relational_db_relation: Harness,
+        harness: Harness,
     ):
-        relational_db_relation.begin_with_initial_hooks()
-        assert relational_db_relation.charm.model.unit.status == ActiveStatus()
+        harness = add_object_storage_to_harness(harness)
+        harness = add_relational_db_to_harness(harness)
+        harness.begin_with_initial_hooks()
+        assert harness.charm.model.unit.status == ActiveStatus()

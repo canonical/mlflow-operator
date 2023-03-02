@@ -152,9 +152,9 @@ async def test_can_create_experiment_with_mlflow_library(ops_test: OpsTest):
     url = f"http://localhost:{config['mlflow_nodeport']['value']}"
     client = MlflowClient(tracking_uri=url)
     response = requests.get(url)
+    assert response.status_code == 200
     client.create_experiment(TEST_EXPERIMENT_NAME)
     all_experiments = client.search_experiments()
-    assert response.status_code == 200
     assert len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
 
 
