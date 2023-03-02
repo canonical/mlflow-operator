@@ -71,7 +71,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_update_layer_success(
+    def test_charm_starts_with_success(
         self,
         harness: Harness,
     ):
