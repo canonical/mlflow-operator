@@ -18,7 +18,7 @@ from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
 
 class MlflowCharm(CharmBase):
-    """A Juju Charm for Training Operator"""
+    """A Juju Charm for MLFlow."""
 
     def __init__(self, *args):
         super().__init__(*args)
@@ -42,8 +42,9 @@ class MlflowCharm(CharmBase):
         return self._container
 
     def _create_service(self):
+        """Create k8s service based on charm'sconfig."""
         if self.config["enable_mlflow_nodeport"]:
-            self.logger.info("I am Michal Hucko")
+            service_type = "NodePort"
             self._node_port = self.model.config["mlflow_nodeport"]
             port = ServicePort(
                 int(self._port),
@@ -51,22 +52,16 @@ class MlflowCharm(CharmBase):
                 targetPort=int(self._port),
                 nodePort=int(self._node_port),
             )
-            self.service_patcher = KubernetesServicePatch(
-                self,
-                [port],
-                service_type="NodePort",
-                service_name=f"{self.model.app.name}",
-                refresh_event=self.on.config_changed,
-            )
         else:
+            service_type = "ClusterIP"
             port = ServicePort(int(self._port), name=f"{self.app.name}")
-            self.service_patcher = KubernetesServicePatch(
-                self,
-                [port],
-                service_type="ClusterIP",
-                service_name=f"{self.model.app.name}",
-                refresh_event=self.on.config_changed,
-            )
+        self.service_patcher = KubernetesServicePatch(
+            self,
+            [port],
+            service_type=service_type,
+            service_name=f"{self.model.app.name}",
+            refresh_event=self.on.config_changed,
+        )
 
     def _charmed_mlflow_layer(self, env_vars, default_artifact_root) -> Layer:
         """Create and return Pebble framework layer."""
@@ -259,7 +254,7 @@ class MlflowCharm(CharmBase):
             self._update_layer(envs, bucket_name)
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
-            self.logger.info(f"Failed to handle {event} with error: {str(err)}")
+            self.logger.info(f"Event {event} stopped early with message: {str(err)}")
             return
 
         self.model.unit.status = ActiveStatus()
