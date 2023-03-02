@@ -4,7 +4,7 @@
 #
 #    pip-compile --resolver=backtracking ./requirements-lint.in
 #
-black==22.10.0
+black==23.1.0
     # via -r ./requirements-fmt.txt
 click==8.1.3
     # via
@@ -18,25 +18,29 @@ flake8==5.0.4
     #   flake8-builtins
     #   pep8-naming
     #   pyproject-flake8
-flake8-builtins==2.0.1
+flake8-builtins==2.1.0
     # via -r ./requirements-lint.in
-flake8-copyright==0.2.3
+flake8-copyright==0.2.4
     # via -r ./requirements-lint.in
-isort==5.10.1
+isort==5.12.0
     # via -r ./requirements-fmt.txt
 mccabe==0.7.0
     # via flake8
-mypy-extensions==0.4.3
+mypy-extensions==1.0.0
     # via
     #   -r ./requirements-fmt.txt
     #   black
-pathspec==0.10.2
+packaging==23.0
     # via
     #   -r ./requirements-fmt.txt
     #   black
-pep8-naming==0.13.2
+pathspec==0.11.0
+    # via
+    #   -r ./requirements-fmt.txt
+    #   black
+pep8-naming==0.13.3
     # via -r ./requirements-lint.in
-platformdirs==2.5.4
+platformdirs==3.0.0
     # via
     #   -r ./requirements-fmt.txt
     #   black

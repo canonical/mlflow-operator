@@ -1,5 +1,8 @@
 boto3
+charmed-kubeflow-chisme
+lightkube
+lightkube-models
 ops
 oci-image
-ops-lib-mysql
 serialized-data-interface
+tenacity

@@ -1,4 +1,4 @@
-# Copyright 2020 Luke Marsden
+# Copyright 2021 Canonical Ltd.
 # See LICENSE file for licensing details.
 #
 options:
@@ -23,45 +23,7 @@ options:
       The nodeport for MLFlow
     type: int
     default: 31380
-  mlflow_scrape_interval:
-    description: |
-      How frequently to scrape targets from MLFlow.
-    type: string
-    default: None
-  mlflow_scrape_timeout:
-    description: |
-      Per-scrape timeout when scraping MLFlow.
-    type: string
-    default: None
-  minio_port:
-    description: |
-      The port Minio will be listening on
-    type: int
-    default: 9000
-  minio_nodeport:
-    description: |
-      The nodeport for Minio
-    type: int
-    default: 30650
-  kubeflow_port:
-    description: |
-      The port istio-ingressgateway will be listening on
-    type: int
-    default: 80
-  kubeflow_nodeport:
-    description: |
-      The nodeport for Kubeflow (istio-ingressgateway)
-    type: int
-    default: 30600
   enable_mlflow_nodeport:
     description: Deploy the NodePort service for MLFlow
-    type: boolean
-    default: true
-  enable_kubeflow_nodeport:
-    description: Deploy the NodePort service for Kubeflow
-    type: boolean
-    default: true
-  enable_kubeflow_loadbalancer:
-    description: Deploy the LoadBalancer service for Kubeflow
     type: boolean
     default: true

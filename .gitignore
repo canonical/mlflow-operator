@@ -133,3 +133,4 @@ dmypy.json
 id_rsa
 kubeconfig
 *.charm
+.kube/
