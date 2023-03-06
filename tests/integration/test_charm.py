@@ -45,7 +45,7 @@ class TestCharm:
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
-            idle_period=300
+            idle_period=300,
         )
         await ops_test.model.relate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
         await ops_test.model.relate(RELATIONAL_DB_CHARM_NAME, CHARM_NAME)
@@ -56,7 +56,7 @@ class TestCharm:
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
-            idle_period=60
+            idle_period=60,
         )
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
