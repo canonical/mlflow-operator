@@ -74,9 +74,7 @@ class TestCharm:
             stdout,
             stderr,
             kubectl_cmd,
-        ) = await self.does_minio_bucket_exist(
-            default_bucket_name, ops_test
-        )
+        ) = await self.does_minio_bucket_exist(default_bucket_name, ops_test)
         assert ret_code == 0, (
             f"Unable to find bucket named {default_bucket_name}, got "
             f"stdout=\n'{stdout}\n'stderr=\n{stderr}\nUsed command {kubectl_cmd}"
