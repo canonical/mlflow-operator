@@ -74,7 +74,7 @@ class TestCharm:
             stdout,
             stderr,
             kubectl_cmd,
-        ) = await self.does_minio_bucket_existdoes_minio_bucket_exist(
+        ) = await self.does_minio_bucket_exist(
             default_bucket_name, ops_test
         )
         assert ret_code == 0, (
@@ -82,6 +82,7 @@ class TestCharm:
             f"stdout=\n'{stdout}\n'stderr=\n{stderr}\nUsed command {kubectl_cmd}"
         )
 
+    @staticmethod
     async def does_minio_bucket_exist(self, bucket_name, ops_test: OpsTest):
         """Connects to the minio server and checks if a bucket exists, checking if a bucket exists.
         Returns:
