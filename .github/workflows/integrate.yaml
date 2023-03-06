@@ -52,14 +52,12 @@ jobs:
       run: tox -e unit
 
   integration:
-    name: Integration Test (build and deploy)
+    name: Integration tests (microk8s)
     runs-on: ubuntu-20.04
-
     steps:
-    - name: Check out repo
-      uses: actions/checkout@v2
-
+    - uses: actions/checkout@v2
     - name: Setup operator environment
+      # TODO: Unpin this when https://github.com/charmed-kubernetes/actions-operator/pull/46 is merged
       uses: claudiubelu/actions-operator@18ebf92ae3043bd3dd15238e5d9b662d7ba08daf
       with:
         provider: microk8s
@@ -69,7 +67,7 @@ jobs:
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
 
     - name: Run integration tests
-      run: tox -vve integration -- --model testing
+      run: sg microk8s -c "tox -vve integration -- --model testing"
 
     # On failure, capture debugging resources
     - name: Get all
