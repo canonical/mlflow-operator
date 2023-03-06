@@ -81,7 +81,7 @@ class TestCharm:
         )
 
     @staticmethod
-    async def does_minio_bucket_exist(self, bucket_name, ops_test: OpsTest):
+    async def does_minio_bucket_exist(bucket_name, ops_test: OpsTest):
         """Connects to the minio server and checks if a bucket exists, checking if a bucket exists.
         Returns:
             Tuple of the return code, stdout, and stderr
@@ -102,7 +102,7 @@ class TestCharm:
         )
 
         # Add random suffix to pod name to avoid collision
-        this_pod_name = f"{CHARM_NAME}-minio-bucket-test-{self.generate_random_string()}"
+        this_pod_name = f"{CHARM_NAME}-minio-bucket-test-{TestCharm.generate_random_string()}"
 
         kubectl_cmd = (
             "microk8s",
