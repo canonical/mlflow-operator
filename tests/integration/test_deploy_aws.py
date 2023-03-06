@@ -1,7 +1,7 @@
+from pathlib import Path
+
 import pytest
 import yaml
-
-from pathlib import Path
 from pytest_operator.plugin import OpsTest
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())

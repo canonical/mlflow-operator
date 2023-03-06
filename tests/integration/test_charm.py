@@ -28,12 +28,12 @@ OBJECT_STORAGE_CONFIG = {
 }
 TEST_EXPERIMENT_NAME = "test-experiment"
 
+
 class TestCharm:
     @staticmethod
     def generate_random_string(length: int = 4):
         """Returns a random string of lower case alphabetic characters and given length."""
         return "".join(choices(ascii_lowercase, k=length))
-
 
     @pytest.mark.abort_on_fail
     async def test_add_relational_db_with_relation_expect_active(self, ops_test: OpsTest):
@@ -44,7 +44,7 @@ class TestCharm:
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=600
+            timeout=600,
         )
         await ops_test.model.relate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
         await ops_test.model.relate(RELATIONAL_DB_CHARM_NAME, CHARM_NAME)
@@ -54,7 +54,7 @@ class TestCharm:
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=600
+            timeout=600,
         )
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
@@ -67,14 +67,18 @@ class TestCharm:
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         default_bucket_name = config["default_artifact_root"]["value"]
 
-        ret_code, stdout, stderr, kubectl_cmd = await self.does_minio_bucket_existdoes_minio_bucket_exist(
+        (
+            ret_code,
+            stdout,
+            stderr,
+            kubectl_cmd,
+        ) = await self.does_minio_bucket_existdoes_minio_bucket_exist(
             default_bucket_name, ops_test
         )
         assert ret_code == 0, (
             f"Unable to find bucket named {default_bucket_name}, got "
             f"stdout=\n'{stdout}\n'stderr=\n{stderr}\nUsed command {kubectl_cmd}"
         )
-
 
     async def does_minio_bucket_exist(self, bucket_name, ops_test: OpsTest):
         """Connects to the minio server and checks if a bucket exists, checking if a bucket exists.
@@ -89,7 +93,7 @@ class TestCharm:
 
         obj_storage_url = f"http://{obj_storage_name}.{model_name}.svc.cluster.local:{port}"
 
-        # Region is not used and doesn't matter, but must be set to run in github actions as explained
+        # Region is not used and doesn't matter, but must set to run in github actions as explained
         # in: https://florian.ec/blog/github-actions-awscli-errors/
         aws_cmd = (
             f"aws --endpoint-url {obj_storage_url} --region us-east-1 s3api head-bucket"
@@ -124,7 +128,6 @@ class TestCharm:
             stderr,
         ) = await ops_test.run(*kubectl_cmd)
         return ret_code, stdout, stderr, " ".join(kubectl_cmd)
-
 
     @pytest.mark.abort_on_fail
     async def test_can_create_experiment_with_mlflow_library(self, ops_test: OpsTest):
