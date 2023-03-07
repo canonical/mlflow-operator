@@ -75,7 +75,7 @@ from uuid import UUID
 LIBID = "bced1658f20f49d28b88f61f83c2d232"
 
 LIBAPI = 0
-LIBPATCH = 4
+LIBPATCH = 6
 
 
 class InvalidUUIDError(Exception):
@@ -87,7 +87,11 @@ class InvalidUUIDError(Exception):
 
 
 class JujuTopology:
-    """JujuTopology is used for storing, generating and formatting juju topology information."""
+    """JujuTopology is used for storing, generating and formatting juju topology information.
+
+    DEPRECATED: This class is deprecated. Use `pip install cosl` and
+    `from cosl.juju_topology import JujuTopology` instead.
+    """
 
     def __init__(
         self,
