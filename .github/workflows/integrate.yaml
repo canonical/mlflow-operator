@@ -4,29 +4,20 @@ name: CI
 on:
   workflow_call:
     secrets:
-      charmcraft-credentials:
+      CHARMCRAFT_CREDENTIALS:
         required: true
 
 jobs:
-
   lib-check:
     name: Check libraries
-    runs-on: ubuntu-20.04
     strategy:
       matrix:
         charm:
         - mlflow-server
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
-    - name: Check libs
-      uses: canonical/charming-actions/check-libraries@2.2.2
-      with:
+    uses: canonical/charmed-kubeflow-workflows/.github/workflows/_quality-checks.yaml@main
+    secrets: inherit
+    with:
         charm-path: ./charms/${{ matrix.charm }}
-        credentials: "${{ secrets.charmcraft-credentials }}"
-        github-token: "${{ secrets.GITHUB_TOKEN }}"
 
   lint:
     name: Lint
