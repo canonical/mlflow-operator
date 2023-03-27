@@ -3,10 +3,15 @@
 # See LICENSE file for licensing details.
 #
 
+import glob
+import json
 import logging
+from pathlib import Path
 
+import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
+from jinja2 import Template
 from lightkube.models.core_v1 import ServicePort
 from ops.charm import CharmBase
 from ops.main import main
@@ -15,6 +20,8 @@ from ops.pebble import ChangeError, Layer
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, get_interfaces
 
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
+
+SECRETS_TEMPLATE_FOLDER = "src/secrets"
 
 
 class MlflowCharm(CharmBase):
@@ -236,12 +243,37 @@ class MlflowCharm(CharmBase):
         # proceed with other actions
         self._on_event(_)
 
+    def _send_manifests(self, interfaces, context, folder, relation):
+        """Send manifests from folder to desired relation."""
+        if interfaces[relation]:
+            manifests = self._create_manifests(folder, context)
+            interfaces[relation].send_data({relation: manifests})
+
+    def _create_manifests(self, folder, context):
+        """Create manifests string for given folder and context."""
+        manifests = []
+        manifest_files = glob.glob(f"{folder}/*.j2")
+        for file in manifest_files:
+            template = Template(Path(file).read_text())
+            rendered_template = template.render(**context)
+            manifest = yaml.safe_load(rendered_template)
+            manifests.append(manifest)
+        return json.dumps(manifests)
+
     def _on_event(self, event) -> None:
         """Perform all required actions for the Charm."""
         try:
             self._check_leader()
             interfaces = self._get_interfaces()
             object_storage_data = self._get_object_storage_data(interfaces)
+            secrets_context = {
+                "s3_endpoint": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
+                "s3_type": "s3",
+                "s3_provider": "minio",
+                "access_key": object_storage_data["access-key"],
+                "secret_access_key": object_storage_data["secret-key"],
+            }
+            self._send_manifests(interfaces, secrets_context, SECRETS_TEMPLATE_FOLDER, "secrets")
             relational_db_data = self._get_relational_db_data()
             envs = self._get_env_vars(relational_db_data, object_storage_data)
 
