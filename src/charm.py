@@ -245,7 +245,7 @@ class MlflowCharm(CharmBase):
 
     def _send_manifests(self, interfaces, context, folder, relation):
         """Send manifests from folder to desired relation."""
-        if interfaces[relation]:
+        if relation in interfaces and interfaces[relation]:
             manifests = self._create_manifests(folder, context)
             interfaces[relation].send_data({relation: manifests})
 
