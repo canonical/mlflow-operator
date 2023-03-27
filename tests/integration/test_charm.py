@@ -213,7 +213,8 @@ class TestCharm:
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=300,
+            timeout=600,
+            idle_period=300,
         )
 
     @pytest.mark.abort_on_fail
