@@ -28,7 +28,7 @@ jobs:
         charm:
         - server
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: python3 -m pip install tox
     - run: tox -e ${{ matrix.charm }}-lint
 
@@ -41,7 +41,7 @@ jobs:
         charm:
         - server
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: python3 -m pip install tox
     - run: tox -e ${{ matrix.charm }}-unit
 
@@ -54,7 +54,7 @@ jobs:
         charm:
         - server
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Setup operator environment
       # TODO: Unpin this when https://github.com/charmed-kubernetes/actions-operator/pull/46 is merged
       uses: claudiubelu/actions-operator@18ebf92ae3043bd3dd15238e5d9b662d7ba08daf
