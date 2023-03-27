@@ -41,6 +41,8 @@ EXPECTED_ENVIRONMENT = {
     "MLFLOW_TRACKING_URI": "mysql+pymysql://root:lorem-ipsum@host:port/database",
 }
 
+SECRETS_TEST_FOLDER = "tests/test_data"
+
 
 class _FakeChangeError(ChangeError):
     """Used to simulate a ChangeError during testing."""
@@ -410,3 +412,33 @@ class TestCharm:
         harness = add_relational_db_to_harness(harness)
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == ActiveStatus()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_create_manifests(self, harness: Harness):
+        secrets_context = {
+            "access_key": "a",
+            "secret_access_key": "s",
+        }
+        harness.begin()
+        manifests = harness.charm._create_manifests(SECRETS_TEST_FOLDER, secrets_context)
+        assert (
+            manifests
+            == '[{"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "mlpipeline-minio-artifact"}, "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"}}]'  # noqa: E501
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.MlflowCharm._create_manifests")
+    def test_send_manifests(self, create_manifests: MagicMock, harness: Harness):
+        tmp_manifests = "[]"
+        create_manifests.return_value = tmp_manifests
+        secrets_interface = MagicMock()
+        interfaces = {"secrets": secrets_interface}
+        harness.begin()
+        harness.charm._send_manifests(interfaces, {}, "", "secrets")
+        secrets_interface.send_data.assert_called_with({"secrets": tmp_manifests})
