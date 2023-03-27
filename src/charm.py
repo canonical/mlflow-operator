@@ -266,14 +266,6 @@ class MlflowCharm(CharmBase):
             self._check_leader()
             interfaces = self._get_interfaces()
             object_storage_data = self._get_object_storage_data(interfaces)
-            secrets_context = {
-                "s3_endpoint": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
-                "s3_type": "s3",
-                "s3_provider": "minio",
-                "access_key": object_storage_data["access-key"],
-                "secret_access_key": object_storage_data["secret-key"],
-            }
-            self._send_manifests(interfaces, secrets_context, SECRETS_TEMPLATE_FOLDER, "secrets")
             relational_db_data = self._get_relational_db_data()
             envs = self._get_env_vars(relational_db_data, object_storage_data)
 
@@ -289,6 +281,14 @@ class MlflowCharm(CharmBase):
             ):
                 self._create_default_s3_bucket(s3_wrapper, bucket_name)
             self._update_layer(envs, bucket_name)
+            secrets_context = {
+                "s3_endpoint": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
+                "s3_type": "s3",
+                "s3_provider": "minio",
+                "access_key": object_storage_data["access-key"],
+                "secret_access_key": object_storage_data["secret-key"],
+            }
+            self._send_manifests(interfaces, secrets_context, SECRETS_TEMPLATE_FOLDER, "secrets")
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
             self.logger.info(f"Event {event} stopped early with message: {str(err)}")

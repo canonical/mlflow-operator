@@ -207,7 +207,6 @@ class TestCharm:
         await ops_test.model.deploy(
             RESOURCE_DISPATCHER_CHARM_NAME, channel="latest/edge", trust=True
         )
-        await ops_test.model.relate(RESOURCE_DISPATCHER_CHARM_NAME, CHARM_NAME)
         await ops_test.model.wait_for_idle(
             apps=[RESOURCE_DISPATCHER_CHARM_NAME, CHARM_NAME, METACONTROLLER_CHARM_NAME],
             status="active",
@@ -216,6 +215,7 @@ class TestCharm:
             timeout=600,
             idle_period=300,
         )
+        await ops_test.model.relate(RESOURCE_DISPATCHER_CHARM_NAME, CHARM_NAME)
 
     @pytest.mark.abort_on_fail
     async def test_new_user_namespace_has_credentials(
