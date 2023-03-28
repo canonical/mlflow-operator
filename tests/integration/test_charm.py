@@ -108,7 +108,7 @@ class TestCharm:
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
-            status="waiting",
+            status="active",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
@@ -209,10 +209,11 @@ class TestCharm:
         )
         await ops_test.model.wait_for_idle(
             apps=[RESOURCE_DISPATCHER_CHARM_NAME, CHARM_NAME, METACONTROLLER_CHARM_NAME],
-            status="active",
+            status="waiting",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
+            idle_period=300,
         )
         await ops_test.model.relate(RESOURCE_DISPATCHER_CHARM_NAME, CHARM_NAME)
 
