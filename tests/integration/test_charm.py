@@ -217,7 +217,7 @@ class TestCharm:
         )
         await ops_test.model.relate(RESOURCE_DISPATCHER_CHARM_NAME, CHARM_NAME)
 
-        wait ops_test.model.wait_for_idle(
+        await ops_test.model.wait_for_idle(
             apps=[RESOURCE_DISPATCHER_CHARM_NAME],
             status="active",
             raise_on_blocked=False,
