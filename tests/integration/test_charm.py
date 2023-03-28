@@ -208,12 +208,12 @@ class TestCharm:
             RESOURCE_DISPATCHER_CHARM_NAME, channel="latest/edge", trust=True
         )
         await ops_test.model.wait_for_idle(
-            apps=[METACONTROLLER_CHARM_NAME],
+            apps=[CHARM_NAME],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=300,
-            idle_period=300,
+            timeout=120,
+            idle_period=60,
         )
         await ops_test.model.relate(RESOURCE_DISPATCHER_CHARM_NAME, CHARM_NAME)
 
