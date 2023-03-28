@@ -208,14 +208,22 @@ class TestCharm:
             RESOURCE_DISPATCHER_CHARM_NAME, channel="latest/edge", trust=True
         )
         await ops_test.model.wait_for_idle(
-            apps=[RESOURCE_DISPATCHER_CHARM_NAME, CHARM_NAME, METACONTROLLER_CHARM_NAME],
+            apps=[RESOURCE_DISPATCHER_CHARM_NAME],
             status="waiting",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=600,
+            timeout=300,
             idle_period=300,
         )
         await ops_test.model.relate(RESOURCE_DISPATCHER_CHARM_NAME, CHARM_NAME)
+
+        wait ops_test.model.wait_for_idle(
+            apps=[RESOURCE_DISPATCHER_CHARM_NAME],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=300,
+        )
 
     @pytest.mark.abort_on_fail
     async def test_new_user_namespace_has_credentials(
