@@ -74,6 +74,7 @@ class MlflowCharm(CharmBase):
         """Return environment variables based on model configuration."""
 
         ret_env_vars = {
+            "MLFLOW_S3_ENDPOINT_URL": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
             "AWS_ENDPOINT_URL": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
             "AWS_ACCESS_KEY_ID": object_storage_data["access-key"],
             "AWS_SECRET_ACCESS_KEY": object_storage_data["secret-key"],

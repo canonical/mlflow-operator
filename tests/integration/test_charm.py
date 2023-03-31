@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 CHARM_NAME = METADATA["name"]
-RELATIONAL_DB_CHARM_NAME = "charmed-osm-mariadb-k8s"
+RELATIONAL_DB_CHARM_NAME = "mysql-k8s"
 OBJECT_STORAGE_CHARM_NAME = "minio"
 RESOURCE_DISPATCHER_CHARM_NAME = "resource-dispatcher"
 METACONTROLLER_CHARM_NAME = "metacontroller-operator"
@@ -34,6 +34,10 @@ OBJECT_STORAGE_CONFIG = {
     "access-key": "minio",
     "secret-key": "minio123",
     "port": "9000",
+}
+MYSQL_CONFIG = {
+    "mysql-interface-database": "mlflow",
+    "mysql-interface-user": "mysql",
 }
 SECRET_NAME = "mlpipeline-minio-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
@@ -94,7 +98,13 @@ class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_add_relational_db_with_relation_expect_active(self, ops_test: OpsTest):
         await ops_test.model.deploy(OBJECT_STORAGE_CHARM_NAME, config=OBJECT_STORAGE_CONFIG)
-        await ops_test.model.deploy(RELATIONAL_DB_CHARM_NAME, channel="latest/edge", trust=True)
+        await ops_test.model.deploy(
+            RELATIONAL_DB_CHARM_NAME,
+            channel="latest/edge",
+            series="jammy",
+            config=MYSQL_CONFIG,
+            trust=True,
+        )
         await ops_test.model.wait_for_idle(
             apps=[OBJECT_STORAGE_CHARM_NAME],
             status="active",
@@ -104,7 +114,7 @@ class TestCharm:
             idle_period=300,
         )
         await ops_test.model.relate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
-        await ops_test.model.relate(RELATIONAL_DB_CHARM_NAME, CHARM_NAME)
+        await ops_test.model.relate(f"{RELATIONAL_DB_CHARM_NAME}:mysql", f"{CHARM_NAME}:relational-db")
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
