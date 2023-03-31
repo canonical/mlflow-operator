@@ -3,7 +3,6 @@
 # See LICENSE file for licensing details.
 #
 
-import glob
 import json
 import logging
 from pathlib import Path
@@ -21,7 +20,7 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, ge
 
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
-SECRETS_TEMPLATE_FOLDER = "src/secrets"
+SECRETS_FILES = ["src/secrets/seldon_secret.yaml.j2", "src/secrets/pipelines_secret.yaml.j2"]
 
 
 class MlflowCharm(CharmBase):
@@ -243,16 +242,15 @@ class MlflowCharm(CharmBase):
         # proceed with other actions
         self._on_event(_)
 
-    def _send_manifests(self, interfaces, context, folder, relation):
+    def _send_manifests(self, interfaces, context, manifest_files, relation):
         """Send manifests from folder to desired relation."""
         if relation in interfaces and interfaces[relation]:
-            manifests = self._create_manifests(folder, context)
+            manifests = self._create_manifests(manifest_files, context)
             interfaces[relation].send_data({relation: manifests})
 
-    def _create_manifests(self, folder, context):
+    def _create_manifests(self, manifest_files, context):
         """Create manifests string for given folder and context."""
         manifests = []
-        manifest_files = glob.glob(f"{folder}/*.j2")
         for file in manifest_files:
             template = Template(Path(file).read_text())
             rendered_template = template.render(**context)
@@ -288,7 +286,7 @@ class MlflowCharm(CharmBase):
                 "access_key": object_storage_data["access-key"],
                 "secret_access_key": object_storage_data["secret-key"],
             }
-            self._send_manifests(interfaces, secrets_context, SECRETS_TEMPLATE_FOLDER, "secrets")
+            self._send_manifests(interfaces, secrets_context, SECRETS_FILES, "secrets")
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
             self.logger.info(f"Event {event} stopped early with message: {str(err)}")

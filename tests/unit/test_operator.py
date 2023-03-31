@@ -41,7 +41,7 @@ EXPECTED_ENVIRONMENT = {
     "MLFLOW_TRACKING_URI": "mysql+pymysql://root:lorem-ipsum@host:port/database",
 }
 
-SECRETS_TEST_FOLDER = "tests/test_data"
+SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 
 
 class _FakeChangeError(ChangeError):
@@ -423,7 +423,7 @@ class TestCharm:
             "secret_access_key": "s",
         }
         harness.begin()
-        manifests = harness.charm._create_manifests(SECRETS_TEST_FOLDER, secrets_context)
+        manifests = harness.charm._create_manifests(SECRETS_TEST_FILES, secrets_context)
         assert (
             manifests
             == '[{"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "mlpipeline-minio-artifact"}, "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"}}]'  # noqa: E501
