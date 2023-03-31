@@ -45,4 +45,16 @@ requires:
           - service
     versions: [v1]
     __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
-  
+provides:
+  secrets:
+    interface: secrets
+    schema:
+      v1:
+        provides:
+          type: object
+          properties:
+            secrets:
+              type: string
+        required:
+        - secrets
+    versions: [v1]
