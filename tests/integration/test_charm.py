@@ -114,7 +114,9 @@ class TestCharm:
             idle_period=300,
         )
         await ops_test.model.relate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
-        await ops_test.model.relate(f"{RELATIONAL_DB_CHARM_NAME}:mysql", f"{CHARM_NAME}:relational-db")
+        await ops_test.model.relate(
+            f"{RELATIONAL_DB_CHARM_NAME}:mysql", f"{CHARM_NAME}:relational-db"
+        )
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
