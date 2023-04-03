@@ -243,28 +243,6 @@ class TestCharm:
             "Too many mysql relations. Found 2, expected 1"
         )
 
-    # @patch(
-    #     "charm.KubernetesServicePatch",
-    #     lambda x, y, service_name, service_type, refresh_event: None,
-    # )
-    # @patch("charm.S3BucketWrapper.__init__")
-    # @patch("charm.S3BucketWrapper.check_if_bucket_accessible")
-    # @patch("charm.MlflowCharm._update_layer")
-    # def test_validate_default_s3_bucket_success_bucket_exists(
-    #     self,
-    #     update_layer: MagicMock,
-    #     check_if_bucket_accessible: MagicMock,
-    #     init: MagicMock,
-    #     harness: Harness,
-    # ):
-    #     harness = add_object_storage_to_harness(harness)
-    #     harness = add_relational_db_to_harness(harness)
-    #     check_if_bucket_accessible.return_value = True
-    #     init.return_value = None
-    #     harness.begin_with_initial_hooks()
-    #     update_layer.assert_called_with(EXPECTED_ENVIRONMENT, "mlflow")
-    #     assert harness.charm.model.unit.status == ActiveStatus()
-
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
