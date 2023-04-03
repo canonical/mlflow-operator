@@ -3,42 +3,11 @@ name: Publish
 
 on:
   workflow_call:
-    inputs:
-      source_branch:
-        description: Github branch from this repo to publish.  If blank, will use the default branch
-        default: ''
-        required: false
-        type: string
     secrets:
       CHARMCRAFT_CREDENTIALS:
         required: true
-  workflow_dispatch:
-    inputs:
-      destination_channel:
-        description: CharmHub channel to publish to
-        required: false
-        default: 'latest/edge'
-        type: string
-      source_branch:
-        description: Github branch from this repo to publish.  If blank, will use the default branch
-        required: false
-        default: ''
-        type: string
 
 jobs:
-  get-charm-paths:
-    name: Generate the Charm Matrix
-    runs-on: ubuntu-20.04
-    outputs:
-      charm_paths_list: ${{ steps.get-charm-paths.outputs.CHARM_PATHS_LIST }}
-    steps:
-      - uses: actions/checkout@v2
-        with: 
-          fetch-depth: 0
-          ref: ${{ inputs.source_branch }}
-      - name: Get paths for all charms in repo
-        id: get-charm-paths
-        run: bash .github/workflows/get-charm-paths.sh
   publish:
     name: Publish
     uses: canonical/charmed-kubeflow-workflows/.github/workflows/_publish.yaml@all
