@@ -4,7 +4,7 @@ name: CI
 on:
   workflow_call:
     secrets:
-      charmcraft-credentials:
+      CHARMCRAFT_CREDENTIALS:
         required: true
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
       - name: Check libs
         uses: canonical/charming-actions/check-libraries@2.1.1
         with:
-          credentials: "${{ secrets.charmcraft-credentials }}"
+          credentials: "${{ secrets.CHARMCRAFT_CREDENTIALS }}"
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
   lint:
