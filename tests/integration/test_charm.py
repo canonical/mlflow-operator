@@ -111,7 +111,7 @@ class TestCharm:
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
-            idle_period=300,
+            idle_period=600,
         )
         await ops_test.model.relate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
         await ops_test.model.relate(
