@@ -106,12 +106,12 @@ class TestCharm:
             trust=True,
         )
         await ops_test.model.wait_for_idle(
-            apps=[OBJECT_STORAGE_CHARM_NAME],
+            apps=[OBJECT_STORAGE_CHARM_NAME, RELATIONAL_DB_CHARM_NAME],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
-            idle_period=600,
+            idle_period=300,
         )
         await ops_test.model.relate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
         await ops_test.model.relate(
@@ -215,6 +215,14 @@ class TestCharm:
             entity_url=METACONTROLLER_CHARM_NAME,
             channel="latest/edge",
             trust=True,
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[METACONTROLLER_CHARM_NAME],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=120,
+            idle_period=60,
         )
         await ops_test.model.deploy(
             RESOURCE_DISPATCHER_CHARM_NAME, channel="latest/edge", trust=True
