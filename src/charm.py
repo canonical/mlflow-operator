@@ -21,6 +21,10 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, ge
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
 SECRETS_FILES = ["src/secrets/seldon_secret.yaml.j2", "src/secrets/pipelines_secret.yaml.j2"]
+PODDEFAULTS_FILES = [
+    "src/poddefaults/poddefault-example-minio.yaml.j2",
+    "src/poddefaults/poddefault-example-mlflow.yaml.j2",
+]
 
 
 class MlflowCharm(CharmBase):
@@ -287,7 +291,14 @@ class MlflowCharm(CharmBase):
                 "access_key": object_storage_data["access-key"],
                 "secret_access_key": object_storage_data["secret-key"],
             }
+            poddefaults_context = {
+                "s3_endpoint": secrets_context["s3_endpoint"],
+                "mlflow_endpoint": f"http://{self.app.name}.{self.model.name}.svc.cluster.local:{self._port}",  # noqa: E501
+            }
             self._send_manifests(interfaces, secrets_context, SECRETS_FILES, "secrets")
+            self._send_manifests(
+                interfaces, poddefaults_context, PODDEFAULTS_FILES, "pod-defaults"
+            )
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
             self.logger.info(f"Event {event} stopped early with message: {str(err)}")
