@@ -33,6 +33,7 @@ RELATIONAL_DB_DATA = {
 }
 
 EXPECTED_ENVIRONMENT = {
+    "MLFLOW_S3_ENDPOINT_URL": "http://service.namespace:1234",
     "AWS_ENDPOINT_URL": "http://service.namespace:1234",
     "AWS_ACCESS_KEY_ID": "minio-access-key",
     "AWS_SECRET_ACCESS_KEY": "minio-super-secret-key",
@@ -246,47 +247,49 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.S3BucketWrapper.__init__")
-    @patch("charm.S3BucketWrapper.check_if_bucket_accessible")
-    @patch("charm.MlflowCharm._update_layer")
-    def test_validate_default_s3_bucket_success_bucket_exists(
-        self,
-        update_layer: MagicMock,
-        check_if_bucket_accessible: MagicMock,
-        init: MagicMock,
-        harness: Harness,
+    @patch("charm.validate_s3_bucket_name")
+    def test_validate_default_s3_bucket_failure_invalid_bucket(
+        self, validate_s3_bucket_name: MagicMock, harness: Harness
     ):
-        harness = add_object_storage_to_harness(harness)
-        harness = add_relational_db_to_harness(harness)
-        check_if_bucket_accessible.return_value = True
-        init.return_value = None
-        harness.begin_with_initial_hooks()
-        update_layer.assert_called_with(EXPECTED_ENVIRONMENT, "mlflow")
-        assert harness.charm.model.unit.status == ActiveStatus()
+        validate_s3_bucket_name.return_value = False
+        harness.begin()
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._validate_default_s3_bucket_name_and_access(BUCKET_NAME, None)
+        assert "Invalid value for config default_artifact_root" in str(exc_info)
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.S3BucketWrapper.__init__")
-    @patch("charm.S3BucketWrapper.check_if_bucket_accessible")
-    @patch("charm.MlflowCharm._update_layer")
-    @patch("charm.S3BucketWrapper.create_bucket")
-    def test_validate_default_s3_bucket_success_bucket_created(
+    @patch("charm.validate_s3_bucket_name")
+    def test_validate_default_s3_bucket_success_bucket_not_accessible(
         self,
-        _: MagicMock,
-        update_layer: MagicMock,
-        check_if_bucket_accessible: MagicMock,
-        init: MagicMock,
+        validate_s3_bucket_name: MagicMock,
         harness: Harness,
     ):
-        harness = add_object_storage_to_harness(harness)
-        harness = add_relational_db_to_harness(harness)
-        check_if_bucket_accessible.return_value = False
-        init.return_value = None
-        harness.begin_with_initial_hooks()
-        update_layer.assert_called_with(EXPECTED_ENVIRONMENT, "mlflow")
-        assert harness.charm.model.unit.status == ActiveStatus()
+        s3_wrapper = MagicMock()
+        s3_wrapper.check_if_bucket_accessible.return_value = False
+        validate_s3_bucket_name.return_value = True
+        harness.begin()
+        value = harness.charm._validate_default_s3_bucket_name_and_access(BUCKET_NAME, s3_wrapper)
+        assert not value
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.validate_s3_bucket_name")
+    def test_validate_default_s3_bucket_success_bucket_accessible(
+        self,
+        validate_s3_bucket_name: MagicMock,
+        harness: Harness,
+    ):
+        s3_wrapper = MagicMock()
+        s3_wrapper.check_if_bucket_accessible.return_value = True
+        validate_s3_bucket_name.return_value = True
+        harness.begin()
+        value = harness.charm._validate_default_s3_bucket_name_and_access(BUCKET_NAME, s3_wrapper)
+        assert value
 
     @patch(
         "charm.KubernetesServicePatch",
