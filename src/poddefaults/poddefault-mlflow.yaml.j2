@@ -1,7 +1,7 @@
 apiVersion: kubeflow.org/v1alpha1
 kind: PodDefault
 metadata:
-  name: mlflow-server-minio
+  name: {{ app_name }}-minio
 spec:
   desc: Allow access to MLFlow
   env:
