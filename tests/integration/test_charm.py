@@ -249,6 +249,7 @@ class TestCharm:
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=120,
+            idle_period=60
         )
 
         await ops_test.model.relate(
