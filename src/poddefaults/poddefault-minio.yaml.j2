@@ -11,7 +11,7 @@ spec:
    - name: AWS_ACCESS_KEY_ID
      valueFrom:
        secretKeyRef:
-         name: mlflow-minio-artifact
+         name: {{ app_name }}-minio-artifact
          key: accesskey
          optional: false
    - name: AWS_SECRET_ACCESS_KEY
