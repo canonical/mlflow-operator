@@ -1,0 +1,45 @@
+bundle: kubernetes
+name: mlflow
+applications:
+  admission-webhook:
+    charm: admission-webhook
+    channel: 1.7/edge
+    scale: 1
+    _github_repo_name: admission-webhook-operator
+  metacontroller-operator:
+    charm: metacontroller-operator
+    channel: 2.0/edge
+    scale: 1
+    trust: true
+    _github_repo_name: metacontroller-operator
+  minio:
+    charm: minio
+    channel: ckf-1.7/edge
+    scale: 1
+    _github_repo_name: minio-operator
+  mysql-k8s:
+    charm: mysql-k8s
+    channel: 8.0/candidate
+    series: jammy
+    options:
+      mysql-interface-database: mlflow
+      mysql-interface-user: mysql
+    scale: 1
+    _github_repo_name: mysql-k8s-operator
+  mlflow-server:
+    charm: mlflow-server
+    channel: latest/edge
+    scale: 1
+    trust: true
+    _github_repo_name: mlflow-operator
+  resource-dispatcher:
+    charm: resource-dispatcher
+    channel: edge
+    scale: 1
+    trust: true
+    _github_repo_name: resource-dispatcher
+relations:
+- [mlflow-server, minio]
+- [mlflow-server:relational-db, mysql-k8s:mysql]
+- [mlflow-server:secrets, resource-dispatcher:secrets]
+- [mlflow-server:pod-defaults, resource-dispatcher:pod-defaults]

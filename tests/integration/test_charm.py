@@ -11,6 +11,7 @@ from pathlib import Path
 from random import choices
 from string import ascii_lowercase
 
+import aiohttp
 import lightkube
 import pytest
 import requests
@@ -31,6 +32,7 @@ METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 CHARM_NAME = METADATA["name"]
 RELATIONAL_DB_CHARM_NAME = "mysql-k8s"
 OBJECT_STORAGE_CHARM_NAME = "minio"
+PROMETHEUS_CHARM_NAME = "prometheus-k8s"
 RESOURCE_DISPATCHER_CHARM_NAME = "resource-dispatcher"
 METACONTROLLER_CHARM_NAME = "metacontroller-operator"
 NAMESPACE_FILE = "./tests/integration/namespace.yaml"
@@ -91,6 +93,15 @@ def deploy_k8s_resources(template_files: str):
     )
     load_in_cluster_generic_resources(lightkube_client)
     k8s_resource_handler.apply()
+
+
+async def fetch_url(url):
+    """Fetch provided URL and return JSON."""
+    result = None
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            result = await response.json()
+    return result
 
 
 @pytest.fixture(scope="session")
@@ -286,3 +297,46 @@ class TestCharm:
         for name in poddefaults_names:
             pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)
             assert pod_default is not None
+
+    async def test_mlflow_alert_rules(self, ops_test: OpsTest):
+        await ops_test.model.deploy(PROMETHEUS_CHARM_NAME, channel="latest/stable", trust=True)
+        await ops_test.model.relate(PROMETHEUS_CHARM_NAME, CHARM_NAME)
+        await ops_test.model.wait_for_idle(
+            apps=[PROMETHEUS_CHARM_NAME], status="active", raise_on_blocked=True, timeout=60 * 10
+        )
+
+        status = await ops_test.model.get_status()
+        prometheus_units = status["applications"]["prometheus-k8s"]["units"]
+        prometheus_url = prometheus_units["prometheus-k8s/0"]["address"]
+
+        # obtain scrape targets from Prometheus
+        targets_result = await fetch_url(f"http://{prometheus_url}:9090/api/v1/targets")
+
+        # verify that mlflow-server is in the target list
+        assert targets_result is not None
+        assert targets_result["status"] == "success"
+        discovered_labels = targets_result["data"]["activeTargets"][0]["discoveredLabels"]
+        assert discovered_labels["juju_application"] == CHARM_NAME
+
+        # obtain alert rules from Prometheus
+        rules_url = f"http://{prometheus_url}:9090/api/v1/rules"
+        alert_rules_result = await fetch_url(rules_url)
+
+        # verify alerts are available in Prometheus
+        assert alert_rules_result is not None
+        assert alert_rules_result["status"] == "success"
+        rules = alert_rules_result["data"]["groups"][0]["rules"]
+
+        # load alert rules from the rules file (for now its just one)
+        rules_file_alert_names = []
+        with open("src/prometheus_alert_rules/unit_unavailable.rule") as f:
+            unit_unavailable_rule = yaml.safe_load(f.read())
+            rules_file_alert_names.append(unit_unavailable_rule["alert"])
+
+        # verify number of alerts is the same in Prometheus and in the rules file
+        assert len(rules) == len(rules_file_alert_names)
+
+        # verify that all Seldon alert rules are in the list and that alerts obtained
+        # from Prometheus match alerts in the rules file
+        for rule in rules:
+            assert rule["name"] in rules_file_alert_names

@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from jinja2 import Template
 from lightkube.models.core_v1 import ServicePort
 from ops.charm import CharmBase
@@ -28,6 +29,7 @@ PODDEFAULTS_FILES = [
     "src/poddefaults/poddefault-minio.yaml.j2",
     "src/poddefaults/poddefault-mlflow.yaml.j2",
 ]
+PROMETHEUS_PATH = "/metrics"
 
 
 class MlflowCharm(CharmBase):
@@ -48,6 +50,20 @@ class MlflowCharm(CharmBase):
         for rel in self.model.relations.keys():
             self.framework.observe(self.on[rel].relation_changed, self._on_event)
         self._create_service()
+
+        # Prometheus related config
+        self.prometheus_provider = MetricsEndpointProvider(
+            charm=self,
+            relation_name="metrics-endpoint",
+            jobs=[
+                {
+                    "metrics_path": PROMETHEUS_PATH,
+                    "static_configs": [
+                        {"targets": ["*:{}".format(self.model.config["mlflow_port"])]}
+                    ],
+                }
+            ],
+        )
 
     @property
     def container(self):
@@ -111,7 +127,9 @@ class MlflowCharm(CharmBase):
                         "--backend-store-uri "
                         "$(MLFLOW_TRACKING_URI) "
                         "--default-artifact-root "
-                        f"s3://{default_artifact_root}/"
+                        f"s3://{default_artifact_root}/ "
+                        "--expose-prometheus "
+                        f"{PROMETHEUS_PATH}"
                     ),
                     "startup": "enabled",
                     "environment": env_vars,
