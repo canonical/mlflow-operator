@@ -29,7 +29,7 @@ PODDEFAULTS_FILES = [
     "src/poddefaults/poddefault-minio.yaml.j2",
     "src/poddefaults/poddefault-mlflow.yaml.j2",
 ]
-PROMETHEUS_PATH = "/metrics"
+METRICS_PATH = "/metrics"
 
 
 class MlflowCharm(CharmBase):
@@ -57,7 +57,7 @@ class MlflowCharm(CharmBase):
             relation_name="metrics-endpoint",
             jobs=[
                 {
-                    "metrics_path": PROMETHEUS_PATH,
+                    "metrics_path": METRICS_PATH,
                     "static_configs": [
                         {"targets": ["*:{}".format(self.model.config["mlflow_port"])]}
                     ],
@@ -129,7 +129,7 @@ class MlflowCharm(CharmBase):
                         "--default-artifact-root "
                         f"s3://{default_artifact_root}/ "
                         "--expose-prometheus "
-                        f"{PROMETHEUS_PATH}"
+                        f"{METRICS_PATH}"
                     ),
                     "startup": "enabled",
                     "environment": env_vars,
