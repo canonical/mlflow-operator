@@ -8,14 +8,13 @@ anyio==3.6.2
     # via
     #   -r ./requirements.txt
     #   httpcore
-attrs==22.1.0
+attrs==22.2.0
     # via
     #   -r ./requirements.txt
     #   jsonschema
-    #   pytest
-boto3==1.26.27
+boto3==1.26.113
     # via -r ./requirements.txt
-botocore==1.29.27
+botocore==1.29.113
     # via
     #   -r ./requirements.txt
     #   boto3
@@ -26,39 +25,43 @@ certifi==2022.12.7
     #   httpcore
     #   httpx
     #   requests
-chardet==3.0.4
+charmed-kubeflow-chisme==0.0.8
+    # via -r ./requirements.txt
+charset-normalizer==3.1.0
     # via
     #   -r ./requirements.txt
     #   requests
-charmed-kubeflow-chisme==0.0.5
-    # via -r ./requirements.txt
-coverage==6.5.0
+coverage==7.2.3
     # via -r ./requirements-unit.in
 deepdiff==6.2.1
     # via
     #   -r ./requirements.txt
     #   charmed-kubeflow-chisme
-exceptiongroup==1.0.4
+exceptiongroup==1.1.1
     # via pytest
 h11==0.14.0
     # via
     #   -r ./requirements.txt
     #   httpcore
-httpcore==0.16.2
+httpcore==0.17.0
     # via
     #   -r ./requirements.txt
     #   httpx
-httpx==0.23.1
+httpx==0.24.0
     # via
     #   -r ./requirements.txt
     #   lightkube
-idna==2.10
+idna==3.4
     # via
     #   -r ./requirements.txt
     #   anyio
+    #   httpx
     #   requests
-    #   rfc3986
-iniconfig==1.1.1
+importlib-resources==5.12.0
+    # via
+    #   -r ./requirements.txt
+    #   jsonschema
+iniconfig==2.0.0
     # via pytest
 jinja2==3.1.2
     # via
@@ -69,11 +72,11 @@ jmespath==1.0.1
     #   -r ./requirements.txt
     #   boto3
     #   botocore
-jsonschema==3.2.0
+jsonschema==4.17.3
     # via
     #   -r ./requirements.txt
     #   serialized-data-interface
-lightkube==0.11.0
+lightkube==0.12.0
     # via
     #   -r ./requirements.txt
     #   charmed-kubeflow-chisme
@@ -81,13 +84,13 @@ lightkube-models==1.25.4.4
     # via
     #   -r ./requirements.txt
     #   lightkube
-markupsafe==2.1.1
+markupsafe==2.1.2
     # via
     #   -r ./requirements.txt
     #   jinja2
 oci-image==1.0.0
     # via -r ./requirements.txt
-ops==1.5.4
+ops==2.2.0
     # via
     #   -r ./requirements.txt
     #   charmed-kubeflow-chisme
@@ -96,15 +99,19 @@ ordered-set==4.1.0
     # via
     #   -r ./requirements.txt
     #   deepdiff
-packaging==22.0
+packaging==23.1
     # via pytest
-pluggy==1.0.0
-    # via pytest
-pyrsistent==0.19.2
+pkgutil-resolve-name==1.3.10
     # via
     #   -r ./requirements.txt
     #   jsonschema
-pytest==7.2.0
+pluggy==1.0.0
+    # via pytest
+pyrsistent==0.19.3
+    # via
+    #   -r ./requirements.txt
+    #   jsonschema
+pytest==7.3.0
     # via
     #   -r ./requirements-unit.in
     #   pytest-lazy-fixture
@@ -117,20 +124,16 @@ python-dateutil==2.8.2
     # via
     #   -r ./requirements.txt
     #   botocore
-pyyaml==5.4
+pyyaml==6.0
     # via
     #   -r ./requirements.txt
     #   lightkube
     #   ops
     #   serialized-data-interface
-requests==2.25.0
+requests==2.28.2
     # via
     #   -r ./requirements.txt
     #   serialized-data-interface
-rfc3986[idna2008]==1.5.0
-    # via
-    #   -r ./requirements.txt
-    #   httpx
 ruamel-yaml==0.17.21
     # via
     #   -r ./requirements.txt
@@ -143,12 +146,11 @@ s3transfer==0.6.0
     # via
     #   -r ./requirements.txt
     #   boto3
-serialized-data-interface==0.4.0
+serialized-data-interface==0.6.0
     # via -r ./requirements.txt
 six==1.16.0
     # via
     #   -r ./requirements.txt
-    #   jsonschema
     #   python-dateutil
 sniffio==1.3.0
     # via
@@ -156,15 +158,20 @@ sniffio==1.3.0
     #   anyio
     #   httpcore
     #   httpx
-tenacity==8.1.0
+tenacity==8.2.2
     # via -r ./requirements.txt
 tomli==2.0.1
     # via pytest
-urllib3==1.26.13
+urllib3==1.26.15
     # via
     #   -r ./requirements.txt
     #   botocore
     #   requests
-
-# The following packages are considered to be unsafe in a requirements file:
-# setuptools
+websocket-client==1.5.1
+    # via
+    #   -r ./requirements.txt
+    #   ops
+zipp==3.15.0
+    # via
+    #   -r ./requirements.txt
+    #   importlib-resources
