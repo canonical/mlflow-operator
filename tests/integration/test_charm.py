@@ -327,16 +327,18 @@ class TestCharm:
         assert alert_rules_result["status"] == "success"
         rules = alert_rules_result["data"]["groups"][0]["rules"]
 
-        # load alert rules from the rules file (for now its just one)
+        # load alert rules from the rules file
         rules_file_alert_names = []
-        with open("src/prometheus_alert_rules/unit_unavailable.rule") as f:
-            unit_unavailable_rule = yaml.safe_load(f.read())
-            rules_file_alert_names.append(unit_unavailable_rule["alert"])
+        with open("src/prometheus_alert_rules/mlflow-server.rule") as f:
+            mlflow_server = yaml.safe_load(f.read())
+            alerts_list = mlflow_server["groups"][0]["rules"]
+            for alert in alerts_list:
+                rules_file_alert_names.append(alert["alert"])
 
         # verify number of alerts is the same in Prometheus and in the rules file
         assert len(rules) == len(rules_file_alert_names)
 
-        # verify that all Seldon alert rules are in the list and that alerts obtained
+        # verify that all Mlflow alert rules are in the list and that alerts obtained
         # from Prometheus match alerts in the rules file
         for rule in rules:
             assert rule["name"] in rules_file_alert_names
