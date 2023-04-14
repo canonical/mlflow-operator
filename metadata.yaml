@@ -12,7 +12,7 @@ resources:
   oci-image:
     type: oci-image
     description: Backing OCI image
-    upstream-source: docker.io/charmedkubeflow/mlflow:latest
+    upstream-source: docker.io/ubuntu/mlflow:2.1.1_1.0-22.04
 requires:
   relational-db:
     interface: mysql
@@ -46,6 +46,8 @@ requires:
     versions: [v1]
     __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
 provides:
+  metrics-endpoint:
+    interface: prometheus_scrape
   secrets:
     interface: secrets
     schema:
