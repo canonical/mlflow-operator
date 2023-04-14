@@ -1,6 +1,6 @@
 alert: MLFlowServerUnitIsUnavailable
 expr: up < 1
-for: 0m
+for: 5m
 labels:
   severity: critical
 annotations:
