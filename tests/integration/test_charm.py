@@ -15,7 +15,12 @@ import lightkube
 import pytest
 import requests
 import yaml
+from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
 from lightkube import codecs
+from lightkube.generic_resource import (
+    create_namespaced_resource,
+    load_in_cluster_generic_resources,
+)
 from lightkube.resources.core_v1 import Secret
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
@@ -29,6 +34,8 @@ OBJECT_STORAGE_CHARM_NAME = "minio"
 RESOURCE_DISPATCHER_CHARM_NAME = "resource-dispatcher"
 METACONTROLLER_CHARM_NAME = "metacontroller-operator"
 NAMESPACE_FILE = "./tests/integration/namespace.yaml"
+PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
+PODDEFAULTS_SUFFIXES = ["-access-minio", "-minio"]
 TESTING_LABELS = ["user.kubeflow.org/enabled"]  # Might be more than one in the future
 OBJECT_STORAGE_CONFIG = {
     "access-key": "minio",
@@ -39,8 +46,10 @@ MYSQL_CONFIG = {
     "mysql-interface-database": "mlflow",
     "mysql-interface-user": "mysql",
 }
-SECRET_NAME = "mlpipeline-minio-artifact"
+SECRET_SUFFIX = "-minio-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
+
+PodDefault = create_namespaced_resource("kubeflow.org", "v1alpha1", "PodDefault", "poddefaults")
 
 
 def _safe_load_file_to_text(filename: str) -> str:
@@ -75,6 +84,15 @@ def lightkube_client() -> lightkube.Client:
     return client
 
 
+def deploy_k8s_resources(template_files: str):
+    lightkube_client = lightkube.Client(field_manager=CHARM_NAME)
+    k8s_resource_handler = KubernetesResourceHandler(
+        field_manager=CHARM_NAME, template_files=template_files, context={}
+    )
+    load_in_cluster_generic_resources(lightkube_client)
+    k8s_resource_handler.apply()
+
+
 @pytest.fixture(scope="session")
 def namespace(lightkube_client: lightkube.Client):
     yaml_text = _safe_load_file_to_text(NAMESPACE_FILE)
@@ -97,10 +115,11 @@ class TestCharm:
 
     @pytest.mark.abort_on_fail
     async def test_add_relational_db_with_relation_expect_active(self, ops_test: OpsTest):
+        deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
         await ops_test.model.deploy(OBJECT_STORAGE_CHARM_NAME, config=OBJECT_STORAGE_CONFIG)
         await ops_test.model.deploy(
             RELATIONAL_DB_CHARM_NAME,
-            channel="latest/edge",
+            channel="8.0/candidate",
             series="jammy",
             config=MYSQL_CONFIG,
             trust=True,
@@ -111,7 +130,6 @@ class TestCharm:
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
-            idle_period=300,
         )
         await ops_test.model.relate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
         await ops_test.model.relate(
@@ -124,7 +142,6 @@ class TestCharm:
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
-            idle_period=300,
         )
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
@@ -222,7 +239,6 @@ class TestCharm:
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=120,
-            idle_period=60,
         )
         await ops_test.model.deploy(
             RESOURCE_DISPATCHER_CHARM_NAME, channel="latest/edge", trust=True
@@ -235,22 +251,29 @@ class TestCharm:
             timeout=120,
             idle_period=60,
         )
-        await ops_test.model.relate(RESOURCE_DISPATCHER_CHARM_NAME, CHARM_NAME)
+
+        await ops_test.model.relate(
+            f"{CHARM_NAME}:pod-defaults", f"{RESOURCE_DISPATCHER_CHARM_NAME}:pod-defaults"
+        )
+        await ops_test.model.relate(
+            f"{CHARM_NAME}:secrets", f"{RESOURCE_DISPATCHER_CHARM_NAME}:secrets"
+        )
 
         await ops_test.model.wait_for_idle(
             apps=[RESOURCE_DISPATCHER_CHARM_NAME],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=300,
+            timeout=600,
         )
 
     @pytest.mark.abort_on_fail
-    async def test_new_user_namespace_has_credentials(
+    async def test_new_user_namespace_has_manifests(
         self, ops_test: OpsTest, lightkube_client: lightkube.Client, namespace: str
     ):
         time.sleep(30)  # sync can take up to 10 seconds for reconciliation loop to trigger
-        secret = lightkube_client.get(Secret, SECRET_NAME, namespace=namespace)
+        secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
+        secret = lightkube_client.get(Secret, secret_name, namespace=namespace)
         assert secret.data == {
             "AWS_ACCESS_KEY_ID": base64.b64encode(
                 OBJECT_STORAGE_CONFIG["access-key"].encode("utf-8")
@@ -259,3 +282,7 @@ class TestCharm:
                 OBJECT_STORAGE_CONFIG["secret-key"].encode("utf-8")
             ).decode("utf-8"),
         }
+        poddefaults_names = [f"{CHARM_NAME}{suffix}" for suffix in PODDEFAULTS_SUFFIXES]
+        for name in poddefaults_names:
+            pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)
+            assert pod_default is not None

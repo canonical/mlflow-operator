@@ -58,3 +58,15 @@ provides:
         required:
         - secrets
     versions: [v1]
+  pod-defaults:
+    interface: pod-defaults
+    schema:
+      v1:
+        provides:
+          type: object
+          properties:
+            pod-defaults:
+              type: string
+        required:
+        - pod-defaults
+    versions: [v1]

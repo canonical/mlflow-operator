@@ -20,7 +20,14 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, ge
 
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
-SECRETS_FILES = ["src/secrets/seldon_secret.yaml.j2", "src/secrets/pipelines_secret.yaml.j2"]
+SECRETS_FILES = [
+    "src/secrets/mlflow-minio-artifact.j2",
+    "src/secrets/mlflow-seldon-rclone-secret.j2",
+]
+PODDEFAULTS_FILES = [
+    "src/poddefaults/poddefault-minio.yaml.j2",
+    "src/poddefaults/poddefault-mlflow.yaml.j2",
+]
 
 
 class MlflowCharm(CharmBase):
@@ -281,13 +288,22 @@ class MlflowCharm(CharmBase):
                 self._create_default_s3_bucket(s3_wrapper, bucket_name)
             self._update_layer(envs, bucket_name)
             secrets_context = {
+                "app_name": self.app.name,
                 "s3_endpoint": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
                 "s3_type": "s3",
                 "s3_provider": "minio",
                 "access_key": object_storage_data["access-key"],
                 "secret_access_key": object_storage_data["secret-key"],
             }
+            poddefaults_context = {
+                "app_name": self.app.name,
+                "s3_endpoint": secrets_context["s3_endpoint"],
+                "mlflow_endpoint": f"http://{self.app.name}.{self.model.name}.svc.cluster.local:{self._port}",  # noqa: E501
+            }
             self._send_manifests(interfaces, secrets_context, SECRETS_FILES, "secrets")
+            self._send_manifests(
+                interfaces, poddefaults_context, PODDEFAULTS_FILES, "pod-defaults"
+            )
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
             self.logger.info(f"Event {event} stopped early with message: {str(err)}")
