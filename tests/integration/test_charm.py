@@ -130,7 +130,7 @@ class TestCharm:
         await ops_test.model.deploy(OBJECT_STORAGE_CHARM_NAME, config=OBJECT_STORAGE_CONFIG)
         await ops_test.model.deploy(
             RELATIONAL_DB_CHARM_NAME,
-            channel="8.0/candidate",
+            channel="8.0/stable",
             series="jammy",
             config=MYSQL_CONFIG,
             trust=True,
