@@ -56,6 +56,8 @@ class MlflowCharm(CharmBase):
             self.framework.observe(self.on[rel].relation_changed, self._on_event)
         self._create_service()
 
+        self.framework.observe(self.database.on.database_created, self._on_event)
+        self.framework.observe(self.database.on.endpoints_changed, self._on_event)
         self.framework.observe(
             self.on.relational_db_relation_broken, self._on_database_relation_removed
         )
