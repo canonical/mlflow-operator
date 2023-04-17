@@ -9,6 +9,7 @@ from pathlib import Path
 
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from jinja2 import Template
@@ -41,7 +42,11 @@ class MlflowCharm(CharmBase):
         self.logger = logging.getLogger(__name__)
         self._port = self.model.config["mlflow_port"]
         self._container_name = "mlflow-server"
+        self._database_name = "mlflow"
         self._container = self.unit.get_container(self._container_name)
+        self.database = DatabaseRequires(
+            self, relation_name="relational-db", database_name=self._database_name
+        )
 
         self.framework.observe(self.on.upgrade_charm, self._on_event)
         self.framework.observe(self.on.config_changed, self._on_event)
@@ -92,8 +97,7 @@ class MlflowCharm(CharmBase):
             refresh_event=self.on.config_changed,
         )
 
-    @staticmethod
-    def _get_env_vars(relational_db_data, object_storage_data):
+    def _get_env_vars(self, relational_db_data, object_storage_data):
         """Return environment variables based on model configuration."""
 
         ret_env_vars = {
@@ -102,8 +106,8 @@ class MlflowCharm(CharmBase):
             "AWS_ACCESS_KEY_ID": object_storage_data["access-key"],
             "AWS_SECRET_ACCESS_KEY": object_storage_data["secret-key"],
             "USE_SSL": str(object_storage_data["secure"]).lower(),
-            "DB_ROOT_PASSWORD": relational_db_data["root_password"],
-            "MLFLOW_TRACKING_URI": f"mysql+pymysql://root:{relational_db_data['root_password']}@{relational_db_data['host']}:{relational_db_data['port']}/{relational_db_data['database']}",  # noqa: E501
+            "DB_ROOT_PASSWORD": relational_db_data["password"],
+            "MLFLOW_TRACKING_URI": f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}",  # noqa: E501
         }
         return ret_env_vars
 
@@ -149,25 +153,22 @@ class MlflowCharm(CharmBase):
             raise ErrorWithStatus(err, BlockedStatus)
         return interfaces
 
-    def _get_relational_db_data(
-        self,
-    ):
-        relational_db = self.model.relations["relational-db"]
-        if len(relational_db) > 1:
-            raise ErrorWithStatus(
-                f"Too many mysql relations. Found {len(relational_db)}, expected 1", BlockedStatus
-            )
-
-        try:
-            relational_db = relational_db[0]
-            db_unit = list(relational_db.units)[0]
-            relational_db = relational_db.data[db_unit]
-            relational_db["database"]
-            return relational_db
-        except IndexError:
-            raise ErrorWithStatus("Waiting for relational-db relation data", WaitingStatus)
-        except KeyError:
-            raise ErrorWithStatus("Missing data in relational-db relation", WaitingStatus)
+    def _get_relational_db_data(self) -> dict:
+        data = self.database.fetch_relation_data()
+        self.logger.debug("Got following database data: %s", data)
+        for _, val in data.items():
+            if not val:
+                continue
+            self.logger.info("New mysql database endpoint is %s", val["endpoints"])
+            host, port = val["endpoints"].split(":")
+            db_data = {
+                "host": host,
+                "port": port,
+                "username": val["username"],
+                "password": val["password"],
+            }
+            return db_data
+        raise ErrorWithStatus("Waiting for relational-db relation data", WaitingStatus)
 
     def _get_object_storage_data(self, interfaces):
         """Unpacks and returns the object-storage relation data.

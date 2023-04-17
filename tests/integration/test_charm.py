@@ -143,9 +143,7 @@ class TestCharm:
             timeout=600,
         )
         await ops_test.model.relate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
-        await ops_test.model.relate(
-            f"{RELATIONAL_DB_CHARM_NAME}:mysql", f"{CHARM_NAME}:relational-db"
-        )
+        await ops_test.model.relate(f"{RELATIONAL_DB_CHARM_NAME}", f"{CHARM_NAME}")
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
@@ -298,6 +296,7 @@ class TestCharm:
             pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)
             assert pod_default is not None
 
+    @pytest.mark.abort_on_fail
     async def test_mlflow_alert_rules(self, ops_test: OpsTest):
         await ops_test.model.deploy(PROMETHEUS_CHARM_NAME, channel="latest/stable", trust=True)
         await ops_test.model.relate(PROMETHEUS_CHARM_NAME, CHARM_NAME)

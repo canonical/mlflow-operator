@@ -15,7 +15,7 @@ resources:
     upstream-source: docker.io/ubuntu/mlflow:2.1.1_1.0-22.04
 requires:
   relational-db:
-    interface: mysql
+    interface: mysql_client
   object-storage:
     interface: object-storage
     schema:
