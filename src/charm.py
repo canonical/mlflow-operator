@@ -56,6 +56,10 @@ class MlflowCharm(CharmBase):
             self.framework.observe(self.on[rel].relation_changed, self._on_event)
         self._create_service()
 
+        self.framework.observe(
+            self.on.relational_db_relation_broken, self._on_database_relation_removed
+        )
+
         # Prometheus related config
         self.prometheus_provider = MetricsEndpointProvider(
             charm=self,
@@ -268,6 +272,10 @@ class MlflowCharm(CharmBase):
 
         # proceed with other actions
         self._on_event(_)
+
+    def _on_database_relation_removed(self, _) -> None:
+        """Event is fired when relation with postgres is broken."""
+        self.unit.status = BlockedStatus("Relational database relation broken")
 
     def _send_manifests(self, interfaces, context, manifest_files, relation):
         """Send manifests from folder to desired relation."""

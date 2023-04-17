@@ -444,3 +444,17 @@ class TestCharm:
         harness.begin()
         harness.charm._on_event(None)
         assert harness.charm.model.unit.status == ActiveStatus()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_database_relation_removed(
+        self,
+        harness: Harness,
+    ):
+        harness.begin()
+        harness.charm._on_database_relation_removed(None)
+        assert harness.charm.model.unit.status == BlockedStatus(
+            "Relational database relation broken"
+        )
