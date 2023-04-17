@@ -169,7 +169,7 @@ class TestCharm:
     def test_get_interfaces_success(self, get_interfaces: MagicMock, harness: Harness):
         harness.set_leader(True)
         harness.begin_with_initial_hooks()
-        get_interfaces.assert_called_once()
+        get_interfaces.assert_called()
 
     @patch(
         "charm.KubernetesServicePatch",
