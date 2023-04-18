@@ -172,13 +172,18 @@ class MlflowCharm(CharmBase):
             if not val:
                 continue
             self.logger.info("New mysql database endpoint is %s", val["endpoints"])
-            host, port = val["endpoints"].split(":")
-            db_data = {
-                "host": host,
-                "port": port,
-                "username": val["username"],
-                "password": val["password"],
-            }
+            try:
+                host, port = val["endpoints"].split(":")
+                db_data = {
+                    "host": host,
+                    "port": port,
+                    "username": val["username"],
+                    "password": val["password"],
+                }
+            except KeyError:
+                raise ErrorWithStatus(
+                    "Incorrect data found in relation relational-db", WaitingStatus
+                )
             return db_data
         raise ErrorWithStatus("Waiting for relational-db relation data", WaitingStatus)
 

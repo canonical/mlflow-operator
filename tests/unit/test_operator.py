@@ -250,7 +250,25 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_relational_db_data_waiting(self, harness: Harness):
+    def test_get_relational_db_data_failure_wrong_data(self, harness: Harness):
+        """Test with missing username and password in databag"""
+        database = MagicMock()
+        fetch_relation_data = MagicMock()
+        fetch_relation_data.return_value = {"test-db-data": {"endpoints": "host:port"}}
+        database.fetch_relation_data = fetch_relation_data
+        harness.model.get_relation = MagicMock()
+        harness.begin()
+        harness.charm.database = database
+        with pytest.raises(ErrorWithStatus) as e_info:
+            harness.charm._get_relational_db_data()
+        assert e_info.value.status_type(WaitingStatus)
+        assert "Incorrect data found in relation relational-db" in str(e_info)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_relational_db_data_failure_waiting(self, harness: Harness):
         database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {}
