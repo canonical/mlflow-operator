@@ -57,8 +57,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Setup operator environment
-      # TODO: Unpin this when https://github.com/charmed-kubernetes/actions-operator/pull/46 is merged
-      uses: claudiubelu/actions-operator@18ebf92ae3043bd3dd15238e5d9b662d7ba08daf
+      uses: charmed-kubernetes/actions-operator@1.1.0
       with:
         juju-channel: "2.9/stable"
         provider: microk8s
