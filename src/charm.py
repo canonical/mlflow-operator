@@ -62,6 +62,10 @@ class MlflowCharm(CharmBase):
             self.on.relational_db_relation_broken, self._on_database_relation_removed
         )
 
+        self.framework.observe(
+            self.on.get_minio_credentials_action, self._on_get_minio_credentials
+        )
+
         # Prometheus related config
         self.prometheus_provider = MetricsEndpointProvider(
             charm=self,
@@ -205,6 +209,20 @@ class MlflowCharm(CharmBase):
             )
 
         return obj_storage
+
+    def _on_get_minio_credentials(self, event):
+        """Returns the credentials for minio as an action response."""
+        try:
+            interfaces = self._get_interfaces()
+            object_storage_data = self._get_object_storage_data(interfaces)
+            event.set_results(
+                {
+                    "access-key": object_storage_data["access-key"],
+                    "secret-access-key": object_storage_data["secret-key"],
+                }
+            )
+        except ErrorWithStatus:
+            event.fail("Minio is not reachable yet. Please try again in a few minutes.")
 
     def _create_default_s3_bucket(self, s3_wrapper: S3BucketWrapper, bucket_name: str) -> None:
         """Creates an s3 bucket using the default_artifact_root config value.

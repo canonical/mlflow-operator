@@ -477,3 +477,31 @@ class TestCharm:
         assert harness.charm.model.unit.status == BlockedStatus(
             "Please add relation to the database"
         )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_get_minio_credentials_failure(self, harness: Harness):
+        event = MagicMock()
+        harness.begin()
+        harness.charm._on_get_minio_credentials(event)
+        event.fail.assert_called_with(
+            "Minio is not reachable yet. Please try again in a few minutes."
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_get_minio_credentials_success(self, harness: Harness):
+        harness = add_object_storage_to_harness(harness)
+        event = MagicMock()
+        harness.begin()
+        harness.charm._on_get_minio_credentials(event)
+        event.set_results.assert_called_with(
+            {
+                "access-key": OBJECT_STORAGE_DATA["access-key"],
+                "secret-access-key": OBJECT_STORAGE_DATA["secret-key"],
+            }
+        )

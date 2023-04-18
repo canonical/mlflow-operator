@@ -1,0 +1,4 @@
+get-minio-credentials:
+  description: |
+    Get the initial access key and secret access key for minio. This is generated at charm
+    deployment time.
