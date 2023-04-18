@@ -60,6 +60,10 @@ jobs:
       # TODO: Unpin this when https://github.com/charmed-kubernetes/actions-operator/pull/46 is merged
       uses: claudiubelu/actions-operator@18ebf92ae3043bd3dd15238e5d9b662d7ba08daf
       with:
+        juju-channel:
+          description: "snap channel for juju, installed via snap"
+          required: false
+          default: "2.9/stable"
         provider: microk8s
         channel: 1.24/stable
         # Pinned until this bug is resolved: https://bugs.launchpad.net/juju/+bug/1992833
