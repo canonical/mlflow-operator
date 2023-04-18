@@ -7,12 +7,23 @@ import pytest
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
-from ops.pebble import ChangeError
+from ops.pebble import ChangeError, Service
 from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import MlflowCharm
 
+EXPECTED_SERVICE = {
+    "mlflow-server": Service(
+        "mlflow-server",
+        raw={
+            "summary": "Entrypoint of mlflow-server image",
+            "startup": "enabled",
+            "override": "replace",
+            "command": "mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $(MLFLOW_TRACKING_URI) --default-artifact-root s3:/// --expose-prometheus /metrics",  # noqa: E501
+        },
+    )
+}
 BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
 
@@ -28,18 +39,19 @@ OBJECT_STORAGE_DATA = {
 RELATIONAL_DB_DATA = {
     "database": "database",
     "host": "host",
-    "root_password": "lorem-ipsum",
+    "username": "username",
+    "password": "lorem-ipsum",
     "port": "port",
 }
 
 EXPECTED_ENVIRONMENT = {
-    "MLFLOW_S3_ENDPOINT_URL": "http://service.namespace:1234",
-    "AWS_ENDPOINT_URL": "http://service.namespace:1234",
     "AWS_ACCESS_KEY_ID": "minio-access-key",
+    "AWS_ENDPOINT_URL": "http://service.namespace:1234",
     "AWS_SECRET_ACCESS_KEY": "minio-super-secret-key",
-    "USE_SSL": "true",
     "DB_ROOT_PASSWORD": "lorem-ipsum",
-    "MLFLOW_TRACKING_URI": "mysql+pymysql://root:lorem-ipsum@host:port/database",
+    "MLFLOW_S3_ENDPOINT_URL": "http://service.namespace:1234",
+    "MLFLOW_TRACKING_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
+    "USE_SSL": "true",
 }
 
 SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
@@ -61,14 +73,6 @@ def harness() -> Harness:
     # setup container networking simulation
     harness.set_can_connect("mlflow-server", True)
 
-    return harness
-
-
-def add_relational_db_to_harness(harness: Harness) -> Harness:
-    """Helper function to handle relational db relation"""
-    rel_id = harness.add_relation("relational-db", "mysql_app")
-    harness.add_relation_unit(rel_id, "mysql_app/0")
-    harness.update_relation_data(rel_id, "mysql_app/0", RELATIONAL_DB_DATA)
     return harness
 
 
@@ -165,11 +169,12 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.get_interfaces")
-    def test_get_interfaces_success(self, get_interfaces: MagicMock, harness: Harness):
+    def test_get_interfaces_success(self, harness: Harness):
+        harness = add_object_storage_to_harness(harness)
         harness.set_leader(True)
-        harness.begin_with_initial_hooks()
-        get_interfaces.assert_called()
+        harness.begin()
+        interfaces = harness.charm._get_interfaces()
+        assert interfaces["object-storage"] is not None
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -211,37 +216,70 @@ class TestCharm:
     def test_get_object_storage_data_success(self, harness: Harness):
         harness = add_object_storage_to_harness(harness)
         harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == WaitingStatus(
-            "Waiting for relational-db relation data"
-        )
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    @patch("charm.MlflowCharm._validate_default_s3_bucket_name_and_access")
-    def test_get_relational_db_data_success(
-        self, validate_default_s3_bucket: MagicMock, harness: Harness
-    ):
-        harness = add_object_storage_to_harness(harness)
-        harness = add_relational_db_to_harness(harness)
-        harness.begin_with_initial_hooks()
-        validate_default_s3_bucket.assert_called()
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    def test_get_relational_db_data_failure_multiple_relations(self, harness: Harness):
-        harness = add_object_storage_to_harness(harness)
-        harness = add_relational_db_to_harness(harness)
-        rel_id = harness.add_relation("relational-db", "mysql_app2")
-        harness.add_relation_unit(rel_id, "mysql_app2/0")
-        harness.update_relation_data(rel_id, "mysql_app2/0", RELATIONAL_DB_DATA)
-        harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
-            "Too many mysql relations. Found 2, expected 1"
+            "Please add relation to the database"
         )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_relational_db_data_success(self, harness: Harness):
+        database = MagicMock()
+        fetch_relation_data = MagicMock()
+        fetch_relation_data.return_value = {
+            "test-db-data": {
+                "endpoints": "host:port",
+                "username": "username",
+                "password": "password",
+            }
+        }
+        database.fetch_relation_data = fetch_relation_data
+        harness.model.get_relation = MagicMock()
+        harness.begin()
+        harness.charm.database = database
+        res = harness.charm._get_relational_db_data()
+        assert res == {
+            "host": "host",
+            "password": "password",
+            "port": "port",
+            "username": "username",
+        }
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_relational_db_data_failure_wrong_data(self, harness: Harness):
+        """Test with missing username and password in databag"""
+        database = MagicMock()
+        fetch_relation_data = MagicMock()
+        fetch_relation_data.return_value = {"test-db-data": {"endpoints": "host:port"}}
+        database.fetch_relation_data = fetch_relation_data
+        harness.model.get_relation = MagicMock()
+        harness.begin()
+        harness.charm.database = database
+        with pytest.raises(ErrorWithStatus) as e_info:
+            harness.charm._get_relational_db_data()
+        assert e_info.value.status_type(WaitingStatus)
+        assert "Incorrect data found in relation relational-db" in str(e_info)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_relational_db_data_failure_waiting(self, harness: Harness):
+        database = MagicMock()
+        fetch_relation_data = MagicMock()
+        fetch_relation_data.return_value = {}
+        database.fetch_relation_data = fetch_relation_data
+        harness.begin()
+        harness.charm.database = database
+        with pytest.raises(ErrorWithStatus) as e_info:
+            harness.charm._get_relational_db_data()
+
+        assert e_info.value.status_type(BlockedStatus)
+        assert "Please add relation to the database" in str(e_info)
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -299,122 +337,76 @@ class TestCharm:
     def test_validate_default_s3_bucket_failure_wrong_name(
         self, validate_s3_bucket_name: MagicMock, harness: Harness
     ):
-        harness = add_object_storage_to_harness(harness)
-        harness = add_relational_db_to_harness(harness)
         validate_s3_bucket_name.return_value = False
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == BlockedStatus(
-            "Invalid value for config default_artifact_root 'mlflow' "
-            "- value must be a valid S3 bucket name"
-        )
+        harness.begin()
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._validate_default_s3_bucket_name_and_access(BUCKET_NAME, None)
+        assert exc_info.value.status_type(WaitingStatus)
+        assert "Invalid value for config default_artifact_root" in str(exc_info)
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.S3BucketWrapper.__init__")
-    @patch("charm.S3BucketWrapper.check_if_bucket_accessible")
-    @patch("charm.S3BucketWrapper.create_bucket")
-    def test_validate_default_s3_bucket_failure_bucket_creation(
-        self,
-        create_bucket: MagicMock,
-        check_if_bucket_accessible: MagicMock,
-        init: MagicMock,
-        harness: Harness,
-    ):
-        harness = add_object_storage_to_harness(harness)
-        harness = add_relational_db_to_harness(harness)
-        check_if_bucket_accessible.return_value = False
-        init.return_value = None
-        create_bucket.side_effect = Exception()
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == BlockedStatus(
-            "Error with default S3 artifact store - bucket "
-            "not accessible or cannot be created.  Caught error: '"
-        )
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    @patch("charm.S3BucketWrapper.__init__")
-    @patch("charm.S3BucketWrapper.check_if_bucket_accessible")
-    @patch("charm.S3BucketWrapper.create_bucket")
     def test_validate_default_s3_bucket_failure_bucket_creation_not_allowed(
         self,
-        create_bucket: MagicMock,
-        check_if_bucket_accessible: MagicMock,
-        init: MagicMock,
         harness: Harness,
     ):
-        harness = add_object_storage_to_harness(harness)
-        harness = add_relational_db_to_harness(harness)
         harness.update_config({"create_default_artifact_root_if_missing": False})
+        s3_wrapper = MagicMock()
+        check_if_bucket_accessible = MagicMock()
         check_if_bucket_accessible.return_value = False
-        init.return_value = None
-        create_bucket.side_effect = Exception()
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == BlockedStatus(
-            "Error with default S3 artifact store - "
-            "bucket not accessible or does not exist. "
-            "Set create_default_artifact_root_if_missing=True "
-            "to automatically create a missing default bucket"
-        )
+        s3_wrapper.check_if_bucket_accessible = check_if_bucket_accessible
+        harness.begin()
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._validate_default_s3_bucket_name_and_access(BUCKET_NAME, s3_wrapper)
+
+        assert exc_info.value.status_type(BlockedStatus)
+        assert "Error with default S3 artifact store - " in str(exc_info)
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.MlflowCharm.container")
-    @patch("charm.MlflowCharm._validate_default_s3_bucket_name_and_access")
     def test_update_layer_failure_container_problem(
         self,
-        _: MagicMock,
         container: MagicMock,
         harness: Harness,
     ):
-        harness = add_object_storage_to_harness(harness)
-        harness = add_relational_db_to_harness(harness)
         change = MagicMock()
         change.tasks = []
         container.replan.side_effect = _FakeChangeError("Fake problem during layer update", change)
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == BlockedStatus(
-            "Failed to replan with error: Fake problem during layer update"
-        )
+        harness.begin()
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._update_layer({}, "")
+
+        assert exc_info.value.status_type(BlockedStatus)
+        assert "Failed to replan with error: " in str(exc_info)
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._validate_default_s3_bucket_name_and_access")
-    @patch("charm.MlflowCharm._update_layer")
-    def test_environament_variables(
-        self,
-        update_layer: MagicMock,
-        validate_default_s3_bucket_name_and_access: MagicMock,
-        harness: Harness,
-    ):
-        harness = add_object_storage_to_harness(harness)
-        harness = add_relational_db_to_harness(harness)
-        validate_default_s3_bucket_name_and_access.return_value = True
-        harness.begin_with_initial_hooks()
-        update_layer.assert_called_with(EXPECTED_ENVIRONMENT, BUCKET_NAME)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    @patch("charm.MlflowCharm._validate_default_s3_bucket_name_and_access")
     def test_update_layer_success(
         self,
-        _: MagicMock,
         harness: Harness,
     ):
-        harness = add_object_storage_to_harness(harness)
-        harness = add_relational_db_to_harness(harness)
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == ActiveStatus()
+        harness.begin()
+        harness.charm._update_layer({}, "")
+        assert harness.charm.container.get_plan().services == EXPECTED_SERVICE
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_env_vars(
+        self,
+        harness: Harness,
+    ):
+        harness.begin()
+        envs = harness.charm._get_env_vars(RELATIONAL_DB_DATA, OBJECT_STORAGE_DATA)
+        assert envs == EXPECTED_ENVIRONMENT
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -445,3 +437,43 @@ class TestCharm:
         harness.begin()
         harness.charm._send_manifests(interfaces, {}, "", "secrets")
         secrets_interface.send_data.assert_called_with({"secrets": tmp_manifests})
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data")
+    @patch("charm.MlflowCharm._get_relational_db_data")
+    def test_on_event(
+        self,
+        get_relational_db_data: MagicMock,
+        get_object_storage_data: MagicMock,
+        harness: Harness,
+    ):
+        get_object_storage_data.return_value = OBJECT_STORAGE_DATA
+        get_relational_db_data.return_value = RELATIONAL_DB_DATA
+        harness.set_leader(True)
+        harness.begin()
+        harness.charm._on_event(None)
+        assert harness.charm.model.unit.status == ActiveStatus()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_database_relation_removed(
+        self,
+        harness: Harness,
+    ):
+        harness.begin()
+        harness.charm._on_database_relation_removed(None)
+        assert harness.charm.model.unit.status == BlockedStatus(
+            "Please add relation to the database"
+        )
