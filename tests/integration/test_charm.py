@@ -44,10 +44,6 @@ OBJECT_STORAGE_CONFIG = {
     "secret-key": "minio123",
     "port": "9000",
 }
-MYSQL_CONFIG = {
-    "mysql-interface-database": "mlflow",
-    "mysql-interface-user": "mysql",
-}
 SECRET_SUFFIX = "-minio-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
 
@@ -132,7 +128,6 @@ class TestCharm:
             RELATIONAL_DB_CHARM_NAME,
             channel="8.0/stable",
             series="jammy",
-            config=MYSQL_CONFIG,
             trust=True,
         )
         await ops_test.model.wait_for_idle(

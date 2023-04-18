@@ -39,6 +39,7 @@ class MlflowCharm(CharmBase):
     def __init__(self, *args):
         super().__init__(*args)
 
+        self.env
         self.logger = logging.getLogger(__name__)
         self._port = self.model.config["mlflow_port"]
         self._container_name = "mlflow-server"
@@ -62,6 +63,8 @@ class MlflowCharm(CharmBase):
             self.on.relational_db_relation_broken, self._on_database_relation_removed
         )
 
+        self.framework.observe(self.on.get_minio_password_action, self._on_get_minio_password)
+
         # Prometheus related config
         self.prometheus_provider = MetricsEndpointProvider(
             charm=self,
@@ -80,6 +83,20 @@ class MlflowCharm(CharmBase):
     def container(self):
         """Return container."""
         return self._container
+    
+    def _on_get_minio_password(self, event) -> None:
+        """Returns the password for the admin user as an action response."""
+        if not self.grafana_service.is_ready:
+            event.fail("Grafana is not reachable yet. Please try again in a few minutes")
+            return
+        if self.grafana_service.password_has_been_changed(
+            self.model.config["admin_user"], self._get_admin_password()
+        ):
+            event.set_results(
+                {"admin-password": "Admin password has been changed by an administrator"}
+            )
+        else:
+            event.set_results({"admin-password": self._get_admin_password()})
 
     def _create_service(self):
         """Create k8s service based on charm'sconfig."""
@@ -160,9 +177,15 @@ class MlflowCharm(CharmBase):
         return interfaces
 
     def _get_relational_db_data(self) -> dict:
+        mysql_relation = self.model.get_relation("relational-db")
+
+        # Raise exception and stop execution if the relational-db relation is not established
+        if not mysql_relation:
+            raise ErrorWithStatus("Please add relation to the database", BlockedStatus)
+
         data = self.database.fetch_relation_data()
         self.logger.debug("Got following database data: %s", data)
-        for _, val in data.items():
+        for val in data.values():
             if not val:
                 continue
             self.logger.info("New mysql database endpoint is %s", val["endpoints"])
@@ -277,7 +300,7 @@ class MlflowCharm(CharmBase):
 
     def _on_database_relation_removed(self, _) -> None:
         """Event is fired when relation with postgres is broken."""
-        self.unit.status = BlockedStatus("Relational database relation broken")
+        self.unit.status = BlockedStatus("Please add relation to the database")
 
     def _send_manifests(self, interfaces, context, manifest_files, relation):
         """Send manifests from folder to desired relation."""

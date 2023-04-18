@@ -216,8 +216,8 @@ class TestCharm:
     def test_get_object_storage_data_success(self, harness: Harness):
         harness = add_object_storage_to_harness(harness)
         harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == WaitingStatus(
-            "Waiting for relational-db relation data"
+        assert harness.charm.model.unit.status == BlockedStatus(
+            "Please add relation to the database"
         )
 
     @patch(
@@ -235,6 +235,7 @@ class TestCharm:
             }
         }
         database.fetch_relation_data = fetch_relation_data
+        harness.model.get_relation = MagicMock()
         harness.begin()
         harness.charm.database = database
         res = harness.charm._get_relational_db_data()
@@ -259,8 +260,8 @@ class TestCharm:
         with pytest.raises(ErrorWithStatus) as e_info:
             harness.charm._get_relational_db_data()
 
-        assert e_info.value.status_type(WaitingStatus)
-        assert "Waiting for relational-db relation data" in str(e_info)
+        assert e_info.value.status_type(BlockedStatus)
+        assert "Please add relation to the database" in str(e_info)
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -456,5 +457,5 @@ class TestCharm:
         harness.begin()
         harness.charm._on_database_relation_removed(None)
         assert harness.charm.model.unit.status == BlockedStatus(
-            "Relational database relation broken"
+            "Please add relation to the database"
         )
