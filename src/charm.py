@@ -175,7 +175,6 @@ class MlflowCharm(CharmBase):
         for val in data.values():
             if not val:
                 continue
-            self.logger.info("New mysql database endpoint is %s", val["endpoints"])
             try:
                 host, port = val["endpoints"].split(":")
                 db_data = {
