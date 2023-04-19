@@ -22,4 +22,4 @@ applications:
     _github_repo_name: mlflow-operator
 relations:
 - [mlflow-server, mlflow-minio]
-- [mlflow-server, mysql-k8s]
+- [mlflow-server, mlflow-mysql]
