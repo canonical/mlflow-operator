@@ -12,13 +12,13 @@ spec:
      valueFrom:
        secretKeyRef:
          name: {{ app_name }}-minio-artifact
-         key: accesskey
+         key: AWS_ACCESS_KEY_ID
          optional: false
    - name: AWS_SECRET_ACCESS_KEY
      valueFrom:
        secretKeyRef:
          name: {{ app_name }}-minio-artifact
-         key: secretkey
+         key: AWS_SECRET_ACCESS_KEY
          optional: false
    - name: MINIO_ENDPOINT_URL
      value: {{ s3_endpoint }}
