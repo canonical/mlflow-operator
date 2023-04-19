@@ -1,0 +1,25 @@
+bundle: kubernetes
+name: mlflow
+applications:
+  mlflow-minio:
+    charm: minio
+    channel: ckf-1.7/edge
+    scale: 1
+    trust: true
+    _github_repo_name: minio-operator
+  mysql-k8s:
+    charm: mysql-k8s
+    channel: 8.0/stable
+    series: jammy
+    scale: 1
+    trust: true
+    _github_repo_name: mysql-k8s-operator
+  mlflow-server:
+    charm: mlflow-server
+    channel: latest/edge
+    scale: 1
+    trust: true
+    _github_repo_name: mlflow-operator
+relations:
+- [mlflow-server, mlflow-minio]
+- [mlflow-server, mysql-k8s]
