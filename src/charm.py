@@ -302,7 +302,7 @@ class MlflowCharm(CharmBase):
 
         # proceed with other actions
         self._on_event(_)
-    
+
     def _check_container(self):
         """Check if we can connect the container."""
         if not self.container.can_connect():
