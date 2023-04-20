@@ -283,6 +283,8 @@ class MlflowCharm(CharmBase):
 
     def _update_layer(self, envs, default_artifact_root) -> None:
         """Update the Pebble configuration layer (if changed)."""
+        if not self.container.can_connect():
+            raise ErrorWithStatus("Container is not ready", WaitingStatus)
         current_layer = self.container.get_plan()
         new_layer = self._charmed_mlflow_layer(envs, default_artifact_root)
         if current_layer.services != new_layer.services:
@@ -302,11 +304,6 @@ class MlflowCharm(CharmBase):
 
         # proceed with other actions
         self._on_event(_)
-
-    def _check_container(self):
-        """Check if we can connect the container."""
-        if not self.container.can_connect():
-            raise ErrorWithStatus("Container is not ready", WaitingStatus)
 
     def _on_database_relation_removed(self, _) -> None:
         """Event is fired when relation with postgres is broken."""
@@ -332,7 +329,6 @@ class MlflowCharm(CharmBase):
         """Perform all required actions for the Charm."""
         try:
             self._check_leader()
-            self._check_container()
             interfaces = self._get_interfaces()
             object_storage_data = self._get_object_storage_data(interfaces)
             relational_db_data = self._get_relational_db_data()
