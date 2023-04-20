@@ -53,8 +53,7 @@ class MlflowCharm(CharmBase):
         self.framework.observe(self.on.mlflow_server_pebble_ready, self._on_pebble_ready)
 
         for rel in self.model.relations.keys():
-            if rel != "relational-db":
-                self.framework.observe(self.on[rel].relation_changed, self._on_event)
+            self.framework.observe(self.on[rel].relation_changed, self._on_event)
         self._create_service()
 
         self.framework.observe(self.database.on.database_created, self._on_event)
@@ -303,6 +302,11 @@ class MlflowCharm(CharmBase):
 
         # proceed with other actions
         self._on_event(_)
+    
+    def _check_container(self):
+        """Check if we can connect the container."""
+        if not self.container.can_connect():
+            raise ErrorWithStatus("Container is not ready", WaitingStatus)
 
     def _on_database_relation_removed(self, _) -> None:
         """Event is fired when relation with postgres is broken."""
@@ -328,6 +332,7 @@ class MlflowCharm(CharmBase):
         """Perform all required actions for the Charm."""
         try:
             self._check_leader()
+            self._check_container()
             interfaces = self._get_interfaces()
             object_storage_data = self._get_object_storage_data(interfaces)
             relational_db_data = self._get_relational_db_data()
