@@ -53,7 +53,8 @@ class MlflowCharm(CharmBase):
         self.framework.observe(self.on.mlflow_server_pebble_ready, self._on_pebble_ready)
 
         for rel in self.model.relations.keys():
-            self.framework.observe(self.on[rel].relation_changed, self._on_event)
+            if rel != "relational-db":
+                self.framework.observe(self.on[rel].relation_changed, self._on_event)
         self._create_service()
 
         self.framework.observe(self.database.on.database_created, self._on_event)
