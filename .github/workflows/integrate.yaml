@@ -63,7 +63,7 @@ jobs:
         provider: microk8s
         channel: 1.24/stable
         # Pinned until this bug is resolved: https://bugs.launchpad.net/juju/+bug/1992833
-        bootstrap-options: "--agent-version=2.9.34"
+        bootstrap-options: "--agent-version=2.9.34 --model-default update-status-hook-interval='30s'"
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
 
     - name: Run integration tests
