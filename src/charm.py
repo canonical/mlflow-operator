@@ -7,6 +7,7 @@ import json
 import logging
 from pathlib import Path
 
+import botocore.exceptions
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
@@ -259,20 +260,19 @@ class MlflowCharm(CharmBase):
             )
             raise ErrorWithStatus(msg, BlockedStatus)
 
-        if (
-            not s3_wrapper.check_if_bucket_accessible(bucket_name)
-            and not self.config["create_default_artifact_root_if_missing"]
-        ):
+        try:
+            is_bucket_accessible = s3_wrapper.check_if_bucket_accessible(bucket_name)
+        except botocore.exceptions.EndpointConnectionError:
+            raise ErrorWithStatus("Waiting for object-storage. Can't connect.", WaitingStatus)
+
+        if not is_bucket_accessible and not self.config["create_default_artifact_root_if_missing"]:
             raise ErrorWithStatus(
                 "Error with default S3 artifact store - bucket not accessible or does not "
                 "exist. Set create_default_artifact_root_if_missing=True to automatically "
                 "create a missing default bucket",
                 BlockedStatus,
             )
-        elif (
-            not s3_wrapper.check_if_bucket_accessible(bucket_name)
-            and self.config["create_default_artifact_root_if_missing"]
-        ):
+        elif not is_bucket_accessible and self.config["create_default_artifact_root_if_missing"]:
             return False
         return True
 

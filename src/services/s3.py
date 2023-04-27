@@ -41,6 +41,8 @@ class S3BucketWrapper:
             return True
         except botocore.exceptions.ClientError:
             return False
+        except botocore.exceptions.EndpointConnectionError as err:
+            raise err
 
     def create_bucket_if_missing(self, bucket_name):
         """Creates the bucket bucket_name if it does not exist, raising an error if it cannot.
