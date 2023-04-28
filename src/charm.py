@@ -7,6 +7,7 @@ import json
 import logging
 from pathlib import Path
 
+import botocore.exceptions
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
@@ -56,6 +57,7 @@ class MlflowCharm(CharmBase):
             self.framework.observe(self.on[rel].relation_changed, self._on_event)
         self._create_service()
 
+        self.framework.observe(self.on.update_status, self._on_event)
         self.framework.observe(self.database.on.database_created, self._on_event)
         self.framework.observe(self.database.on.endpoints_changed, self._on_event)
         self.framework.observe(
@@ -258,20 +260,19 @@ class MlflowCharm(CharmBase):
             )
             raise ErrorWithStatus(msg, BlockedStatus)
 
-        if (
-            not s3_wrapper.check_if_bucket_accessible(bucket_name)
-            and not self.config["create_default_artifact_root_if_missing"]
-        ):
+        try:
+            is_bucket_accessible = s3_wrapper.check_if_bucket_accessible(bucket_name)
+        except botocore.exceptions.EndpointConnectionError:
+            raise ErrorWithStatus("Waiting for object-storage. Can't connect.", WaitingStatus)
+
+        if not is_bucket_accessible and not self.config["create_default_artifact_root_if_missing"]:
             raise ErrorWithStatus(
                 "Error with default S3 artifact store - bucket not accessible or does not "
                 "exist. Set create_default_artifact_root_if_missing=True to automatically "
                 "create a missing default bucket",
                 BlockedStatus,
             )
-        elif (
-            not s3_wrapper.check_if_bucket_accessible(bucket_name)
-            and self.config["create_default_artifact_root_if_missing"]
-        ):
+        elif not is_bucket_accessible and self.config["create_default_artifact_root_if_missing"]:
             return False
         return True
 
@@ -283,6 +284,8 @@ class MlflowCharm(CharmBase):
 
     def _update_layer(self, envs, default_artifact_root) -> None:
         """Update the Pebble configuration layer (if changed)."""
+        if not self.container.can_connect():
+            raise ErrorWithStatus("Container is not ready", WaitingStatus)
         current_layer = self.container.get_plan()
         new_layer = self._charmed_mlflow_layer(envs, default_artifact_root)
         if current_layer.services != new_layer.services:
