@@ -17,11 +17,11 @@ on:
 jobs:
   promote-charm:
     name: Promote charm
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
       - name: Release charm to channel
-        uses: canonical/charming-actions/release-charm@2.0.0-rc
+        uses: canonical/charming-actions/release-charm@2.3.0
         with:
           credentials: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

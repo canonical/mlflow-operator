@@ -14,6 +14,14 @@ class S3BucketWrapper:
     def __init__(
         self, access_key: str, secret_access_key: str, s3_service: str, s3_port: Union[str, int]
     ):
+        """Initialize S3 Bucket Wrapper.
+
+        access_key - S3 access key ID
+        secret_access_key - S3 secret access key
+        s3_service - S3 service URL that can include namespace
+        s3_port - S3 service port
+        """
+
         self.access_key: str = access_key
         self.secret_access_key: str = secret_access_key
         self.s3_service: str = s3_service
@@ -75,7 +83,7 @@ def validate_s3_bucket_name(name):
     """Returns True if name is a valid S3 bucket name, else False."""
     # regex from https://stackoverflow.com/a/50484916/5394584
     if re.match(
-        r"(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)",
+        r"(?=^.{3,63}$)(?!^(\d+\.)+\d+$)(^(([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.)*([a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$)",  # noqa:
         name,
     ):
         return True

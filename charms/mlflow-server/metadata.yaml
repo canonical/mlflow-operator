@@ -17,12 +17,73 @@ requires:
     interface: mysql
   object-storage:
     interface: object-storage
-    schema: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
+    schema:
+      v1:
+        provides:
+          type: object
+          properties:
+            access-key:
+              type: string
+            namespace:
+              type:
+              - string
+              - 'null'
+            port:
+              type: number
+            secret-key:
+              type: string
+            secure:
+              type: boolean
+            service:
+              type: string
+          required:
+          - access-key
+          - port
+          - secret-key
+          - secure
+          - service
     versions: [v1]
+    __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
   ingress:
     interface: ingress
-    schema: https://raw.githubusercontent.com/canonical/operator-schemas/master/ingress.yaml
+    schema:
+      v2:
+        requires:
+          type: object
+          properties:
+            service:
+              type: string
+            port:
+              type: integer
+            namespace:
+              type: string
+            prefix:
+              type: string
+            rewrite:
+              type: string
+          required:
+          - service
+          - port
+          - namespace
+          - prefix
+      v1:
+        requires:
+          type: object
+          properties:
+            service:
+              type: string
+            port:
+              type: integer
+            prefix:
+              type: string
+            rewrite:
+              type: string
+          required:
+          - service
+          - port
+          - prefix
     versions: [v1]
+    __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/ingress.yaml
   pod-defaults:
     interface: pod-defaults
 provides:

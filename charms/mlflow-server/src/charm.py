@@ -16,18 +16,8 @@ from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from oci_image import OCIImageResource, OCIImageResourceError
 from ops.charm import CharmBase
 from ops.main import main
-from ops.model import (
-    ActiveStatus,
-    BlockedStatus,
-    MaintenanceStatus,
-    StatusBase,
-    WaitingStatus,
-)
-from serialized_data_interface import (
-    NoCompatibleVersions,
-    NoVersionsListed,
-    get_interfaces,
-)
+from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, StatusBase, WaitingStatus
+from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, get_interfaces
 
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
@@ -97,17 +87,13 @@ class Operator(CharmBase):
 
         obj_storage = list(interfaces["object-storage"].get_data().values())[0]
         config = self.model.config
-        endpoint = (
-            f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}"
-        )
+        endpoint = _gen_obj_storage_endpoint_url(obj_storage)
         tracking = f"{self.model.app.name}.{self.model.name}.svc.cluster.local"
         tracking = f"http://{tracking}:{config['mlflow_port']}"
         event.relation.data[self.app]["pod-defaults"] = json.dumps(
             {
                 "minio": {
                     "env": {
-                        "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
-                        "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
                         "MLFLOW_S3_ENDPOINT_URL": endpoint,
                         "MLFLOW_TRACKING_URI": tracking,
                     }
@@ -142,6 +128,9 @@ class Operator(CharmBase):
         self.model.unit.status = MaintenanceStatus("Setting pod spec")
 
         config = self.model.config
+
+        pod_spec_services = self._get_pod_spec_services(config)
+
         self.model.pod.set_spec(
             {
                 "version": 3,
@@ -164,70 +153,81 @@ class Operator(CharmBase):
                             "db-secret": {"secret": {"name": f"{self.charm_name}-db-secret"}},
                             "aws-secret": {"secret": {"name": f"{self.charm_name}-minio-secret"}},
                             "AWS_DEFAULT_REGION": "us-east-1",
-                            "MLFLOW_S3_ENDPOINT_URL": "http://{service}.{namespace}:{port}".format(
-                                **obj_storage
-                            ),
+                            "MLFLOW_S3_ENDPOINT_URL": _gen_obj_storage_endpoint_url(obj_storage),
                         },
                     }
                 ],
                 "kubernetesResources": {
                     "secrets": secrets,
-                    "services": [
-                        {
-                            "name": "mlflow-external",
-                            "spec": {
-                                "type": "NodePort",
-                                "selector": {
-                                    "app.kubernetes.io/name": "mlflow",
-                                },
-                                "ports": [
-                                    {
-                                        "protocol": "TCP",
-                                        "port": config["mlflow_port"],
-                                        "targetPort": config["mlflow_port"],
-                                        "nodePort": config["mlflow_nodeport"],
-                                    }
-                                ],
-                            },
-                        },
-                        {
-                            "name": "kubeflow-external",
-                            "spec": {
-                                "type": "NodePort",
-                                "selector": {
-                                    "app.kubernetes.io/name": "istio-ingressgateway",
-                                },
-                                "ports": [
-                                    {
-                                        "protocol": "TCP",
-                                        "port": config["kubeflow_port"],
-                                        "targetPort": config["kubeflow_port"],
-                                        "nodePort": config["kubeflow_nodeport"],
-                                    }
-                                ],
-                            },
-                        },
-                        {
-                            "name": "kubeflow-external-lb",
-                            "spec": {
-                                "type": "LoadBalancer",
-                                "selector": {
-                                    "app.kubernetes.io/name": "istio-ingressgateway",
-                                },
-                                "ports": [
-                                    {
-                                        "protocol": "TCP",
-                                        "port": config["kubeflow_port"],
-                                        "targetPort": config["kubeflow_port"],
-                                    }
-                                ],
-                            },
-                        },
-                    ],
+                    "services": pod_spec_services,
                 },
             },
         )
         self.model.unit.status = ActiveStatus()
+
+    def _get_pod_spec_services(self, config):
+        """Returns service list for pod spec based on enabled service flags."""
+        pod_spec_services = []
+        if self.config["enable_mlflow_nodeport"]:
+            pod_spec_services.append(
+                {
+                    "name": "mlflow-external",
+                    "spec": {
+                        "type": "NodePort",
+                        "selector": {
+                            "app.kubernetes.io/name": "mlflow",
+                        },
+                        "ports": [
+                            {
+                                "protocol": "TCP",
+                                "port": config["mlflow_port"],
+                                "targetPort": config["mlflow_port"],
+                                "nodePort": config["mlflow_nodeport"],
+                            }
+                        ],
+                    },
+                }
+            )
+        if self.config["enable_kubeflow_nodeport"]:
+            pod_spec_services.append(
+                {
+                    "name": "kubeflow-external",
+                    "spec": {
+                        "type": "NodePort",
+                        "selector": {
+                            "app.kubernetes.io/name": "istio-ingressgateway",
+                        },
+                        "ports": [
+                            {
+                                "protocol": "TCP",
+                                "port": config["kubeflow_port"],
+                                "targetPort": config["kubeflow_port"],
+                                "nodePort": config["kubeflow_nodeport"],
+                            }
+                        ],
+                    },
+                }
+            )
+        if self.config["enable_kubeflow_loadbalancer"]:
+            pod_spec_services.append(
+                {
+                    "name": "kubeflow-external-lb",
+                    "spec": {
+                        "type": "LoadBalancer",
+                        "selector": {
+                            "app.kubernetes.io/name": "istio-ingressgateway",
+                        },
+                        "ports": [
+                            {
+                                "protocol": "TCP",
+                                "port": config["kubeflow_port"],
+                                "targetPort": config["kubeflow_port"],
+                            }
+                        ],
+                    },
+                }
+            )
+        return pod_spec_services
 
     def _configure_mesh(self, interfaces):
         if interfaces["ingress"]:
@@ -292,7 +292,7 @@ class Operator(CharmBase):
         s3_wrapper = S3BucketWrapper(
             access_key=obj_storage["access-key"],
             secret_access_key=obj_storage["secret-key"],
-            s3_service=obj_storage["service"],
+            s3_service=f"{obj_storage['service']}.{obj_storage['namespace']}",
             s3_port=obj_storage["port"],
         )
 
@@ -311,9 +311,9 @@ class Operator(CharmBase):
                     )
             else:
                 raise CheckFailedError(
-                    "Error with default S3 artifact store - bucket not accessible or does not exist."
-                    "  Set create_default_artifact_root_if_missing=True to automatically create a "
-                    "missing default bucket",
+                    "Error with default S3 artifact store - bucket not accessible or does not "
+                    "exist. Set create_default_artifact_root_if_missing=True to automatically "
+                    "create a missing default bucket",
                     BlockedStatus,
                 )
 
@@ -331,6 +331,21 @@ class Operator(CharmBase):
             {"name": f"{self.charm_name}-db-secret", "data": _db_secret_dict(mysql=mysql)},
         ]
 
+    def _gen_obj_storage_endpoint_url(self, obj_storage):
+        """Generate object storage endpoint URL.
+
+        URL generated only if 'service' is set, otherwise it returns empty string.
+        """
+        endpoint_url = ""
+        if "service" in obj_storage and len(obj_storage["service"]) > 0:
+            endpoint_url = f"http://{obj_storage['service']}"
+            if "namespace" in obj_storage and len(obj_storage["namespace"]) > 0:
+                endpoint_url += f".{obj_storage['namespace']}"
+            if "port" in obj_storage and len(obj_storage["port"]) > 0:
+                endpoint_url += f":{obj_storage['port']}"
+
+        return endpoint_url
+
 
 class CheckFailedError(Exception):
     """Raise this exception if one of the checks in main fails."""
@@ -343,6 +358,11 @@ class CheckFailedError(Exception):
         self.status = status_type(self.msg)
 
 
+def _gen_obj_storage_endpoint_url(obj_storage):
+    """Generate object storage endpoint URL."""
+    return f"http://{obj_storage['service']}.{obj_storage['namespace']}:{obj_storage['port']}"
+
+
 def _b64_encode_dict(d):
     """Returns the dict with values being base64 encoded."""
     # Why do we encode and decode in utf-8 first?
@@ -352,7 +372,7 @@ def _b64_encode_dict(d):
 def _minio_credentials_dict(obj_storage):
     """Returns a dict of minio credentials with the values base64 encoded."""
     minio_credentials = {
-        "AWS_ENDPOINT_URL": f"http://{obj_storage['service']}:{obj_storage['port']}",
+        "AWS_ENDPOINT_URL": _gen_obj_storage_endpoint_url(obj_storage),
         "AWS_ACCESS_KEY_ID": obj_storage["access-key"],
         "AWS_SECRET_ACCESS_KEY": obj_storage["secret-key"],
         "USE_SSL": str(obj_storage["secure"]).lower(),
@@ -367,7 +387,7 @@ def _seldon_credentials_dict(obj_storage):
         "RCLONE_CONFIG_S3_PROVIDER": "minio",
         "RCLONE_CONFIG_S3_ACCESS_KEY_ID": obj_storage["access-key"],
         "RCLONE_CONFIG_S3_SECRET_ACCESS_KEY": obj_storage["secret-key"],
-        "RCLONE_CONFIG_S3_ENDPOINT": f"http://{obj_storage['service']}:{obj_storage['port']}",
+        "RCLONE_CONFIG_S3_ENDPOINT": _gen_obj_storage_endpoint_url(obj_storage),
         "RCLONE_CONFIG_S3_ENV_AUTH": "false",
     }
     return _b64_encode_dict(credentials)

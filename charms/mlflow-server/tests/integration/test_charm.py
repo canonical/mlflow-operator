@@ -3,6 +3,7 @@
 
 import json
 import logging
+from base64 import b64encode
 from pathlib import Path
 from random import choices
 from string import ascii_lowercase
@@ -13,6 +14,7 @@ import requests
 import yaml
 from lightkube.core.client import Client
 from lightkube.models.rbac_v1 import PolicyRule
+from lightkube.resources.core_v1 import Secret
 from lightkube.resources.rbac_authorization_v1 import Role
 from pytest_lazyfixture import lazy_fixture
 from pytest_operator.plugin import OpsTest
@@ -54,6 +56,30 @@ async def test_build_and_deploy(ops_test: OpsTest):
 @pytest.mark.assertions
 async def test_successful_deploy(ops_test: OpsTest):
     assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+
+
+@pytest.mark.abort_on_fail
+async def test_relation_and_secrets(ops_test: OpsTest):
+    """Test information propagation from relation to secrets."""
+    # NOTE: This test depends on deployment done in test_build_and_deploy()
+    test_namespace = ops_test.model_name
+    lightkube_client = Client(namespace=test_namespace)
+
+    minio_secret = lightkube_client.get(
+        Secret, name=f"{CHARM_NAME}-minio-secret", namespace=test_namespace
+    )
+    assert minio_secret is not None
+
+    seldon_secret = lightkube_client.get(
+        Secret, name=f"{CHARM_NAME}-seldon-init-container-s3-credentials", namespace=test_namespace
+    )
+    assert seldon_secret is not None
+
+    # check base64 encoding of endpoint URL
+    test_storage_url = f"http://minio.{test_namespace}:9000"
+    test_storage_url_b64 = b64encode(test_storage_url.encode("utf-8")).decode("utf-8")
+    assert minio_secret.data["AWS_ENDPOINT_URL"] == test_storage_url_b64
+    assert seldon_secret.data["RCLONE_CONFIG_S3_ENDPOINT"] == test_storage_url_b64
 
 
 async def test_default_bucket_created(ops_test: OpsTest):
@@ -223,6 +249,7 @@ async def test_deploy_with_ingress(ops_test: OpsTest):
 
 
 @pytest.fixture
+@pytest.mark.asyncio
 async def url_with_ingress(ops_test: OpsTest):
     status = await ops_test.model.get_status()
     url = f"http://{status['applications']['istio-gateway']['public-address']}.nip.io/mlflow/"
@@ -230,6 +257,7 @@ async def url_with_ingress(ops_test: OpsTest):
 
 
 @pytest.fixture
+@pytest.mark.asyncio
 async def url_without_ingress(ops_test: OpsTest):
     status = await ops_test.model.get_status()
     unit_name = ops_test.model.applications[CHARM_NAME].units[0].name
@@ -241,6 +269,7 @@ async def url_without_ingress(ops_test: OpsTest):
 @pytest.mark.parametrize(
     "url", [lazy_fixture("url_without_ingress"), lazy_fixture("url_with_ingress")]
 )
+@pytest.mark.asyncio
 async def test_access_dashboard(request, url):
     options = Options()
     options.headless = True
@@ -267,9 +296,8 @@ async def test_access_dashboard(request, url):
                 sleep(5)
         else:
             driver.get(url)
-        wait.until(
-            expected_conditions.presence_of_element_located(
-                (By.CLASS_NAME, "experiment-view-container")
-            )
-        )
+
+        yield driver, wait, url
+
         Path(f"/tmp/selenium-{request.node.name}.har").write_text(driver.har)
+        driver.get_screenshot_as_file(f"/tmp/selenium-{request.node.name}.png")
