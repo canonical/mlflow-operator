@@ -343,10 +343,7 @@ import tempfile
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-<<<<<<< HEAD:lib/charms/prometheus_k8s/v0/prometheus_scrape.py
 from urllib.error import HTTPError, URLError
-=======
->>>>>>> main:charms/mlflow-server/lib/charms/prometheus_k8s/v0/prometheus_scrape.py
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
@@ -373,11 +370,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-<<<<<<< HEAD:lib/charms/prometheus_k8s/v0/prometheus_scrape.py
-LIBPATCH = 35
-=======
-LIBPATCH = 30
->>>>>>> main:charms/mlflow-server/lib/charms/prometheus_k8s/v0/prometheus_scrape.py
+LIBPATCH = 36
 
 logger = logging.getLogger(__name__)
 
@@ -722,26 +715,12 @@ def _type_convert_stored(obj):
     """Convert Stored* to their appropriate types, recursively."""
     if isinstance(obj, StoredList):
         return list(map(_type_convert_stored, obj))
-    elif isinstance(obj, StoredDict):
+    if isinstance(obj, StoredDict):
         rdict = {}  # type: Dict[Any, Any]
         for k in obj.keys():
             rdict[k] = _type_convert_stored(obj[k])
         return rdict
-    else:
-        return obj
-
-
-def _type_convert_stored(obj):
-    """Convert Stored* to their appropriate types, recursively."""
-    if isinstance(obj, StoredList):
-        return list(map(_type_convert_stored, obj))
-    elif isinstance(obj, StoredDict):
-        rdict = {}  # type: Dict[Any, Any]
-        for k in obj.keys():
-            rdict[k] = _type_convert_stored(obj[k])
-        return rdict
-    else:
-        return obj
+    return obj
 
 
 def _validate_relation_by_interface_and_direction(
@@ -1460,7 +1439,7 @@ def _dedupe_job_names(jobs: List[dict]):
                 job["job_name"] = "{}_{}".format(job["job_name"], hashed)
     new_jobs = []
     for key in jobs_dict:
-        new_jobs.extend([i for i in jobs_dict[key]])
+        new_jobs.extend(list(jobs_dict[key]))
 
     # Deduplicate jobs which are equal
     # Again this in O(n^2) but it should be okay
@@ -1816,8 +1795,7 @@ class MetricsEndpointProvider(Object):
         jobs = self._jobs if self._jobs else [DEFAULT_JOB]
         if callable(self._lookaside_jobs):
             return jobs + PrometheusConfig.sanitize_scrape_configs(self._lookaside_jobs())
-        else:
-            return jobs
+        return jobs
 
     @property
     def _scrape_metadata(self) -> dict:
@@ -2050,12 +2028,9 @@ class MetricsEndpointAggregator(Object):
         `MetricsEndpointAggregator`, that Prometheus unit is provided
         with the complete set of existing scrape jobs and alert rules.
         """
-<<<<<<< HEAD:lib/charms/prometheus_k8s/v0/prometheus_scrape.py
         if not self._charm.unit.is_leader():
             return
 
-=======
->>>>>>> main:charms/mlflow-server/lib/charms/prometheus_k8s/v0/prometheus_scrape.py
         jobs = [] + _type_convert_stored(
             self._stored.jobs
         )  # list of scrape jobs, one per relation
@@ -2078,7 +2053,6 @@ class MetricsEndpointAggregator(Object):
 
     def _on_prometheus_targets_changed(self, event):
         """Update scrape jobs in response to scrape target changes.
-<<<<<<< HEAD:lib/charms/prometheus_k8s/v0/prometheus_scrape.py
 
         When there is any change in relation data with any scrape
         target, the Prometheus scrape job, for that specific target is
@@ -2102,6 +2076,7 @@ class MetricsEndpointAggregator(Object):
         Args:
             targets: a `dict` containing target information
             app_name: a `str` identifying the application
+            kwargs: a `dict` of the extra arguments passed to the function
         """
         if not self._charm.unit.is_leader():
             return
@@ -2119,45 +2094,6 @@ class MetricsEndpointAggregator(Object):
             if not _type_convert_stored(self._stored.jobs) == jobs:
                 self._stored.jobs = jobs
 
-=======
-
-        When there is any change in relation data with any scrape
-        target, the Prometheus scrape job, for that specific target is
-        updated.
-        """
-        targets = self._get_targets(event.relation)
-        if not targets:
-            return
-
-        # new scrape job for the relation that has changed
-        self.set_target_job_data(targets, event.relation.app.name)
-
-    def set_target_job_data(self, targets: dict, app_name: str, **kwargs) -> None:
-        """Update scrape jobs in response to scrape target changes.
-
-        When there is any change in relation data with any scrape
-        target, the Prometheus scrape job, for that specific target is
-        updated. Additionally, if this method is called manually, do the
-        same.
-
-        Args:
-            targets: a `dict` containing target information
-            app_name: a `str` identifying the application
-        """
-        # new scrape job for the relation that has changed
-        updated_job = self._static_scrape_job(targets, app_name, **kwargs)
-
-        for relation in self.model.relations[self._prometheus_relation]:
-            jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
-            # list of scrape jobs that have not changed
-            jobs = [job for job in jobs if updated_job["job_name"] != job["job_name"]]
-            jobs.append(updated_job)
-            relation.data[self._charm.app]["scrape_jobs"] = json.dumps(jobs)
-
-            if not _type_convert_stored(self._stored.jobs) == jobs:
-                self._stored.jobs = jobs
-
->>>>>>> main:charms/mlflow-server/lib/charms/prometheus_k8s/v0/prometheus_scrape.py
     def _on_prometheus_targets_departed(self, event):
         """Remove scrape jobs when a target departs.
 
@@ -2167,7 +2103,6 @@ class MetricsEndpointAggregator(Object):
         job_name = self._job_name(event.relation.app.name)
         unit_name = event.unit.name
         self.remove_prometheus_jobs(job_name, unit_name)
-<<<<<<< HEAD:lib/charms/prometheus_k8s/v0/prometheus_scrape.py
 
     def remove_prometheus_jobs(self, job_name: str, unit_name: Optional[str] = ""):
         """Given a job name and unit name, remove scrape jobs associated.
@@ -2181,19 +2116,7 @@ class MetricsEndpointAggregator(Object):
         """
         if not self._charm.unit.is_leader():
             return
-=======
->>>>>>> main:charms/mlflow-server/lib/charms/prometheus_k8s/v0/prometheus_scrape.py
 
-    def remove_prometheus_jobs(self, job_name: str, unit_name: Optional[str] = ""):
-        """Given a job name and unit name, remove scrape jobs associated.
-
-        The `unit_name` parameter is used for automatic, relation data bag-based
-        generation, where the unit name in labels can be used to ensure that jobs with
-        similar names (which are generated via the app name when scanning relation data
-        bags) are not accidentally removed, as their unit name labels will differ.
-        For NRPE, the job name is calculated from an ID sent via the NRPE relation, and is
-        sufficient to uniquely identify the target.
-        """
         for relation in self.model.relations[self._prometheus_relation]:
             jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
             if not jobs:
@@ -2279,6 +2202,7 @@ class MetricsEndpointAggregator(Object):
                 "port".
             application_name: a string name of the application for
                 which this static scrape job is being constructed.
+            kwargs: a `dict` of the extra arguments passed to the function
 
         Returns:
             A dictionary corresponding to a Prometheus static scrape
@@ -2300,11 +2224,8 @@ class MetricsEndpointAggregator(Object):
                         "juju_application": application_name,
                         "juju_unit": unit_name,
                         "host": target["hostname"],
-<<<<<<< HEAD:lib/charms/prometheus_k8s/v0/prometheus_scrape.py
                         # Expanding this will merge the dicts and replace the
                         # topology labels if any were present/found
-=======
->>>>>>> main:charms/mlflow-server/lib/charms/prometheus_k8s/v0/prometheus_scrape.py
                         **self._static_config_extra_labels(target),
                     },
                 }
@@ -2327,7 +2248,6 @@ class MetricsEndpointAggregator(Object):
                 logger.debug("Could not perform DNS lookup for %s", target["hostname"])
                 dns_name = target["hostname"]
             extra_info["dns_name"] = dns_name
-<<<<<<< HEAD:lib/charms/prometheus_k8s/v0/prometheus_scrape.py
         label_re = re.compile(r'(?P<label>juju.*?)="(?P<value>.*?)",?')
 
         try:
@@ -2338,9 +2258,6 @@ class MetricsEndpointAggregator(Object):
                         extra_info[match.group("label")] = match.group("value")
         except (HTTPError, URLError, OSError, ConnectionResetError, Exception) as e:
             logger.debug("Could not scrape target: %s", e)
-=======
-
->>>>>>> main:charms/mlflow-server/lib/charms/prometheus_k8s/v0/prometheus_scrape.py
         return extra_info
 
     @property
@@ -2392,12 +2309,9 @@ class MetricsEndpointAggregator(Object):
         The unit rules should be a dict, which is has additional Juju topology labels added. For
         rules generated by the NRPE exporter, they are pre-labeled so lookups can be performed.
         """
-<<<<<<< HEAD:lib/charms/prometheus_k8s/v0/prometheus_scrape.py
         if not self._charm.unit.is_leader():
             return
 
-=======
->>>>>>> main:charms/mlflow-server/lib/charms/prometheus_k8s/v0/prometheus_scrape.py
         if label_rules:
             rules = self._label_alert_rules(unit_rules, name)
         else:
@@ -2429,17 +2343,12 @@ class MetricsEndpointAggregator(Object):
         group_name = self.group_name(event.relation.app.name)
         unit_name = event.unit.name
         self.remove_alert_rules(group_name, unit_name)
-<<<<<<< HEAD:lib/charms/prometheus_k8s/v0/prometheus_scrape.py
 
     def remove_alert_rules(self, group_name: str, unit_name: str) -> None:
         """Remove an alert rule group from relation data."""
         if not self._charm.unit.is_leader():
             return
-=======
->>>>>>> main:charms/mlflow-server/lib/charms/prometheus_k8s/v0/prometheus_scrape.py
 
-    def remove_alert_rules(self, group_name: str, unit_name: str) -> None:
-        """Remove an alert rule group from relation data."""
         for relation in self.model.relations[self._prometheus_relation]:
             alert_rules = json.loads(relation.data[self._charm.app].get("alert_rules", "{}"))
             if not alert_rules:
