@@ -10,77 +10,84 @@ on:
 jobs:
   lib-check:
     name: Check libraries
-    strategy:
-      matrix:
-        charm:
-        - mlflow-server
-    uses: canonical/charmed-kubeflow-workflows/.github/workflows/_quality-checks.yaml@main
-    secrets: inherit
-    with:
-        charm-path: ./charms/${{ matrix.charm }}
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Check libs
+        uses: canonical/charming-actions/check-libraries@2.1.1
+        with:
+          credentials: "${{ secrets.CHARMCRAFT_CREDENTIALS }}"
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
 
   lint:
-    name: Lint
+    name: Lint Check
     runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
-      matrix:
-        charm:
-        - server
+
     steps:
-    - uses: actions/checkout@v2
-    - run: python3 -m pip install tox
-    - run: tox -e ${{ matrix.charm }}-lint
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: sudo apt-get install python3-pip tox
+
+    - name: Lint code
+      run: tox -e lint
 
   unit:
-    name: Unit tests
+    name: Unit Test
     runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
-      matrix:
-        charm:
-        - server
+
     steps:
-    - uses: actions/checkout@v2
-    - run: python3 -m pip install tox
-    - run: tox -e ${{ matrix.charm }}-unit
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: sudo apt-get install python3-pip tox
+
+    - name: Run unit tests
+      run: tox -e unit
 
   integration:
     name: Integration tests (microk8s)
     runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
-      matrix:
-        charm:
-        - server
     steps:
     - uses: actions/checkout@v2
     - name: Setup operator environment
-      # TODO: Unpin this when https://github.com/charmed-kubernetes/actions-operator/pull/46 is merged
-      uses: claudiubelu/actions-operator@18ebf92ae3043bd3dd15238e5d9b662d7ba08daf
+      uses: charmed-kubernetes/actions-operator@1.1.0
       with:
+        juju-channel: "2.9/stable"
         provider: microk8s
         channel: 1.24/stable
         # Pinned until this bug is resolved: https://bugs.launchpad.net/juju/+bug/1992833
         bootstrap-options: "--agent-version=2.9.34"
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
-    - name: Install firefox
-      run: sudo apt install -y firefox
 
     - name: Run integration tests
-      run: sg microk8s -c "tox -e ${{ matrix.charm }}-integration"
+      run: sg microk8s -c "tox -vve integration -- --model testing"
 
-      # Collect debug logs if failed
-    - name: Dump Juju/k8s logs on failure
-      uses: canonical/charm-logdump-action@main
+    # On failure, capture debugging resources
+    - name: Get all
+      run: kubectl get all -A
       if: failure()
-      with:
-        app: ${{ matrix.charm }}
-        model: testing
 
-    - name: Upload HAR logs
-      uses: actions/upload-artifact@v2
-      with:
-        name: selenium-har
-        path: /tmp/selenium-*.har
+    - name: Get juju status
+      run: juju status
       if: failure()
+
+    - name: Get workload logs
+      run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server
+      if: failure()
+
+    - name: Get operator logs
+      run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server
+      if: failure()
+    
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
+      if: failure()
+      timeout-minutes: 40
+
+
