@@ -1,0 +1,13 @@
+groups:
+- name: mlflow-server
+  rules:
+  - alert: MLFlowRequestDurationTooLong
+    expr: rate(mlflow_http_request_duration_seconds_sum[5m]) > 7
+    for: 0m
+    labels:
+      severity: critical
+    annotations:
+      summary: MLFlowServer server {{ $labels.juju_model }}/{{ $labels.juju_unit }} requests taking longer than expected
+      description: >
+        The MLFlowServer server {{ $labels.juju_model }} {{ $labels.juju_unit }} requests taking longer than 7 seconds in the last 5 min window
+        LABELS = {{ $labels }}

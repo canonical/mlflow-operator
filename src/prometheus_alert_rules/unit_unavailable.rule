@@ -1,0 +1,10 @@
+alert: MLFlowServerUnitIsUnavailable
+expr: up < 1
+for: 5m
+labels:
+  severity: critical
+annotations:
+  summary: MLFlowServer unit {{ $labels.juju_model }}/{{ $labels.juju_unit }} unavailable
+  description: >
+    The MLFlowServer unit {{ $labels.juju_model }} {{ $labels.juju_unit }} is unavailable
+    LABELS = {{ $labels }}

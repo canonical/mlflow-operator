@@ -10,9 +10,6 @@ on:
       origin-channel:
         description: 'Origin Channel'
         required: true
-      charm-name:
-        description: 'Charm subdirectory name'
-        required: true
 
 jobs:
   promote-charm:
@@ -27,5 +24,3 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           destination-channel: ${{ github.event.inputs.destination-channel }}
           origin-channel: ${{ github.event.inputs.origin-channel }}
-          tag-prefix: ${{ github.event.inputs.charm-name }}
-          charm-path: charms/${{ github.event.inputs.charm-name}}
