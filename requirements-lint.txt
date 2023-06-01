@@ -40,7 +40,7 @@ pathspec==0.11.1
     #   black
 pep8-naming==0.13.3
     # via -r requirements-lint.in
-platformdirs==3.2.0
+platformdirs==3.5.1
     # via
     #   -r requirements-fmt.txt
     #   black
@@ -55,7 +55,7 @@ tomli==2.0.1
     #   -r requirements-fmt.txt
     #   black
     #   pyproject-flake8
-typing-extensions==4.5.0
+typing-extensions==4.6.2
     # via
     #   -r requirements-fmt.txt
     #   black
