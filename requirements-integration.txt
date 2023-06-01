@@ -182,7 +182,7 @@ lightkube==0.13.0
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
-lightkube-models==1.25.4.4
+lightkube-models==1.27.1.4
     # via
     #   -r requirements.txt
     #   lightkube
