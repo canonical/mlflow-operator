@@ -1,7 +1,7 @@
 boto3
 charmed-kubeflow-chisme
 lightkube
-lightkube-models==1.25.4.4
+lightkube-models==1.27.1.4
 ops==2.3.0
 oci-image
 serialized-data-interface
