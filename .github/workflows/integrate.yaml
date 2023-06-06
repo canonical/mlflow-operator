@@ -84,10 +84,3 @@ jobs:
     - name: Get operator logs
       run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server
       if: failure()
-    
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
-      if: failure()
-      timeout-minutes: 40
-
-
