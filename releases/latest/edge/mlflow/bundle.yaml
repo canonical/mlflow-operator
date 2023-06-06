@@ -1,5 +1,6 @@
 bundle: kubernetes
 name: mlflow
+docs: https://discourse.charmhub.io/t/mlflow-docs-index/10836
 applications:
   mlflow-minio:
     charm: minio
