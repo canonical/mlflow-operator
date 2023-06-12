@@ -13,7 +13,7 @@ resources:
   oci-image:
     type: oci-image
     description: Backing OCI image
-    upstream-source: docker.io/ubuntu/mlflow:2.1.1_1.0-22.04
+    upstream-source: docker.io/charmedkubeflow/mlflow:v2.1.1_22.04_1
 requires:
   relational-db:
     interface: mysql_client
