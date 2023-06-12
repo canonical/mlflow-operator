@@ -2,7 +2,7 @@
 # See LICENSE file for licensing details.
 name: mlflow-server
 description: |
-  mlflow is a Kubernetes charm bundle for MLflow. This bundle automates the deployment and operation of MLflow on any Kubernetes cloud.
+  mlflow is a Kubernetes charm bundle for MLflow. This bundle automates the deployment and operation of MLflow on any Kubernetes cluster.
 summary: |
   A charm which provides a Kubernetes installation of the MLflow (https://mlflow.org/) server.
 docs: https://discourse.charmhub.io/t/mlflow-server-docs-index/10816
