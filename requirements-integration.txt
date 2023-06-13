@@ -120,6 +120,8 @@ httpx==0.24.1
     # via
     #   -r requirements.txt
     #   lightkube
+hvac==1.1.0
+    # via juju
 idna==3.4
     # via
     #   -r requirements.txt
@@ -168,12 +170,10 @@ jsonschema==4.17.3
     # via
     #   -r requirements.txt
     #   serialized-data-interface
-juju==3.0.4
+juju==3.2.0.0
     # via
     #   -r requirements-integration.in
     #   pytest-operator
-jujubundlelib==0.5.7
-    # via theblues
 kiwisolver==1.4.4
     # via matplotlib
 kubernetes==26.1.0
@@ -187,9 +187,7 @@ lightkube-models==1.27.1.4
     #   -r requirements.txt
     #   lightkube
 macaroonbakery==1.3.1
-    # via
-    #   juju
-    #   theblues
+    # via juju
 mako==1.2.4
     # via alembic
 markdown==3.4.3
@@ -283,6 +281,8 @@ pycparser==2.21
     # via cffi
 pygments==2.15.1
     # via ipython
+pyhcl==0.4.4
+    # via hvac
 pyjwt==2.7.0
     # via databricks-cli
 pymacaroons==0.13.0
@@ -326,7 +326,6 @@ pyyaml==6.0
     # via
     #   -r requirements.txt
     #   juju
-    #   jujubundlelib
     #   kubernetes
     #   lightkube
     #   mlflow
@@ -341,12 +340,12 @@ requests==2.31.0
     #   -r requirements.txt
     #   databricks-cli
     #   docker
+    #   hvac
     #   kubernetes
     #   macaroonbakery
     #   mlflow
     #   requests-oauthlib
     #   serialized-data-interface
-    #   theblues
 requests-oauthlib==1.3.1
     # via kubernetes
 rsa==4.9
@@ -405,8 +404,6 @@ tenacity==8.2.2
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
-theblues==0.5.2
-    # via juju
 threadpoolctl==3.1.0
     # via scikit-learn
 tomli==2.0.1
@@ -446,7 +443,7 @@ websocket-client==1.5.2
     #   docker
     #   kubernetes
     #   ops
-websockets==7.0
+websockets==8.1
     # via juju
 werkzeug==2.3.4
     # via flask
