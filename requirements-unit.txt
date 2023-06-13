@@ -12,9 +12,9 @@ attrs==23.1.0
     # via
     #   -r requirements.txt
     #   jsonschema
-boto3==1.26.148
+boto3==1.26.152
     # via -r requirements.txt
-botocore==1.29.148
+botocore==1.29.152
     # via
     #   -r requirements.txt
     #   boto3
@@ -114,7 +114,7 @@ pyrsistent==0.19.3
     # via
     #   -r requirements.txt
     #   jsonschema
-pytest==7.3.1
+pytest==7.3.2
     # via
     #   -r requirements-unit.in
     #   pytest-lazy-fixture
@@ -172,7 +172,7 @@ urllib3==1.26.16
     #   -r requirements.txt
     #   botocore
     #   requests
-websocket-client==1.5.2
+websocket-client==1.5.3
     # via
     #   -r requirements.txt
     #   ops
