@@ -40,7 +40,7 @@ pathspec==0.11.1
     #   black
 pep8-naming==0.13.3
     # via -r requirements-lint.in
-platformdirs==3.5.1
+platformdirs==3.5.3
     # via
     #   -r requirements-fmt.txt
     #   black
