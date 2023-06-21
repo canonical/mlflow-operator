@@ -72,6 +72,7 @@ def harness() -> Harness:
 
     # setup container networking simulation
     harness.set_can_connect("mlflow-server", True)
+    harness.set_can_connect("mlflow-prometheus-exporter", True)
 
     return harness
 
@@ -379,7 +380,7 @@ class TestCharm:
         container.replan.side_effect = _FakeChangeError("Fake problem during layer update", change)
         harness.begin()
         with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._update_layer({}, "")
+            harness.charm._update_layer(container, harness.charm._container_name, MagicMock())
 
         assert exc_info.value.status_type(BlockedStatus)
         assert "Failed to replan with error: " in str(exc_info)
@@ -393,7 +394,11 @@ class TestCharm:
         harness: Harness,
     ):
         harness.begin()
-        harness.charm._update_layer({}, "")
+        harness.charm._update_layer(
+            harness.charm.container,
+            harness.charm._container_name,
+            harness.charm._charmed_mlflow_layer({}, ""),
+        )
         assert harness.charm.container.get_plan().services == EXPECTED_SERVICE
 
     @patch(

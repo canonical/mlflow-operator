@@ -23,6 +23,11 @@ options:
       The nodeport for MLFlow
     type: int
     default: 31380
+  mlflow_prometheus_exporter_port:
+    description: |
+      The port MLFlow Prometheus exporter will be listening on
+    type: int
+    default: 8000
   enable_mlflow_nodeport:
     description: Deploy the NodePort service for MLFlow
     type: boolean

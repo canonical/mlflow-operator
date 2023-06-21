@@ -17,7 +17,8 @@ class TestDeployRunners:
         """
         charm_under_test = await ops_test.build_charm(".")
         image_path = METADATA["resources"]["oci-image"]["upstream-source"]
-        resources = {"oci-image": image_path}
+        exporter_image_path = METADATA["resources"]["exporter-oci-image"]["upstream-source"]
+        resources = {"oci-image": image_path, "exporter-oci-image": exporter_image_path}
 
         await ops_test.model.deploy(
             charm_under_test, resources=resources, application_name=CHARM_NAME, trust=True
