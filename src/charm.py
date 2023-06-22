@@ -42,6 +42,7 @@ class MlflowCharm(CharmBase):
 
         self.logger = logging.getLogger(__name__)
         self._port = self.model.config["mlflow_port"]
+        self._exporter_port = self.model.config["mlflow_prometheus_exporter_port"]
         self._container_name = "mlflow-server"
         self._exporter_container_name = "mlflow-prometheus-exporter"
         self._database_name = "mlflow"
@@ -99,18 +100,29 @@ class MlflowCharm(CharmBase):
         if self.config["enable_mlflow_nodeport"]:
             service_type = "NodePort"
             self._node_port = self.model.config["mlflow_nodeport"]
+            self._exporter_node_port = self.model.config["mlflow_prometheus_exporter_nodeport"]
             port = ServicePort(
                 int(self._port),
                 name=f"{self.app.name}",
                 targetPort=int(self._port),
                 nodePort=int(self._node_port),
             )
+
+            exporter_port = ServicePort(
+                int(self._exporter_port),
+                name=f"{self.app.name}-prometheus-exporter",
+                targetPort=int(self._exporter_port),
+                nodePort=int(self._exporter_node_port),
+            )
         else:
             service_type = "ClusterIP"
             port = ServicePort(int(self._port), name=f"{self.app.name}")
+            exporter_port = ServicePort(
+                int(self._exporter_port), name=f"{self.app.name}-prometheus-exporter"
+            )
         self.service_patcher = KubernetesServicePatch(
             self,
-            [port],
+            [port, exporter_port],
             service_type=service_type,
             service_name=f"{self.model.app.name}",
             refresh_event=self.on.config_changed,
@@ -175,7 +187,8 @@ class MlflowCharm(CharmBase):
                     "command": (
                         "python3 "
                         "mlflow_exporter.py "
-                        f"--port {self.config['mlflow_prometheus_exporter_port']}"
+                        f"--port {self._exporter_port} "
+                        f"--mlflowurl http://localhost:{self._port}/"
                     ),
                     "startup": "enabled",
                 },
