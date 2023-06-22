@@ -72,8 +72,13 @@ def harness() -> Harness:
 
     # setup container networking simulation
     harness.set_can_connect("mlflow-server", True)
-    harness.set_can_connect("mlflow-prometheus-exporter", True)
 
+    return harness
+
+
+def enable_exporter_container(harness: harness) -> Harness:
+    """Enable mlflow-prometheus-exporter for connections."""
+    harness.set_can_connect("mlflow-prometheus-exporter", True)
     return harness
 
 
@@ -456,12 +461,41 @@ class TestCharm:
     )
     @patch("charm.MlflowCharm._get_object_storage_data")
     @patch("charm.MlflowCharm._get_relational_db_data")
-    def test_on_event(
+    def test_on_event_wainting_for_exporter(
         self,
         get_relational_db_data: MagicMock,
         get_object_storage_data: MagicMock,
         harness: Harness,
     ):
+        get_object_storage_data.return_value = OBJECT_STORAGE_DATA
+        get_relational_db_data.return_value = RELATIONAL_DB_DATA
+        harness.set_leader(True)
+        harness.begin()
+        harness.charm._on_event(None)
+        assert harness.charm.model.unit.status == WaitingStatus(
+            "Container mlflow-prometheus-exporter is not ready"
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data")
+    @patch("charm.MlflowCharm._get_relational_db_data")
+    def test_on_event_wainting_for_exporter(
+        self,
+        get_relational_db_data: MagicMock,
+        get_object_storage_data: MagicMock,
+        harness: Harness,
+    ):
+        harness = enable_exporter_container(harness)
         get_object_storage_data.return_value = OBJECT_STORAGE_DATA
         get_relational_db_data.return_value = RELATIONAL_DB_DATA
         harness.set_leader(True)
