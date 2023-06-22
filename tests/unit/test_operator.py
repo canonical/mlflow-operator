@@ -489,7 +489,7 @@ class TestCharm:
     )
     @patch("charm.MlflowCharm._get_object_storage_data")
     @patch("charm.MlflowCharm._get_relational_db_data")
-    def test_on_event_wainting_for_exporter(
+    def test_on_event_success(
         self,
         get_relational_db_data: MagicMock,
         get_object_storage_data: MagicMock,
