@@ -459,16 +459,14 @@ class TestCharm:
         "charm.S3BucketWrapper.__init__",
         lambda *args, **kw: None,
     )
-    @patch("charm.MlflowCharm._get_object_storage_data")
-    @patch("charm.MlflowCharm._get_relational_db_data")
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     def test_on_event_wainting_for_exporter(
         self,
-        get_relational_db_data: MagicMock,
-        get_object_storage_data: MagicMock,
+        _: MagicMock,
+        __: MagicMock,
         harness: Harness,
     ):
-        get_object_storage_data.return_value = OBJECT_STORAGE_DATA
-        get_relational_db_data.return_value = RELATIONAL_DB_DATA
         harness.set_leader(True)
         harness.begin()
         harness.charm._on_event(None)
@@ -487,17 +485,15 @@ class TestCharm:
         "charm.S3BucketWrapper.__init__",
         lambda *args, **kw: None,
     )
-    @patch("charm.MlflowCharm._get_object_storage_data")
-    @patch("charm.MlflowCharm._get_relational_db_data")
-    def test_on_event_success(
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    def test_on_event_wainting_for_exporter(
         self,
-        get_relational_db_data: MagicMock,
-        get_object_storage_data: MagicMock,
+        _: MagicMock,
+        __: MagicMock,
         harness: Harness,
     ):
         harness = enable_exporter_container(harness)
-        get_object_storage_data.return_value = OBJECT_STORAGE_DATA
-        get_relational_db_data.return_value = RELATIONAL_DB_DATA
         harness.set_leader(True)
         harness.begin()
         harness.charm._on_event(None)
