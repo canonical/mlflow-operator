@@ -12,9 +12,9 @@ attrs==23.1.0
     # via
     #   -r requirements.txt
     #   jsonschema
-boto3==1.26.152
+boto3==1.26.157
     # via -r requirements.txt
-botocore==1.29.152
+botocore==1.29.157
     # via
     #   -r requirements.txt
     #   boto3
@@ -121,7 +121,7 @@ pytest==7.3.2
     #   pytest-mock
 pytest-lazy-fixture==0.6.3
     # via -r requirements-unit.in
-pytest-mock==3.10.0
+pytest-mock==3.11.1
     # via -r requirements-unit.in
 python-dateutil==2.8.2
     # via
@@ -137,7 +137,7 @@ requests==2.31.0
     # via
     #   -r requirements.txt
     #   serialized-data-interface
-ruamel-yaml==0.17.31
+ruamel-yaml==0.17.32
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
@@ -172,7 +172,7 @@ urllib3==1.26.16
     #   -r requirements.txt
     #   botocore
     #   requests
-websocket-client==1.5.3
+websocket-client==1.6.0
     # via
     #   -r requirements.txt
     #   ops

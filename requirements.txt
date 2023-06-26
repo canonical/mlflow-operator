@@ -8,9 +8,9 @@ anyio==3.7.0
     # via httpcore
 attrs==23.1.0
     # via jsonschema
-boto3==1.26.152
+boto3==1.26.157
     # via -r requirements.in
-botocore==1.29.152
+botocore==1.29.157
     # via
     #   boto3
     #   s3transfer
@@ -80,7 +80,7 @@ pyyaml==6.0
     #   serialized-data-interface
 requests==2.31.0
     # via serialized-data-interface
-ruamel-yaml==0.17.31
+ruamel-yaml==0.17.32
     # via charmed-kubeflow-chisme
 ruamel-yaml-clib==0.2.7
     # via ruamel-yaml
@@ -103,7 +103,7 @@ urllib3==1.26.16
     # via
     #   botocore
     #   requests
-websocket-client==1.5.3
+websocket-client==1.6.0
     # via ops
 zipp==3.15.0
     # via importlib-resources
