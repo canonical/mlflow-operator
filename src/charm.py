@@ -42,9 +42,12 @@ class MlflowCharm(CharmBase):
 
         self.logger = logging.getLogger(__name__)
         self._port = self.model.config["mlflow_port"]
+        self._exporter_port = self.model.config["mlflow_prometheus_exporter_port"]
         self._container_name = "mlflow-server"
+        self._exporter_container_name = "mlflow-prometheus-exporter"
         self._database_name = "mlflow"
         self._container = self.unit.get_container(self._container_name)
+        self._exporter_container = self.unit.get_container(self._exporter_container_name)
         self.database = DatabaseRequires(
             self, relation_name="relational-db", database_name=self._database_name
         )
@@ -87,23 +90,39 @@ class MlflowCharm(CharmBase):
         """Return container."""
         return self._container
 
+    @property
+    def exporter_container(self):
+        """Return container."""
+        return self._exporter_container
+
     def _create_service(self):
         """Create k8s service based on charm'sconfig."""
         if self.config["enable_mlflow_nodeport"]:
             service_type = "NodePort"
             self._node_port = self.model.config["mlflow_nodeport"]
+            self._exporter_node_port = self.model.config["mlflow_prometheus_exporter_nodeport"]
             port = ServicePort(
                 int(self._port),
                 name=f"{self.app.name}",
                 targetPort=int(self._port),
                 nodePort=int(self._node_port),
             )
+
+            exporter_port = ServicePort(
+                int(self._exporter_port),
+                name=f"{self.app.name}-prometheus-exporter",
+                targetPort=int(self._exporter_port),
+                nodePort=int(self._exporter_node_port),
+            )
         else:
             service_type = "ClusterIP"
             port = ServicePort(int(self._port), name=f"{self.app.name}")
+            exporter_port = ServicePort(
+                int(self._exporter_port), name=f"{self.app.name}-prometheus-exporter"
+            )
         self.service_patcher = KubernetesServicePatch(
             self,
-            [port],
+            [port, exporter_port],
             service_type=service_type,
             service_name=f"{self.model.app.name}",
             refresh_event=self.on.config_changed,
@@ -150,6 +169,29 @@ class MlflowCharm(CharmBase):
                     "startup": "enabled",
                     "environment": env_vars,
                 }
+            },
+        }
+
+        return Layer(layer_config)
+
+    def _mlflow_exporter_layer(self) -> Layer:
+        """Create and return Pebble framework layer."""
+
+        layer_config = {
+            "summary": "mlflow-prometheus-exporter layer",
+            "description": "Pebble config layer for mlflow-prometheus-exporter",
+            "services": {
+                self._exporter_container_name: {
+                    "override": "replace",
+                    "summary": "Entrypoint of mlflow-prometheus-exporter image",
+                    "command": (
+                        "python3 "
+                        "mlflow_exporter.py "
+                        f"--port {self._exporter_port} "
+                        f"--mlflowurl http://localhost:{self._port}/"
+                    ),
+                    "startup": "enabled",
+                },
             },
         }
 
@@ -282,18 +324,16 @@ class MlflowCharm(CharmBase):
             self.logger.info("Not a leader, skipping setup")
             raise ErrorWithStatus("Waiting for leadership", WaitingStatus)
 
-    def _update_layer(self, envs, default_artifact_root) -> None:
-        """Update the Pebble configuration layer (if changed)."""
-        if not self.container.can_connect():
-            raise ErrorWithStatus("Container is not ready", WaitingStatus)
+    def _update_layer(self, container, container_name, new_layer) -> None:
         current_layer = self.container.get_plan()
-        new_layer = self._charmed_mlflow_layer(envs, default_artifact_root)
         if current_layer.services != new_layer.services:
             self.unit.status = MaintenanceStatus("Applying new pebble layer")
-            self.container.add_layer(self._container_name, new_layer, combine=True)
+            container.add_layer(container_name, new_layer, combine=True)
             try:
-                self.logger.info("Pebble plan updated with new configuration, replaning")
-                self.container.replan()
+                self.logger.info(
+                    f"Pebble plan updated with new configuration, replaning for {container_name}"
+                )
+                container.replan()
             except ChangeError as err:
                 raise ErrorWithStatus(f"Failed to replan with error: {str(err)}", BlockedStatus)
 
@@ -346,7 +386,24 @@ class MlflowCharm(CharmBase):
                 bucket_name=bucket_name, s3_wrapper=s3_wrapper
             ):
                 self._create_default_s3_bucket(s3_wrapper, bucket_name)
-            self._update_layer(envs, bucket_name)
+
+            if not self.container.can_connect():
+                raise ErrorWithStatus(
+                    f"Container {self._container_name} is not ready", WaitingStatus
+                )
+            self._update_layer(
+                self.container, self._container_name, self._charmed_mlflow_layer(envs, bucket_name)
+            )
+            if not self.exporter_container.can_connect():
+                raise ErrorWithStatus(
+                    f"Container {self._exporter_container_name} is not ready", WaitingStatus
+                )
+            self._update_layer(
+                self.exporter_container,
+                self._exporter_container_name,
+                self._mlflow_exporter_layer(),
+            )
+
             secrets_context = {
                 "app_name": self.app.name,
                 "s3_endpoint": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501

@@ -76,6 +76,12 @@ def harness() -> Harness:
     return harness
 
 
+def enable_exporter_container(harness: harness) -> Harness:
+    """Enable mlflow-prometheus-exporter for connections."""
+    harness.set_can_connect("mlflow-prometheus-exporter", True)
+    return harness
+
+
 def add_object_storage_to_harness(harness: Harness):
     """Helper function to handle object storage relation"""
     object_storage_data = {"_supported_versions": "- v1", "data": yaml.dump(OBJECT_STORAGE_DATA)}
@@ -379,7 +385,7 @@ class TestCharm:
         container.replan.side_effect = _FakeChangeError("Fake problem during layer update", change)
         harness.begin()
         with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._update_layer({}, "")
+            harness.charm._update_layer(container, harness.charm._container_name, MagicMock())
 
         assert exc_info.value.status_type(BlockedStatus)
         assert "Failed to replan with error: " in str(exc_info)
@@ -393,7 +399,11 @@ class TestCharm:
         harness: Harness,
     ):
         harness.begin()
-        harness.charm._update_layer({}, "")
+        harness.charm._update_layer(
+            harness.charm.container,
+            harness.charm._container_name,
+            harness.charm._charmed_mlflow_layer({}, ""),
+        )
         assert harness.charm.container.get_plan().services == EXPECTED_SERVICE
 
     @patch(
@@ -449,16 +459,41 @@ class TestCharm:
         "charm.S3BucketWrapper.__init__",
         lambda *args, **kw: None,
     )
-    @patch("charm.MlflowCharm._get_object_storage_data")
-    @patch("charm.MlflowCharm._get_relational_db_data")
-    def test_on_event(
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    def test_on_event_wainting_for_exporter(
         self,
-        get_relational_db_data: MagicMock,
-        get_object_storage_data: MagicMock,
+        _: MagicMock,
+        __: MagicMock,
         harness: Harness,
     ):
-        get_object_storage_data.return_value = OBJECT_STORAGE_DATA
-        get_relational_db_data.return_value = RELATIONAL_DB_DATA
+        harness.set_leader(True)
+        harness.begin()
+        harness.charm._on_event(None)
+        assert harness.charm.model.unit.status == WaitingStatus(
+            "Container mlflow-prometheus-exporter is not ready"
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    def test_on_event(
+        self,
+        _: MagicMock,
+        __: MagicMock,
+        harness: Harness,
+    ):
+        harness = enable_exporter_container(harness)
         harness.set_leader(True)
         harness.begin()
         harness.charm._on_event(None)
