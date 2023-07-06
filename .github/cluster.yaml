@@ -16,7 +16,7 @@ kind: ClusterConfig
 kubernetesNetworkConfig:
   ipFamily: IPv4
 managedNodeGroups:
-- amiFamily: AmazonLinux2
+- amiFamily: Ubuntu2004
   iam:
     withAddonPolicies:
       ebs: true
@@ -29,13 +29,12 @@ managedNodeGroups:
   name: ng-d06bd84e
   releaseVersion: ""
   ssh:
-    allow: true
-    publicKeyName: dektop-eu-central-1
+    allow: false
   tags:
     alpha.eksctl.io/nodegroup-name: ng-d06bd84e
     alpha.eksctl.io/nodegroup-type: managed
   volumeSize: 100
 metadata:
-  name: kubeflow-test
+  name: mlflow-bundle-test
   region: eu-central-1
   version: "1.24"

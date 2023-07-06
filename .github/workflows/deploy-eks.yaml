@@ -1,4 +1,4 @@
-name: Install AWS CLI, kubectl, and eksctl
+name: Configure EKS and run MLflow bundle test
 
 on:
   workflow_dispatch: # This event allows manual triggering from the GitHub UI
@@ -9,7 +9,7 @@ on:
         required: true
 jobs:
   deploy-eks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
@@ -67,5 +67,4 @@ jobs:
       - name: Remove eks 
         if: always()
         run: |
-          eksctl delete cluster --name=kubeflow-test 
-
+          eksctl delete cluster --name=mlflow-bundle-test
