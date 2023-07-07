@@ -12,6 +12,7 @@ import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from jinja2 import Template
 from lightkube.models.core_v1 import ServicePort
@@ -79,10 +80,21 @@ class MlflowCharm(CharmBase):
                 {
                     "metrics_path": METRICS_PATH,
                     "static_configs": [
-                        {"targets": ["*:{}".format(self.model.config["mlflow_port"])]}
+                        {
+                            "targets": [
+                                "*:{}".format(self.model.config["mlflow_port"]),
+                                "*:{}".format(
+                                    self.model.config["mlflow_prometheus_exporter_port"]
+                                ),
+                            ]
+                        }
                     ],
                 }
             ],
+        )
+        self.dashboard_provider = GrafanaDashboardProvider(
+            charm=self,
+            relation_name="grafana-dashboard",
         )
 
     @property
