@@ -68,3 +68,20 @@ jobs:
         if: always()
         run: |
           eksctl delete cluster --name=mlflow-bundle-test
+      
+      # On failure, capture debugging resources
+      - name: Get all kubernetes resources
+        run: kubectl get all -A
+        if: failure()
+
+      - name: Get juju status
+        run: juju status
+        if: failure()
+
+      - name: Get workload logs
+        run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server
+        if: failure()
+
+      - name: Get operator logs
+        run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server
+        if: failure()
