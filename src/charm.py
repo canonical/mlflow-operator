@@ -11,8 +11,8 @@ import botocore.exceptions
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
-from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from jinja2 import Template
 from lightkube.models.core_v1 import ServicePort

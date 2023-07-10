@@ -29,10 +29,7 @@
     "liveNow": false,
     "panels": [
         {
-            "datasource": {
-                "type": "${prometheusds}",
-                "uid": "PB30C203878893222"
-            },
+            "datasource": "${prometheusds}",
             "description": "Displays if MLflow application is up (1) or down (0) for past 24 hours",
             "fieldConfig": {
                 "defaults": {
@@ -85,10 +82,7 @@
             "pluginVersion": "9.2.1",
             "targets": [
                 {
-                    "datasource": {
-                        "type": "${prometheusds}",
-                        "uid": "PB30C203878893222"
-                    },
+                    "datasource": "${prometheusds}",
                     "editorMode": "builder",
                     "expr": "up{juju_application=\"mlflow-server\"}",
                     "legendFormat": "__auto",
@@ -100,10 +94,7 @@
             "type": "stat"
         },
         {
-            "datasource": {
-                "type": "${prometheusds}",
-                "uid": "PB30C203878893222"
-            },
+            "datasource": "${prometheusds}",
             "description": "Number of MLflow experiments",
             "fieldConfig": {
                 "defaults": {
@@ -179,10 +170,7 @@
             },
             "targets": [
                 {
-                    "datasource": {
-                        "type": "${prometheusds}",
-                        "uid": "PB30C203878893222"
-                    },
+                    "datasource": "${prometheusds}",
                     "editorMode": "builder",
                     "expr": "mlflow_metric{metric_name=\"num_experiments\"}",
                     "legendFormat": "__auto",
@@ -194,10 +182,7 @@
             "type": "timeseries"
         },
         {
-            "datasource": {
-                "type": "${prometheusds}",
-                "uid": "PB30C203878893222"
-            },
+            "datasource": "${prometheusds}",
             "description": "Number of registered Models in MLflow over time ",
             "fieldConfig": {
                 "defaults": {
@@ -298,10 +283,7 @@
             },
             "targets": [
                 {
-                    "datasource": {
-                        "type": "${prometheusds}",
-                        "uid": "PB30C203878893222"
-                    },
+                    "datasource": "${prometheusds}",
                     "editorMode": "builder",
                     "expr": "mlflow_metric{metric_name=\"num_registered_models\"}",
                     "legendFormat": "__auto",
@@ -313,10 +295,7 @@
             "type": "timeseries"
         },
         {
-            "datasource": {
-                "type": "${prometheusds}",
-                "uid": "PB30C203878893222"
-            },
+            "datasource": "${prometheusds}",
             "description": "Number of MLflow runs",
             "fieldConfig": {
                 "defaults": {
@@ -392,10 +371,7 @@
             },
             "targets": [
                 {
-                    "datasource": {
-                        "type": "${prometheusds}",
-                        "uid": "PB30C203878893222"
-                    },
+                    "datasource": "${prometheusds}",
                     "editorMode": "builder",
                     "expr": "mlflow_metric{metric_name=\"num_runs\"}",
                     "legendFormat": "__auto",
@@ -407,10 +383,7 @@
             "type": "timeseries"
         },
         {
-            "datasource": {
-                "type": "${prometheusds}",
-                "uid": "PB30C203878893222"
-            },
+            "datasource": "${prometheusds}",
             "description": "How long different types of requests by status code.",
             "fieldConfig": {
                 "defaults": {
@@ -485,10 +458,7 @@
             },
             "targets": [
                 {
-                    "datasource": {
-                        "type": "${prometheusds}",
-                        "uid": "PB30C203878893222"
-                    },
+                    "datasource": "${prometheusds}",
                     "editorMode": "code",
                     "expr": "rate(mlflow_http_request_duration_seconds_sum[5m])",
                     "legendFormat": "__auto",
@@ -501,10 +471,7 @@
             "type": "timeseries"
         },
         {
-            "datasource": {
-                "type": "${prometheusds}",
-                "uid": "PB30C203878893222"
-            },
+            "datasource": "${prometheusds}",
             "description": "",
             "fieldConfig": {
                 "defaults": {
@@ -579,10 +546,7 @@
             },
             "targets": [
                 {
-                    "datasource": {
-                        "type": "${prometheusds}",
-                        "uid": "PB30C203878893222"
-                    },
+                    "datasource": "${prometheusds}",
                     "editorMode": "builder",
                     "expr": "increase(mlflow_http_request_total{status=~\"40.\"}[30m])",
                     "legendFormat": "__auto",
@@ -602,8 +566,8 @@
         "list": []
     },
     "time": {
-        "from": "2023-07-06T18:24:35.162Z",
-        "to": "2023-07-07T08:44:17.252Z"
+        "from": "now-3h",
+        "to": "now"
     },
     "timepicker": {},
     "timezone": "",

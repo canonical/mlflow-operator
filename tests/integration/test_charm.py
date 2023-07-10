@@ -33,6 +33,7 @@ CHARM_NAME = METADATA["name"]
 RELATIONAL_DB_CHARM_NAME = "mysql-k8s"
 OBJECT_STORAGE_CHARM_NAME = "minio"
 PROMETHEUS_CHARM_NAME = "prometheus-k8s"
+GRAFANA_CHARM_NAME = "grafana-k8s"
 RESOURCE_DISPATCHER_CHARM_NAME = "resource-dispatcher"
 METACONTROLLER_CHARM_NAME = "metacontroller-operator"
 NAMESPACE_FILE = "./tests/integration/namespace.yaml"
@@ -362,3 +363,11 @@ class TestCharm:
         assert 'mlflow_metric{metric_name="num_experiments"} 2.0' in metrics_text
         assert 'mlflow_metric{metric_name="num_registered_models"} 0.0' in metrics_text
         assert 'mlflow_metric{metric_name="num_runs"} 0' in metrics_text
+
+    @pytest.mark.abort_on_fail
+    async def test_grafana_integration(self, ops_test: OpsTest):
+        await ops_test.model.deploy(GRAFANA_CHARM_NAME, channel="latest/stable", trust=True)
+        await ops_test.model.relate(GRAFANA_CHARM_NAME, CHARM_NAME)
+        await ops_test.model.wait_for_idle(
+            apps=[GRAFANA_CHARM_NAME], status="active", raise_on_blocked=True, timeout=60 * 10
+        )
