@@ -27,7 +27,6 @@ class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_deploy_bundle_works(self, ops_test: OpsTest):
         subprocess.Popen(["juju", "deploy", f"{BUNDLE_PATH}", "--trust"])
-        ops_test.deploy_bundle(BUNDLE_PATH)
         await ops_test.model.wait_for_idle(
             apps=[MLFLOW_APP_NAME],
             status="active",
