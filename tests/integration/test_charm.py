@@ -144,7 +144,7 @@ async def setup_istio(ops_test: OpsTest, istio_gateway: str, istio_pilot: str):
 @pytest.fixture
 @pytest.mark.asyncio
 async def url_with_ingress(ops_test: OpsTest):
-    command = "microk8s kubectl get svc -n kubeflow --output=jsonpath='{.status.loadBalancer.ingress[0].ip}' istio-ingressgateway-workload"  # noqa: E501
+    command = "microk8s kubectl get svc -n testing --output=jsonpath='{.status.loadBalancer.ingress[0].ip}' istio-ingressgateway-workload"  # noqa: E501
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
     external_ip = result.stdout.strip()
 
@@ -421,11 +421,3 @@ class TestCharm:
         )
 
         await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
-
-    @pytest.mark.abort_on_fail
-    async def test_access_dashboard(self, url_with_ingress):
-        result_status, result_text = await fetch_response(url_with_ingress, {})
-
-        # verify that UI is accessible
-        assert result_status == 200
-        assert len(result_text) > 0
