@@ -122,13 +122,13 @@ async def setup_istio(ops_test: OpsTest, istio_gateway: str, istio_pilot: str):
     await ops_test.model.deploy(
         entity_url="istio-gateway",
         application_name=istio_gateway,
-        channel="latest/edge",
+        channel="1.16/stable",
         config={"kind": "ingress"},
         trust=True,
     )
     await ops_test.model.deploy(
         istio_pilot,
-        channel="latest/edge",
+        channel="1.16/stable",
         config={"default-gateway": "test-gateway"},
         trust=True,
     )
@@ -144,7 +144,7 @@ async def setup_istio(ops_test: OpsTest, istio_gateway: str, istio_pilot: str):
 @pytest.fixture
 @pytest.mark.asyncio
 async def url_with_ingress(ops_test: OpsTest):
-    command = "kubectl get svc -n kubeflow --output=jsonpath='{.status.loadBalancer.ingress[0].ip}' istio-ingressgateway-workload"  # noqa: E501
+    command = "microk8s kubectl get svc -n kubeflow --output=jsonpath='{.status.loadBalancer.ingress[0].ip}' istio-ingressgateway-workload"  # noqa: E501
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
     external_ip = result.stdout.strip()
 
