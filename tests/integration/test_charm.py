@@ -421,7 +421,7 @@ class TestCharm:
 
     @pytest.mark.abort_on_fail
     async def test_ingress_url(self, lightkube_client):
-        ingress_url = get_ingress_url(lightkube_client, "kubeflow")
+        ingress_url = get_ingress_url(lightkube_client, "testing")
         result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
 
         # verify that UI is accessible
