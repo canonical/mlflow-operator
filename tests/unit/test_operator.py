@@ -56,7 +56,13 @@ EXPECTED_ENVIRONMENT = {
 
 SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 
-INGRESS_DATA = {"prefix": "/mlflow/", "rewrite": "/", "service": "mlflow-server", "port": 5000}
+INGRESS_DATA = {
+    "prefix": "/mlflow/",
+    "rewrite": "/",
+    "service": "mlflow-server",
+    "namespace": None,
+    "port": 5000,
+}
 
 
 class _FakeChangeError(ChangeError):
