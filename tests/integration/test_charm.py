@@ -6,7 +6,6 @@
 
 import base64
 import logging
-import subprocess
 import time
 from pathlib import Path
 from random import choices
@@ -23,7 +22,7 @@ from lightkube.generic_resource import (
     create_namespaced_resource,
     load_in_cluster_generic_resources,
 )
-from lightkube.resources.core_v1 import Secret
+from lightkube.resources.core_v1 import Secret, Service
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 
@@ -141,14 +140,12 @@ async def setup_istio(ops_test: OpsTest, istio_gateway: str, istio_pilot: str):
     )
 
 
-@pytest.fixture
-@pytest.mark.asyncio
-async def url_with_ingress(ops_test: OpsTest):
-    command = "microk8s kubectl get svc -n testing --output=jsonpath='{.status.loadBalancer.ingress[0].ip}' istio-ingressgateway-workload"  # noqa: E501
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    external_ip = result.stdout.strip()
-
-    yield f"http://{external_ip}.nip.io/mlflow/"
+def get_ingress_url(lightkube_client: lightkube.Client, model_name: str):
+    gateway_svc = lightkube_client.get(
+        Service, "istio-ingressgateway-workload", namespace=model_name
+    )
+    public_url = f"http://{gateway_svc.status.loadBalancer.ingress[0].ip}.nip.io"
+    return public_url
 
 
 async def fetch_response(url, headers):
@@ -413,7 +410,7 @@ class TestCharm:
 
     @pytest.mark.abort_on_fail
     async def test_ingress_relation(self, ops_test: OpsTest):
-        """Setup Istio and relate it to the Tensoboards Web App(TWA)."""
+        """Setup Istio and relate it to the MLflow."""
         await setup_istio(ops_test, ISTIO_GATEWAY_CHARM_NAME, ISTIO_PILOT_CHARM_NAME)
 
         await ops_test.model.add_relation(
@@ -421,3 +418,12 @@ class TestCharm:
         )
 
         await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
+
+    @pytest.mark.abort_on_fail
+    async def test_ingress_url(self, lightkube_client):
+        ingress_url = get_ingress_url(lightkube_client, "kubeflow")
+        result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
+
+        # verify that UI is accessible
+        assert result_status == 200
+        assert len(result_text) > 0

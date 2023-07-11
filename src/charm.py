@@ -373,6 +373,7 @@ class MlflowCharm(CharmBase):
                     "prefix": "/mlflow/",
                     "rewrite": "/",
                     "service": self.model.app.name,
+                    "namespace": self.model.name,
                     "port": int(self._port),
                 }
             )
