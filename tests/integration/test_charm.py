@@ -6,6 +6,7 @@
 
 import base64
 import logging
+import subprocess
 import time
 from pathlib import Path
 from random import choices
@@ -34,6 +35,8 @@ RELATIONAL_DB_CHARM_NAME = "mysql-k8s"
 OBJECT_STORAGE_CHARM_NAME = "minio"
 PROMETHEUS_CHARM_NAME = "prometheus-k8s"
 RESOURCE_DISPATCHER_CHARM_NAME = "resource-dispatcher"
+ISTIO_GATEWAY_CHARM_NAME = "istio-ingressgateway"
+ISTIO_PILOT_CHARM_NAME = "istio-pilot"
 METACONTROLLER_CHARM_NAME = "metacontroller-operator"
 NAMESPACE_FILE = "./tests/integration/namespace.yaml"
 PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
@@ -112,6 +115,51 @@ def namespace(lightkube_client: lightkube.Client):
     yield obj.metadata.name
 
     delete_all_from_yaml(yaml_text, lightkube_client)
+
+
+async def setup_istio(ops_test: OpsTest, istio_gateway: str, istio_pilot: str):
+    """Deploy Istio Ingress Gateway and Istio Pilot."""
+    await ops_test.model.deploy(
+        entity_url="istio-gateway",
+        application_name=istio_gateway,
+        channel="latest/edge",
+        config={"kind": "ingress"},
+        trust=True,
+    )
+    await ops_test.model.deploy(
+        istio_pilot,
+        channel="latest/edge",
+        config={"default-gateway": "test-gateway"},
+        trust=True,
+    )
+    await ops_test.model.add_relation(istio_pilot, istio_gateway)
+
+    await ops_test.model.wait_for_idle(
+        apps=[istio_pilot, istio_gateway],
+        status="active",
+        timeout=60 * 5,
+    )
+
+
+@pytest.fixture
+@pytest.mark.asyncio
+async def url_with_ingress(ops_test: OpsTest):
+    command = "kubectl get svc -n kubeflow --output=jsonpath='{.status.loadBalancer.ingress[0].ip}' istio-ingressgateway-workload"  # noqa: E501
+    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    external_ip = result.stdout.strip()
+
+    yield f"http://{external_ip}.nip.io/mlflow/"
+
+
+async def fetch_response(url, headers):
+    """Fetch provided URL and return pair - status and text (int, string)."""
+    result_status = 0
+    result_text = ""
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url=url, headers=headers) as response:
+            result_status = response.status
+            result_text = await response.text()
+    return result_status, str(result_text)
 
 
 class TestCharm:
@@ -362,3 +410,22 @@ class TestCharm:
         assert 'mlflow_metric{metric_name="num_experiments"} 2.0' in metrics_text
         assert 'mlflow_metric{metric_name="num_registered_models"} 0.0' in metrics_text
         assert 'mlflow_metric{metric_name="num_runs"} 0' in metrics_text
+
+    @pytest.mark.abort_on_fail
+    async def test_ingress_relation(self, ops_test: OpsTest):
+        """Setup Istio and relate it to the Tensoboards Web App(TWA)."""
+        await setup_istio(ops_test, ISTIO_GATEWAY_CHARM_NAME, ISTIO_PILOT_CHARM_NAME)
+
+        await ops_test.model.add_relation(
+            f"{ISTIO_PILOT_CHARM_NAME}:ingress", f"{CHARM_NAME}:ingress"
+        )
+
+        await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
+
+    @pytest.mark.abort_on_fail
+    async def test_access_dashboard(self, url_with_ingress):
+        result_status, result_text = await fetch_response(url_with_ingress, {})
+
+        # verify that UI is accessible
+        assert result_status == 200
+        assert len(result_text) > 0

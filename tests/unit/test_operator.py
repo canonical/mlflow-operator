@@ -56,6 +56,8 @@ EXPECTED_ENVIRONMENT = {
 
 SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 
+INGRESS_DATA = {"prefix": "/mlflow/", "rewrite": "/", "service": "mlflow-server", "port": 5000}
+
 
 class _FakeChangeError(ChangeError):
     """Used to simulate a ChangeError during testing."""
@@ -540,3 +542,14 @@ class TestCharm:
                 "secret-access-key": OBJECT_STORAGE_DATA["secret-key"],
             }
         )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_send_ingress_info_success(self, harness: Harness):
+        harness.begin()
+        ingress = MagicMock()
+        interfaces = {"ingress": ingress}
+        harness.charm._send_ingress_info(interfaces)
+        ingress.send_data.assert_called_with(INGRESS_DATA)
