@@ -10,7 +10,8 @@ applications:
     _github_repo_name: minio-operator
   mlflow-mysql:
     charm: mysql-k8s
-    channel: 8.0/stable
+    # Setting to edge because stable can't be deployed to eks change to stable after release
+    channel: 8.0/edge
     series: jammy
     scale: 1
     trust: true
