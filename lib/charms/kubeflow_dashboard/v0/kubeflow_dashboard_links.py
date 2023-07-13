@@ -1,14 +1,14 @@
-"""# KubeflowDashboardSidebar Library
-This library implements data transfer for the kubeflow_dashboard_sidebar
-interface used by Kubeflow Dashboard to implement the sidebar relation.  This
+"""KubeflowDashboardLinks Library
+This library implements data transfer for the kubeflow_dashboard_links
+interface used by Kubeflow Dashboard to implement the links relation.  This
 relation enables applications to request a link on the Kubeflow Dashboard
-sidebar dynamically.
+dynamically.
 
-To enable an application to add a link to Kubeflow Dashboard's sidebar, use
-the KubeflowDashboardSidebarRequirer and SidebarItem classes included here as
+To enable an application to add a link to Kubeflow Dashboard, use
+the KubeflowDashboardLinksRequirer and DashboardLink classes included here as
 shown below.  No additional action is required within the charm.  On
 establishing the relation, the data will be sent to Kubeflow Dashboard to add
-the link.  The link will be removed if the relation is broken.
+the links.  The links will be removed if the relation is broken.
 
 ## Getting Started
 
@@ -16,40 +16,42 @@ To get started using the library, fetch the library with `charmcraft`.
 
 ```shell
 cd some-charm
-charmcraft fetch-lib charms.kubeflow_dashboard.v0.kubeflow_dashboard_sidebar
+charmcraft fetch-lib charms.kubeflow_dashboard.v0.kubeflow_dashboard_links
 ```
 
 Then in your charm, do:
 
 ```python
-from charms.kubeflow_dashboard.v0.kubeflow_dashboard_sidebar import (
-    KubeflowDashboardSidebarRequirer,
-    SidebarItem,
+from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
+    KubeflowDashboardLinksRequirer,
+    DashboardLink,
 )
 # ...
 
-SIDEBAR_ITEMS = [
-    SidebarItem(
+DASHBOARD_LINKS = [
+    DashboardLink(
         text="Example Relative Link",
         link="/relative-link",
         type="item",
-        icon="assessment"
+        icon="assessment",
+        location="sidebar",
     ),
-    SidebarItem(
+    DashboardLink(
         text="Example External Link",
         link="https://charmed-kubeflow.io/docs",
         type="item",
-        icon="assessment"
+        icon="assessment",
+        location="sidebar-external"
     ),
 ]
 
 class SomeCharm(CharmBase):
   def __init__(self, *args):
     # ...
-    self.kubeflow_dashboard_sidebar = KubeflowDashboardSidebarRequirer(
+    self.kubeflow_dashboard_links = KubeflowDashboardLinksRequirer(
         charm=self,
-        relation_name="sidebar",  # use whatever you call the relation in your metadata.yaml
-        SIDEBAR_ITEMS
+        relation_name="links",  # use whatever you call the relation in your metadata.yaml
+        DASHBOARD_LINKS
     )
     # ...
 ```
@@ -66,51 +68,59 @@ from ops.framework import Object, ObjectEvents, EventSource, BoundEvent, EventBa
 logger = logging.getLogger(__name__)
 
 # The unique Charmhub library identifier, never change it
-LIBID = "a5795a88ee31458f9bc3ae026a04b89f"
+LIBID = "635fdbfc0fcc420882835d4c0086bb5d"
 
 # Increment this major API version when introducing breaking changes
 LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 1
+LIBPATCH = 2
 
 
-SIDEBAR_ITEMS_FIELD = "sidebar_items"
+DASHBOARD_LINK_LOCATIONS = ['menu', 'external', 'quick', 'documentation']
+DASHBOARD_LINKS_FIELD = "dashboard_links"
 
 
 @dataclass
-class SidebarItem:
-    """Representation of a Kubeflow Dashboard sidebar entry.
+class DashboardLink:
+    """Representation of a Kubeflow Dashboard Link entry.
 
     See https://www.kubeflow.org/docs/components/central-dash/customizing-menu/ for more details.
 
     Args:
-        text: The text shown in the sidebar
-        link: The relative link within the host (eg: /runs, not http://.../runs)
+        text: The text shown for the link
+        link: The link (a relative link for `location=sidebar` or `location=quick`, eg: `/mlflow`,
+              or a full URL for other locations, eg: http://my-website.com)
         type: A type of sidebar entry (typically, "item")
         icon: An icon for the link, from
               https://kevingleason.me/Polymer-Todo/bower_components/iron-icons/demo/index.html
+        location: Link's location on the dashboard.  One of `sidebar`, `sidebar_external`, `quick`,
+                  and `documentation`.
     """
+
     text: str
     link: str
-    type: str  # noqa: A003
-    icon: str
+    location: str
+    icon: str = "icons:link"
+    type: str = "item"  # noqa: A003
+    desc: str = ""
 
 
-class KubeflowDashboardSidebarDataUpdatedEvent(RelationEvent):
-    """Indicates the Kubeflow Dashboard Sidebar data was updated."""
+class KubeflowDashboardLinksUpdatedEvent(RelationEvent):
+    """Indicates the Kubeflow Dashboard link data was updated."""
 
 
-class KubeflowDashboardidebarEvents(ObjectEvents):
-    """Events for the Kubeflow Dashboard Sidebar library."""
+class KubeflowDashboardLinksEvents(ObjectEvents):
+    """Events for the Kubeflow Dashboard Links library."""
 
-    data_updated = EventSource(KubeflowDashboardSidebarDataUpdatedEvent)
+    updated = EventSource(KubeflowDashboardLinksUpdatedEvent)
 
 
-class KubeflowDashboardSidebarProvider(Object):
+class KubeflowDashboardLinksProvider(Object):
     """Relation manager for the Provider side of the Kubeflow Dashboard Sidebar relation.."""
-    on = KubeflowDashboardidebarEvents()
+
+    on = KubeflowDashboardLinksEvents()
 
     def __init__(
         self,
@@ -118,14 +128,14 @@ class KubeflowDashboardSidebarProvider(Object):
         relation_name: str,
         refresh_event: Optional[Union[BoundEvent, List[BoundEvent]]] = None,
     ):
-        """Relation manager for the Provider side of the Kubeflow Dashboard Sidebar relation.
+        """Relation manager for the Provider side of the Kubeflow Dashboard Links relation.
 
         This relation manager subscribes to:
         * on[relation_name].relation_changed
         * any events provided in refresh_event
 
         This library emits:
-        * KubeflowDashboardSidebarDataUpdatedEvent:
+        * KubeflowDashboardLinksUpdatedEvent:
             when data received on the relation is updated
 
         TODO: Should this class automatically subscribe to events, or should it optionally do that.
@@ -158,16 +168,19 @@ class KubeflowDashboardSidebarProvider(Object):
             for evt in refresh_event:
                 self.framework.observe(evt, self._on_relation_changed)
 
-    def get_sidebar_items(self, omit_breaking_app: bool = True) -> List[SidebarItem]:
-        """Returns a list of all SidebarItems from related Applications.
+    def get_dashboard_links(
+        self, omit_breaking_app: bool = True, location: Optional[str] = None
+    ) -> List[DashboardLink]:
+        """Returns a list of all DashboardItems from related Applications.
 
         Args:
-            omit_breaking_app: If True and this is called during a sidebar-relation-broken event,
+            omit_breaking_app: If True and this is called during a link-relation-broken event,
                                the remote app's data will be omitted.  For more context, see:
                                https://github.com/canonical/kubeflow-dashboard-operator/issues/124
+            location: If specified, return only links with this location.  Else, returns all links.
 
         Returns:
-            List of SidebarItems defining the dashboard sidebar for all related applications.
+            List of DashboardLinks defining the dashboard links for all related applications.
         """
         # If this is a relation-broken event, remove the departing app from the relation data if
         # it exists.  See: https://github.com/canonical/kubeflow-dashboard-operator/issues/124
@@ -178,56 +191,69 @@ class KubeflowDashboardSidebarProvider(Object):
 
         if other_app_to_skip:
             logger.debug(
-                f"get_sidebar_items executed during a relation-broken event.  Return will"
-                f"exclude sidebar_items from other app named '{other_app_to_skip}'.  "
+                f"get_dashboard_links executed during a relation-broken event.  Return will"
+                f"exclude dashboard_links from other app named '{other_app_to_skip}'.  "
             )
 
-        sidebar_items = []
-        sidebar_relation = self.model.relations[self._relation_name]
-        for relation in sidebar_relation:
+        dashboard_links = []
+        dashboard_link_relation = self.model.relations[self._relation_name]
+        for relation in dashboard_link_relation:
             other_app = relation.app
             if other_app.name == other_app_to_skip:
                 # Skip this app because it is leaving a broken relation
                 continue
-            json_data = relation.data[other_app].get(SIDEBAR_ITEMS_FIELD, "{}")
+            json_data = relation.data[other_app].get(DASHBOARD_LINKS_FIELD, "{}")
             dict_data = json.loads(json_data)
-            sidebar_items.extend([SidebarItem(**item) for item in dict_data])
+            dashboard_links.extend([DashboardLink(**item) for item in dict_data])
 
-        return sidebar_items
+        if location is not None:
+            dashboard_links = [
+                dashboard_link
+                for dashboard_link in dashboard_links
+                if dashboard_link.location == location
+            ]
 
-    def get_sidebar_items_as_json(self, omit_breaking_app: bool = True) -> str:
-        """Returns a JSON string of all SidebarItems from related Applications.
+        return dashboard_links
+
+    def get_dashboard_links_as_json(
+        self, omit_breaking_app: bool = True, location: Optional[str] = None
+    ) -> str:
+        """Returns a JSON string of all DashboardItems from related Applications.
 
         Args:
-            omit_breaking_app: If True and this is called during a sidebar-relation-broken event,
+            omit_breaking_app: If True and this is called during a links-relation-broken event,
                                the remote app's data will be omitted.  For more context, see:
                                https://github.com/canonical/kubeflow-dashboard-operator/issues/124
+            location: If specified, return only links with this location.  Else, returns all links.
 
         Returns:
-            JSON string of all SidebarItems for all related applications, each as dicts.
+            JSON string of all DashboardLinks for all related applications, each as dicts.
         """
-        return sidebar_items_to_json(self.get_sidebar_items(omit_breaking_app=omit_breaking_app))
+        return dashboard_links_to_json(
+            self.get_dashboard_links(omit_breaking_app=omit_breaking_app)
+        )
 
     def _on_relation_changed(self, event):
         """Handler for relation-changed event for this relation."""
-        self.on.data_updated.emit(event.relation)
+        self.on.updated.emit(event.relation)
 
     def _on_relation_broken(self, event: BoundEvent):
         """Handler for relation-broken event for this relation."""
-        self.on.data_updated.emit(event.relation)
+        self.on.updated.emit(event.relation)
 
 
-class KubeflowDashboardSidebarRequirer(Object):
-    """Relation manager for the Requirer side of the Kubeflow Dashboard Sidebar relation."""
+class KubeflowDashboardLinksRequirer(Object):
+    """Relation manager for the Requirer side of the Kubeflow Dashboard Links relation."""
+
     def __init__(
         self,
         charm: CharmBase,
         relation_name: str,
-        sidebar_items: List[SidebarItem],
+        dashboard_links: List[DashboardLink],
         refresh_event: Optional[Union[BoundEvent, List[BoundEvent]]] = None,
     ):
         """
-        Relation manager for the Requirer side of the Kubeflow Dashboard Sidebar relation.
+        Relation manager for the Requirer side of the Kubeflow Dashboard Link relation.
 
         This relation manager subscribes to:
         * on.leader_elected: because only the leader is allowed to provide this data, and
@@ -246,14 +272,14 @@ class KubeflowDashboardSidebarRequirer(Object):
         Args:
             charm: Charm this relation is being used by
             relation_name: Name of this relation (from metadata.yaml)
-            sidebar_items: List of SidebarItem objects to send over the relation
+            dashboard_links: List of DashboardLink objects to send over the relation
             refresh_event: List of BoundEvents that this manager should handle.  Use this to update
                            the data sent on this relation on demand.
         """
         super().__init__(charm, relation_name)
         self._charm = charm
         self._relation_name = relation_name
-        self._sidebar_items = sidebar_items
+        self._dashboard_links = dashboard_links
 
         self.framework.observe(self._charm.on.leader_elected, self._on_send_data)
 
@@ -273,7 +299,7 @@ class KubeflowDashboardSidebarRequirer(Object):
         """Handles any event where we should send data to the relation."""
         if not self._charm.model.unit.is_leader():
             logger.info(
-                "KubeflowDashboardSidebarRequirer handled send_data event when it is not the "
+                "KubeflowDashboardLinksRequirer handled send_data event when it is not the "
                 "leader.  Skipping event - no data sent."
             )
             return
@@ -282,8 +308,8 @@ class KubeflowDashboardSidebarRequirer(Object):
 
         for relation in relations:
             relation_data = relation.data[self._charm.app]
-            sidebar_items_as_json = json.dumps([asdict(item) for item in self._sidebar_items])
-            relation_data.update({SIDEBAR_ITEMS_FIELD: sidebar_items_as_json})
+            dashboard_links_as_json = json.dumps([asdict(item) for item in self._dashboard_links])
+            relation_data.update({DASHBOARD_LINKS_FIELD: dashboard_links_as_json})
 
 
 def get_name_of_breaking_app(relation_name: str) -> Optional[str]:
@@ -306,8 +332,6 @@ def get_name_of_breaking_app(relation_name: str) -> Optional[str]:
     return os.environ.get("JUJU_REMOTE_APP", None)
 
 
-def sidebar_items_to_json(sidebar_items: List[SidebarItem]) -> str:
+def dashboard_links_to_json(dashboard_links: List[DashboardLink]) -> str:
     """Returns a list of SidebarItems as a JSON string."""
-    return json.dumps(
-        [asdict(sidebar_item) for sidebar_item in sidebar_items]
-    )
+    return json.dumps([asdict(dashboard_link) for dashboard_link in dashboard_links])

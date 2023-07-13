@@ -52,8 +52,8 @@ requires:
           - service
     versions: [v1]
     __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
-  sidebar:
-    interface: kubeflow_dashboard_sidebar
+  dashboard-links:
+    interface: kubeflow_dashboard_links
 provides:
   metrics-endpoint:
     interface: prometheus_scrape

@@ -11,9 +11,9 @@ import botocore.exceptions
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
-from charms.kubeflow_dashboard.v0.kubeflow_dashboard_sidebar import (
-    KubeflowDashboardSidebarRequirer,
-    SidebarItem,
+from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
+    DashboardLink,
+    KubeflowDashboardLinksRequirer,
 )
 from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
@@ -90,11 +90,17 @@ class MlflowCharm(CharmBase):
         )
 
         # add link in kubeflow-dashboard sidebar
-        self.kubeflow_dashboard_sidebar = KubeflowDashboardSidebarRequirer(
+        self.kubeflow_dashboard_sidebar = KubeflowDashboardLinksRequirer(
             charm=self,
-            relation_name="sidebar",
-            sidebar_items=[
-                SidebarItem(text="MLflow", link="/mlflow/", type="item", icon="device:data-usage")
+            relation_name="dashboard-links",
+            dashboard_links=[
+                DashboardLink(
+                    text="MLflow",
+                    link="/mlflow/",
+                    type="item",
+                    icon="device:data-usage",
+                    location="external",
+                )
             ],
         )
 
