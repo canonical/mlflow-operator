@@ -385,6 +385,18 @@ class MlflowCharm(CharmBase):
             manifests.append(manifest)
         return json.dumps(manifests)
 
+    def _send_ingress_info(self, interfaces):
+        if interfaces["ingress"]:
+            interfaces["ingress"].send_data(
+                {
+                    "prefix": "/mlflow/",
+                    "rewrite": "/",
+                    "service": self.model.app.name,
+                    "namespace": self.model.name,
+                    "port": int(self._port),
+                }
+            )
+
     def _on_event(self, event) -> None:
         """Perform all required actions for the Charm."""
         try:
@@ -440,6 +452,7 @@ class MlflowCharm(CharmBase):
             self._send_manifests(
                 interfaces, poddefaults_context, PODDEFAULTS_FILES, "pod-defaults"
             )
+            self._send_ingress_info(interfaces)
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
             self.logger.info(f"Event {event} stopped early with message: {str(err)}")
