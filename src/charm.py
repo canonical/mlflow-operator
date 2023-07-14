@@ -12,6 +12,10 @@ import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
+    DashboardLink,
+    KubeflowDashboardLinksRequirer,
+)
 from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from jinja2 import Template
@@ -95,6 +99,21 @@ class MlflowCharm(CharmBase):
         self.dashboard_provider = GrafanaDashboardProvider(
             charm=self,
             relation_name="grafana-dashboard",
+        )
+
+        # add link in kubeflow-dashboard sidebar
+        self.kubeflow_dashboard_sidebar = KubeflowDashboardLinksRequirer(
+            charm=self,
+            relation_name="dashboard-links",
+            dashboard_links=[
+                DashboardLink(
+                    text="MLflow",
+                    link="/mlflow/",
+                    type="item",
+                    icon="device:data-usage",
+                    location="external",
+                )
+            ],
         )
 
     @property
