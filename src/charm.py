@@ -11,6 +11,7 @@ import botocore.exceptions
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
     DashboardLink,
     KubeflowDashboardLinksRequirer,
@@ -83,10 +84,21 @@ class MlflowCharm(CharmBase):
                 {
                     "metrics_path": METRICS_PATH,
                     "static_configs": [
-                        {"targets": ["*:{}".format(self.model.config["mlflow_port"])]}
+                        {
+                            "targets": [
+                                "*:{}".format(self.model.config["mlflow_port"]),
+                                "*:{}".format(
+                                    self.model.config["mlflow_prometheus_exporter_port"]
+                                ),
+                            ]
+                        }
                     ],
                 }
             ],
+        )
+        self.dashboard_provider = GrafanaDashboardProvider(
+            charm=self,
+            relation_name="grafana-dashboard",
         )
 
         # add link in kubeflow-dashboard sidebar
