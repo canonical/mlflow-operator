@@ -56,26 +56,20 @@ juju add-model dev
 # Enable DEBUG logging
 juju model-config logging-config="<root>=INFO;unit=DEBUG"
 # Deploy the charm
-juju deploy ./training-operator_ubuntu-20.04-amd64.charm \
-    --resource training-operator-image=$(yq '.resources."training-operator-image"."upstream-source"' metadata.yaml)
+juju deploy ./mlflow-server_ubuntu-20.04-amd64.charm \
+    --resource oci-image=$(yq '.resources."oci-image"."upstream-source"' metadata.yaml)
 ```
 
 ## Updating the charm for new versions of the workload
 
 To upgrade the source and resources of this charm, you must:
 
-1. Bump the `training-operator-image` in `metadata.yaml`
+1. Bump the `oci-image` in `metadata.yaml`
 1. Update the charm source for any changes, such as:
     - YAML manifests in `src/` and/or any Kubernetes resource in `pod_spec`
     - New or changed configurations passed to pebble workloads or through `pod.set_spec`
 1. Ensure integration and unit tests are passing; fix/adapt them otherwise
 
-The following table collects a series of links and information that can help in the upgrade process.
- 
-| Image registry 	| Image tag format	| Manifest location 	| Next version 	|
-|---	|---	|---	|---	|
-| [kubeflow/training-operator](https://hub.docker.com/r/kubeflow/training-operator/) 	| `v1-<commit sha>`<br>The commit sha comes from the HEAD of the release tag 	| [kubeflow/manifests](https://github.com/kubeflow/manifests/tree/master/apps/training-operator/upstream) 	| Check for latest version released or pre-released in <br>the repo [releases](https://github.com/kubeflow/training-operator/releases), it should match the release plan usually stated in issues like <br>[Training Operator WG and Kubeflow 1.6](https://github.com/kubeflow/manifests/issues/2196) release and [KF Release 1.6 Tracking](https://github.com/kubeflow/manifests/issues/2194) 	|
-
 ## Canonical Contributor Agreement
 
-Canonical welcomes contributions to the Charmed Training Operator. Please check out our [contributor agreement](https://ubuntu.com/legal/contributors) if you're interested in contributing to the solution.
+Canonical welcomes contributions to this charm. Please check out our [contributor agreement](https://ubuntu.com/legal/contributors) if you're interested in contributing.
