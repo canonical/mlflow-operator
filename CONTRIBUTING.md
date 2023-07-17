@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document explains the processes and practices recommended for contributing enhancements to
+This document outlines the processes and practices recommended for contributing enhancements to
 this operator.
 
 ## Talk to us First
