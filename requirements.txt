@@ -38,7 +38,7 @@ idna==3.4
     #   anyio
     #   httpx
     #   requests
-importlib-resources==5.12.0
+importlib-resources==6.0.0
     # via jsonschema
 jinja2==3.1.2
     # via charmed-kubeflow-chisme
@@ -73,8 +73,9 @@ pyrsistent==0.19.3
     # via jsonschema
 python-dateutil==2.8.2
     # via botocore
-pyyaml==6.0
+pyyaml==6.0.1
     # via
+    #   -r requirements.in
     #   lightkube
     #   ops
     #   serialized-data-interface
@@ -105,5 +106,5 @@ urllib3==1.26.16
     #   requests
 websocket-client==1.6.0
     # via ops
-zipp==3.15.0
+zipp==3.16.2
     # via importlib-resources

@@ -1,6 +1,6 @@
 aiohttp
 jinja2
-juju==3.0.4
+juju==2.9.44
 mlflow
 pytest-operator
 requests
