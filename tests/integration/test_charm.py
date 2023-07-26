@@ -429,8 +429,8 @@ class TestCharm:
         await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
 
     @pytest.mark.abort_on_fail
-    async def test_ingress_url(self, lightkube_client):
-        ingress_url = get_ingress_url(lightkube_client, "testing")
+    async def test_ingress_url(self, lightkube_client, ops_test: OpsTest):
+        ingress_url = get_ingress_url(lightkube_client, ops_test.model_name)
         result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
 
         # verify that UI is accessible
