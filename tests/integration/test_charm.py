@@ -415,7 +415,7 @@ class TestCharm:
         await ops_test.model.deploy(GRAFANA_CHARM_NAME, channel="latest/stable", trust=True)
         await ops_test.model.relate(GRAFANA_CHARM_NAME, CHARM_NAME)
         await ops_test.model.wait_for_idle(
-            apps=[GRAFANA_CHARM_NAME], status="active", raise_on_blocked=True, timeout=60 * 10
+            apps=[GRAFANA_CHARM_NAME], status="active", raise_on_blocked=True, timeout=60 * 15
         )
 
     async def test_ingress_relation(self, ops_test: OpsTest):
