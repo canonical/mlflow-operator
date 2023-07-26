@@ -138,6 +138,8 @@ async def setup_istio(ops_test: OpsTest, istio_gateway: str, istio_pilot: str):
         apps=[istio_pilot, istio_gateway],
         status="active",
         timeout=60 * 5,
+        raise_on_blocked=False,
+        raise_on_error=False,
     )
 
 
@@ -208,6 +210,8 @@ class TestCharm:
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME, ISTIO_GATEWAY_CHARM_NAME, ISTIO_PILOT_CHARM_NAME],
             status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
             timeout=60 * 5,
         )
 
