@@ -314,7 +314,7 @@ class TestCharm:
             RESOURCE_DISPATCHER_CHARM_NAME, channel="latest/edge", trust=True
         )
         await ops_test.model.wait_for_idle(
-            apps=[CHARM_NAME],
+            apps=[CHARM_NAME, RESOURCE_DISPATCHER_CHARM_NAME],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
