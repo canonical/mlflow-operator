@@ -25,6 +25,7 @@ from lightkube.generic_resource import (
 from lightkube.resources.core_v1 import Secret, Service
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
+from tenacity import retry, stop_after_delay, wait_fixed
 
 logger = logging.getLogger(__name__)
 
@@ -331,6 +332,7 @@ class TestCharm:
 
         await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
 
+    @retry(stop=stop_after_delay(5), wait=wait_fixed(1))
     @pytest.mark.abort_on_fail
     async def test_ingress_url(self, lightkube_client, ops_test: OpsTest):
         ingress_url = get_ingress_url(lightkube_client, ops_test.model_name)
