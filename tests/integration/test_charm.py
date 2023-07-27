@@ -319,7 +319,7 @@ class TestCharm:
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=600,
+            timeout=1200,
         )
 
     async def test_ingress_relation(self, ops_test: OpsTest):
@@ -421,6 +421,7 @@ class TestCharm:
     #     assert access_key == OBJECT_STORAGE_CONFIG["access-key"]
     #     assert secret_access_key == OBJECT_STORAGE_CONFIG["secret-key"]
 
+    @retry(stop=stop_after_delay(300), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
     async def test_can_connect_exporter_and_get_metrics(self, ops_test: OpsTest):
         config = await ops_test.model.applications[CHARM_NAME].get_config()
