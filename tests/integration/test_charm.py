@@ -321,6 +321,25 @@ class TestCharm:
             timeout=600,
         )
 
+    async def test_ingress_relation(self, ops_test: OpsTest):
+        """Setup Istio and relate it to the MLflow."""
+        await setup_istio(ops_test, ISTIO_GATEWAY_CHARM_NAME, ISTIO_PILOT_CHARM_NAME)
+
+        await ops_test.model.add_relation(
+            f"{ISTIO_PILOT_CHARM_NAME}:ingress", f"{CHARM_NAME}:ingress"
+        )
+
+        await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
+
+    @pytest.mark.abort_on_fail
+    async def test_ingress_url(self, lightkube_client, ops_test: OpsTest):
+        ingress_url = get_ingress_url(lightkube_client, ops_test.model_name)
+        result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
+
+        # verify that UI is accessible
+        assert result_status == 200
+        assert len(result_text) > 0
+
     @pytest.mark.abort_on_fail
     async def test_new_user_namespace_has_manifests(
         self, ops_test: OpsTest, lightkube_client: lightkube.Client, namespace: str
@@ -340,25 +359,6 @@ class TestCharm:
         for name in poddefaults_names:
             pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)
             assert pod_default is not None
-    
-    async def test_ingress_relation(self, ops_test: OpsTest):
-        """Setup Istio and relate it to the MLflow."""
-        await setup_istio(ops_test, ISTIO_GATEWAY_CHARM_NAME, ISTIO_PILOT_CHARM_NAME)
-
-        await ops_test.model.add_relation(
-            f"{ISTIO_PILOT_CHARM_NAME}:ingress", f"{CHARM_NAME}:ingress"
-        )
-
-        await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
-
-    @pytest.mark.abort_on_fail
-    async def test_ingress_url(self, lightkube_client, ops_test: OpsTest):
-        ingress_url = get_ingress_url(lightkube_client, ops_test.model_name)
-        result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
-
-        # verify that UI is accessible
-        assert result_status == 200
-        assert len(result_text) > 0
 
     @pytest.mark.abort_on_fail
     async def test_mlflow_alert_rules(self, ops_test: OpsTest):
