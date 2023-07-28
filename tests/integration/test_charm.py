@@ -199,6 +199,18 @@ class TestCharm:
             timeout=600,
         )
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+    
+    @retry(stop=stop_after_delay(300), wait=wait_fixed(10))
+    @pytest.mark.abort_on_fail
+    async def test_can_connect_exporter_and_get_metrics(self, ops_test: OpsTest):
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        url = f"http://localhost:{config['mlflow_prometheus_exporter_nodeport']['value']}/metrics"
+        response = requests.get(url)
+        assert response.status_code == 200
+        metrics_text = response.text
+        assert 'mlflow_metric{metric_name="num_experiments"} 2.0' in metrics_text
+        assert 'mlflow_metric{metric_name="num_registered_models"} 0.0' in metrics_text
+        assert 'mlflow_metric{metric_name="num_runs"} 0' in metrics_text
 
     @pytest.mark.abort_on_fail
     async def test_default_bucket_created(self, ops_test: OpsTest):
@@ -420,18 +432,6 @@ class TestCharm:
 
     #     assert access_key == OBJECT_STORAGE_CONFIG["access-key"]
     #     assert secret_access_key == OBJECT_STORAGE_CONFIG["secret-key"]
-
-    @retry(stop=stop_after_delay(300), wait=wait_fixed(10))
-    @pytest.mark.abort_on_fail
-    async def test_can_connect_exporter_and_get_metrics(self, ops_test: OpsTest):
-        config = await ops_test.model.applications[CHARM_NAME].get_config()
-        url = f"http://localhost:{config['mlflow_prometheus_exporter_nodeport']['value']}/metrics"
-        response = requests.get(url)
-        assert response.status_code == 200
-        metrics_text = response.text
-        assert 'mlflow_metric{metric_name="num_experiments"} 2.0' in metrics_text
-        assert 'mlflow_metric{metric_name="num_registered_models"} 0.0' in metrics_text
-        assert 'mlflow_metric{metric_name="num_runs"} 0' in metrics_text
 
     @pytest.mark.abort_on_fail
     async def test_grafana_integration(self, ops_test: OpsTest):
