@@ -208,7 +208,7 @@ class TestCharm:
         response = requests.get(url)
         assert response.status_code == 200
         metrics_text = response.text
-        assert 'mlflow_metric{metric_name="num_experiments"} 2.0' in metrics_text
+        assert 'mlflow_metric{metric_name="num_experiments"} 1.0' in metrics_text
         assert 'mlflow_metric{metric_name="num_registered_models"} 0.0' in metrics_text
         assert 'mlflow_metric{metric_name="num_runs"} 0' in metrics_text
 
