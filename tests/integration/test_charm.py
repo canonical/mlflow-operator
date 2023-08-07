@@ -420,19 +420,6 @@ class TestCharm:
         for rule in rules:
             assert rule["name"] in rules_file_alert_names
 
-    # @pytest.mark.abort_on_fail
-    # async def test_get_minio_credentials_action(self, ops_test: OpsTest):
-    #     action = (
-    #         await ops_test.model.applications[CHARM_NAME]
-    #         .units[0]
-    #         .run_action("get-minio-credentials")
-    #     )
-    #     access_key = (await action.wait()).results["access-key"]
-    #     secret_access_key = (await action.wait()).results["secret-access-key"]
-
-    #     assert access_key == OBJECT_STORAGE_CONFIG["access-key"]
-    #     assert secret_access_key == OBJECT_STORAGE_CONFIG["secret-key"]
-
     @pytest.mark.abort_on_fail
     async def test_grafana_integration(self, ops_test: OpsTest):
         await ops_test.model.deploy(GRAFANA_CHARM_NAME, channel="latest/stable", trust=True)
