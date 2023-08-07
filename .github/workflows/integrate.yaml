@@ -69,6 +69,11 @@ jobs:
       run: sg microk8s -c "tox -vve integration -- --model testing"
 
     # On failure, capture debugging resources
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
+      timeout-minutes: 60
+      if: failure()
+      
     - name: Get all
       run: kubectl get all -A
       if: failure()
