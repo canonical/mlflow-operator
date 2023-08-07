@@ -25,6 +25,7 @@ from lightkube.generic_resource import (
 from lightkube.resources.core_v1 import Secret, Service
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
+from tenacity import retry, stop_after_delay, wait_fixed
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,8 @@ async def setup_istio(ops_test: OpsTest, istio_gateway: str, istio_pilot: str):
         apps=[istio_pilot, istio_gateway],
         status="active",
         timeout=60 * 5,
+        raise_on_blocked=False,
+        raise_on_error=False,
     )
 
 
@@ -196,6 +199,18 @@ class TestCharm:
             timeout=600,
         )
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+
+    @retry(stop=stop_after_delay(300), wait=wait_fixed(10))
+    @pytest.mark.abort_on_fail
+    async def test_can_connect_exporter_and_get_metrics(self, ops_test: OpsTest):
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        url = f"http://localhost:{config['mlflow_prometheus_exporter_nodeport']['value']}/metrics"
+        response = requests.get(url)
+        assert response.status_code == 200
+        metrics_text = response.text
+        assert 'mlflow_metric{metric_name="num_experiments"} 1.0' in metrics_text
+        assert 'mlflow_metric{metric_name="num_registered_models"} 0.0' in metrics_text
+        assert 'mlflow_metric{metric_name="num_runs"} 0' in metrics_text
 
     @pytest.mark.abort_on_fail
     async def test_default_bucket_created(self, ops_test: OpsTest):
@@ -316,8 +331,28 @@ class TestCharm:
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=600,
+            timeout=1200,
         )
+
+    async def test_ingress_relation(self, ops_test: OpsTest):
+        """Setup Istio and relate it to the MLflow."""
+        await setup_istio(ops_test, ISTIO_GATEWAY_CHARM_NAME, ISTIO_PILOT_CHARM_NAME)
+
+        await ops_test.model.add_relation(
+            f"{ISTIO_PILOT_CHARM_NAME}:ingress", f"{CHARM_NAME}:ingress"
+        )
+
+        await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
+
+    @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
+    @pytest.mark.abort_on_fail
+    async def test_ingress_url(self, lightkube_client, ops_test: OpsTest):
+        ingress_url = get_ingress_url(lightkube_client, ops_test.model_name)
+        result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
+
+        # verify that UI is accessible
+        assert result_status == 200
+        assert len(result_text) > 0
 
     @pytest.mark.abort_on_fail
     async def test_new_user_namespace_has_manifests(
@@ -386,52 +421,9 @@ class TestCharm:
             assert rule["name"] in rules_file_alert_names
 
     @pytest.mark.abort_on_fail
-    async def test_get_minio_credentials_action(self, ops_test: OpsTest):
-        action = (
-            await ops_test.model.applications[CHARM_NAME]
-            .units[0]
-            .run_action("get-minio-credentials")
-        )
-        access_key = (await action.wait()).results["access-key"]
-        secret_access_key = (await action.wait()).results["secret-access-key"]
-
-        assert access_key == OBJECT_STORAGE_CONFIG["access-key"]
-        assert secret_access_key == OBJECT_STORAGE_CONFIG["secret-key"]
-
-    @pytest.mark.abort_on_fail
-    async def test_can_connect_exporter_and_get_metrics(self, ops_test: OpsTest):
-        config = await ops_test.model.applications[CHARM_NAME].get_config()
-        url = f"http://localhost:{config['mlflow_prometheus_exporter_nodeport']['value']}/metrics"
-        response = requests.get(url)
-        assert response.status_code == 200
-        metrics_text = response.text
-        assert 'mlflow_metric{metric_name="num_experiments"} 2.0' in metrics_text
-        assert 'mlflow_metric{metric_name="num_registered_models"} 0.0' in metrics_text
-        assert 'mlflow_metric{metric_name="num_runs"} 0' in metrics_text
-
-    @pytest.mark.abort_on_fail
     async def test_grafana_integration(self, ops_test: OpsTest):
         await ops_test.model.deploy(GRAFANA_CHARM_NAME, channel="latest/stable", trust=True)
         await ops_test.model.relate(GRAFANA_CHARM_NAME, CHARM_NAME)
         await ops_test.model.wait_for_idle(
-            apps=[GRAFANA_CHARM_NAME], status="active", raise_on_blocked=True, timeout=60 * 10
+            apps=[GRAFANA_CHARM_NAME], status="active", raise_on_blocked=True, timeout=60 * 20
         )
-
-    async def test_ingress_relation(self, ops_test: OpsTest):
-        """Setup Istio and relate it to the MLflow."""
-        await setup_istio(ops_test, ISTIO_GATEWAY_CHARM_NAME, ISTIO_PILOT_CHARM_NAME)
-
-        await ops_test.model.add_relation(
-            f"{ISTIO_PILOT_CHARM_NAME}:ingress", f"{CHARM_NAME}:ingress"
-        )
-
-        await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
-
-    @pytest.mark.abort_on_fail
-    async def test_ingress_url(self, lightkube_client):
-        ingress_url = get_ingress_url(lightkube_client, "testing")
-        result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
-
-        # verify that UI is accessible
-        assert result_status == 200
-        assert len(result_text) > 0

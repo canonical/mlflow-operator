@@ -20,7 +20,8 @@ EXPECTED_SERVICE = {
             "summary": "Entrypoint of mlflow-server image",
             "startup": "enabled",
             "override": "replace",
-            "command": "mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $(MLFLOW_TRACKING_URI) --default-artifact-root s3:/// --expose-prometheus /metrics",  # noqa: E501
+            "command": "mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri test --default-artifact-root s3:/// --expose-prometheus /metrics",  # noqa: E501
+            "environment": {"MLFLOW_TRACKING_URI": "test"},
         },
     )
 }
@@ -410,7 +411,7 @@ class TestCharm:
         harness.charm._update_layer(
             harness.charm.container,
             harness.charm._container_name,
-            harness.charm._charmed_mlflow_layer({}, ""),
+            harness.charm._charmed_mlflow_layer({"MLFLOW_TRACKING_URI": "test"}, ""),
         )
         assert harness.charm.container.get_plan().services == EXPECTED_SERVICE
 

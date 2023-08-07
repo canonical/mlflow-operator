@@ -191,7 +191,7 @@ class MlflowCharm(CharmBase):
                         "--port "
                         f"{self._port} "
                         "--backend-store-uri "
-                        "$(MLFLOW_TRACKING_URI) "
+                        f"{env_vars['MLFLOW_TRACKING_URI']} "
                         "--default-artifact-root "
                         f"s3://{default_artifact_root}/ "
                         "--expose-prometheus "

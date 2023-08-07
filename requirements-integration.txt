@@ -133,7 +133,7 @@ importlib-metadata==6.7.0
     #   flask
     #   markdown
     #   mlflow
-importlib-resources==5.12.0
+importlib-resources==6.0.0
     # via
     #   -r requirements.txt
     #   alembic
@@ -168,7 +168,7 @@ jsonschema==4.17.3
     # via
     #   -r requirements.txt
     #   serialized-data-interface
-juju==3.0.4
+juju==2.9.44.0
     # via
     #   -r requirements-integration.in
     #   pytest-operator
@@ -322,7 +322,7 @@ pytz==2023.3
     #   mlflow
     #   pandas
     #   pyrfc3339
-pyyaml==6.0
+pyyaml==6.0.1
     # via
     #   -r requirements.txt
     #   juju
@@ -452,7 +452,7 @@ werkzeug==2.3.6
     # via flask
 yarl==1.9.2
     # via aiohttp
-zipp==3.15.0
+zipp==3.16.2
     # via
     #   -r requirements.txt
     #   importlib-metadata

@@ -4,5 +4,6 @@ lightkube
 lightkube-models>=1.25.4.4
 ops>=2.3.0
 oci-image
+pyyaml==6.0.1
 serialized-data-interface
 tenacity
