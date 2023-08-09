@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2021 Canonical Ltd.
+# Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 #
 
@@ -452,6 +452,7 @@ class MlflowCharm(CharmBase):
                 "s3_endpoint": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
                 "s3_type": "s3",
                 "s3_provider": "minio",
+                "enable_env_auth": "false",
                 "access_key": object_storage_data["access-key"],
                 "secret_access_key": object_storage_data["secret-key"],
             }
