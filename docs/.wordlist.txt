@@ -1,0 +1,17 @@
+Diátaxis
+favicon
+https
+installable
+Makefile
+MyST
+Permalink
+ReadMe
+readthedocs
+reST
+reStructuredText
+RTD
+subdirectories
+subtree
+txt
+UI
+yaml
