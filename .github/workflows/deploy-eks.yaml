@@ -1,29 +1,30 @@
-name: Configure EKS and run MLflow bundle test
-
+name: Create EKS cluster, deploy CKF and run bundle test
 on:
-  workflow_dispatch: # This event allows manual triggering from the GitHub UI
+  workflow_dispatch: # This event allows manual triggering from the Github UI
     secrets:
-      AWS_ACCESS_KEY_ID:
+      BUNDLE_KUBEFLOW_EKS_AWS_ACCESS_KEY_ID:
         required: true
-      AWS_SECRET_ACCESS_KEY:
+      BUNDLE_KUBEFLOW_EKS_AWS_SECRET_ACCESS_KEY:
         required: true
+  schedule:
+    - cron: "23 0 * * 2"
 jobs:
-  deploy-eks:
+  deploy-ckf-to-eks:
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      
-      - name: Install tox and run tests
+
+      - name: Install tox
         run: |
-          sudo apt-get install -y python3-pip
-          sudo pip3 install tox
+          python -m pip install --upgrade pip
+          pip install tox
       
       - name: Configure AWS Credentials
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUNDLE_KUBEFLOW_EKS_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUNDLE_KUBEFLOW_EKS_AWS_SECRET_ACCESS_KEY }}
         run: |
           aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
           aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
@@ -31,7 +32,7 @@ jobs:
       
       - name: Install kubectl
         run: |
-          sudo snap install kubectl --classic
+          sudo snap install kubectl --classic --channel=1.24/stable
           mkdir ~/.kube
           kubectl version --client
       
@@ -45,7 +46,7 @@ jobs:
       
       - name: Install juju
         run: |
-          sudo snap install juju --classic
+          sudo snap install juju --classic --channel=2.9/stable
           sudo snap install charmcraft --classic
           juju version
       
@@ -63,7 +64,7 @@ jobs:
       - name: Test bundle deployment
         run: |
           tox -vve bundle-test -- --model kubeflow --keep-models -vv -s
-      
+
       - name: Remove eks 
         if: always()
         run: |
@@ -85,3 +86,11 @@ jobs:
       - name: Get operator logs
         run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server
         if: failure()
+
+  delete-unattached-volumes:
+    if: always()
+    uses: ./.github/workflows/delete-aws-volumes.yaml
+    secrets: inherit
+    with:
+      region: eu-central-1
+    needs: [deploy-ckf-to-eks]
