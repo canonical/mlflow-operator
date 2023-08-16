@@ -168,7 +168,7 @@ jsonschema==4.17.3
     # via
     #   -r requirements.txt
     #   serialized-data-interface
-juju==2.9.44.0
+juju==3.2.0.1
     # via
     #   -r requirements-integration.in
     #   pytest-operator
