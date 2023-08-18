@@ -6,8 +6,12 @@ on:
         required: true
       BUNDLE_KUBEFLOW_EKS_AWS_SECRET_ACCESS_KEY:
         required: true
-  schedule:
-    - cron: "23 0 * * 2"
+    inputs:
+      region:
+        description: 'Insert the AWS Region name in which the script will deploy the EKS cluster.'
+        required: false
+        default: 'eu-central-1'
+        type: string
 jobs:
   deploy-mlflow-to-eks:
     runs-on: ubuntu-22.04
@@ -28,7 +32,7 @@ jobs:
         run: |
           aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
           aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-          aws configure set default.region eu-central-1
+          aws configure set default.region ${{ inputs.region }}
       
       - name: Install kubectl
         run: |
@@ -52,6 +56,8 @@ jobs:
       
       - name: Create cluster
         run: |
+          sed -i "s/{{ region }}/${{ inputs.region }}/" .github/cluster.yaml
+          cat .github/cluster.yaml
           eksctl create cluster -f .github/cluster.yaml
           kubectl get nodes
       
@@ -92,5 +98,5 @@ jobs:
     uses: ./.github/workflows/delete-aws-volumes.yaml
     secrets: inherit
     with:
-      region: eu-central-1
+      region: ${{ inputs.region }}
     needs: [deploy-mlflow-to-eks]
