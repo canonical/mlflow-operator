@@ -12,6 +12,8 @@ on:
         required: false
         default: 'eu-central-1'
         type: string
+  schedule:
+    - cron: "23 0 * * 2"
 jobs:
   deploy-mlflow-to-eks:
     runs-on: ubuntu-22.04
