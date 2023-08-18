@@ -57,7 +57,6 @@ jobs:
       - name: Create cluster
         run: |
           sed -i "s/{{ region }}/${{ inputs.region }}/" .github/cluster.yaml
-          cat .github/cluster.yaml
           eksctl create cluster -f .github/cluster.yaml
           kubectl get nodes
       
