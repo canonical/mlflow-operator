@@ -28,7 +28,7 @@ copyright = '%s, %s' % (datetime.date.today().year, author)
 # The URL of the documentation output
 ogp_site_url = 'https://canonical-starter-pack.readthedocs-hosted.com/'
 # The documentation website name (usually the same as the product name)
-ogp_site_name = mlflow
+ogp_site_name = 'mlflow'
 # An image or logo that is used in the preview
 ogp_image = 'https://assets.ubuntu.com/v1/253da317-image-document-ubuntudocs.svg'
 
