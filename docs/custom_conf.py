@@ -49,7 +49,7 @@ html_context = {
     # Change to the discourse instance you want to be able to link to
     # using the :discourse: metadata at the top of a file
     # (use an empty value if you don't want to link)
-    'discourse': 'https://discourse.charmhub.io/',
+    'discourse': 'https://discourse.charmhub.io/tag/mlflow',
 
     # Change to the GitHub info for your project
     'github_url': 'https://github.com/canonical/mlflow-operator',
@@ -59,7 +59,7 @@ html_context = {
 
     # Change to the folder that contains the documentation
     # (usually "/" or "/docs/")
-    'github_folder': '/docs',
+    'github_folder': '/docs/',
 
     # Change to an empty value if your GitHub repo doesn't have issues enabled.
     # This will disable the feedback button and the issue link in the footer.
