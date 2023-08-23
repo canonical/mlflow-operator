@@ -48,11 +48,8 @@ Project and community
 Charmed MLflow is an open-source project that values its community. We warmly welcome contributions, suggestions, fixes, and constructive feedback from everyone.
 
 * `Code of conduct`_
-* `Get support`_
-* `Join our online chat`_
 * `Contribute`_
-* `Roadmap`_
-* `Considering Charmed MLflow for your next ML project? Get in touch!`_
+* `Join our online chat`_
 
 .. toctree::
    :hidden:
