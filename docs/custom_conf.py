@@ -15,7 +15,7 @@ import datetime
 ############################################################
 
 # Product name
-project = 'MLflow'
+project = 'Charmed MLflow'
 author = 'Canonical Group Ltd'
 
 # Uncomment if your product uses release numbers
