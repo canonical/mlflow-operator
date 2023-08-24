@@ -8,3 +8,4 @@ Welcome to the How-To section. These guides provide practical instructions for s
 
    create-ck8s-aws
    deploy-ck8s-aws
+   deploy-kubeflow-mlflow-ck8s-aws

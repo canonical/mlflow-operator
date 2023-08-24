@@ -1,3 +1,4 @@
+.. _deploy_mlflow_ck8s_label:
 Deploying Charmed MLflow to Charmed Kubernetes on AWS
 ========================================================
 
