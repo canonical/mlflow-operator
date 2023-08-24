@@ -9,32 +9,34 @@ Get Started with Charmed MLflow
 
 Welcome to the tutorial on Charmed MLflow! `MLflow <https://mlflow.org/>`_ is an open-source platform, used for managing machine learning workflows. It has four primary functions that include experiment tracking, model registry, model management and code reproducibility.
 
-So wait, what does "Charmed MLflow" mean? Is it the same thing as MLflow? Yes and no. MLflow is a complex application, consisting of many components running together and communicating with each other. Charmed MLflow is a `charm bundle <https://juju.is/docs/sdk/charm-bundles>`_ that allows us to deploy MLflow quickly and easily. Don't worry too much about what a "charm bundle" is right now. The key thing is that it's going to make deploying MLflow very convenient for us: we'll get MLflow up an running with just a few command line commands!
+So wait, what does "Charmed MLflow" mean? Is it the same thing as MLflow? Yes and no. MLflow is a complex application, consisting of many components running together and communicating with each other. Charmed MLflow is a `charm bundle <https://juju.is/docs/sdk/charm-bundles>`_ that allows us to deploy MLflow quickly and easily. Don't worry too much about what a "charm bundle" is right now. The key thing is that it's going to make deploying MLflow very convenient for us: we'll get MLflow up and running with just a few command line commands!
 
 In this tutorial, we're going to explore Charmed MLflow in a practical way. Using the CLI tool `juju <https://juju.is/>`, we'll deploy MLflow to a local `microk8s <https://microk8s.io/>`_ cloud.
 
-**Prerequisites:**
+Prerequisites
+-------------
 
 We are assuming that you are running this tutorial on a local machine with the following specs:
+
 * Runs Ubuntu 22.04 or later
 * Has at least 50GB free disk space
 
 Install and prepare MicroK8s
 ----------------------------
-Let's install `MicroK8s <https://microk8s.io/>`. MicroK8s is installed from a snap package. The published snap maintains different `channels` for different releases of Kubernetes.
+Let's install `MicroK8s <https://microk8s.io/>`_. MicroK8s is installed from a snap package. The published snap maintains different ``channels`` for different releases of Kubernetes.
 
 .. code-block:: bash
 
    sudo snap install microk8s --classic --channel=1.24/stable
 
-For MicroK8s to work without having to use `sudo` for every command, it creates a group called `microk8s`. To make it more convenient to run commands, you will add the current user to this group:
+For MicroK8s to work without having to use ``sudo`` for every command, it creates a group called ``microk8s``. To make it more convenient to run commands, you will add the current user to this group:
 
 .. code-block:: bash
 
    sudo usermod -a -G microk8s $USER
    newgrp microk8s
 
-It is also useful to make sure the user has the proper access and ownership of any `kubectl` configuration files:
+It is also useful to make sure the user has the proper access and ownership of any ``kubectl`` configuration files:
 
 .. code-block:: bash
 
@@ -57,7 +59,7 @@ We've now installed and configured MicroK8s. It will start running automatically
 
    microk8s status --wait-ready
 
-Be patient - this command may not return straight away. The  **`--wait-ready`** flag tells MicroK8s to wait for the Kubernetes services to initialise before returning. Once MicroK8s is ready, you will see something like the following output:
+Be patient - this command may not return straight away. The ``--wait-ready`` flag tells MicroK8s to wait for the Kubernetes services to initialise before returning. Once MicroK8s is ready, you will see something like the following output:
 
 .. code-block:: bash
 
@@ -87,15 +89,15 @@ Sit tight while the command completes! The controller may take a minute or two t
 
 The controller is Juju’s agent, running on Kubernetes, which can be used to deploy and control the components of Kubeflow.
 
-Next, we'll need to add a model for Kubeflow to the controller. Run the following command to add a model called `kubeflow`:
+Next, we'll need to add a model for Kubeflow to the controller. Run the following command to add a model called ``kubeflow``:
 
 .. code-block:: bash
 
    juju add-model kubeflow
 
->The model name here can be anything. We're just using `kubeflow` because often you may want to `deploy MLflow along with Kubeflow </t/10782>`, and in that case, the model name must be `kubeflow`. So it's not a bad habit to have.
+>The model name here can be anything. We're just using ``kubeflow`` because often you may want to deploy MLflow along with Kubeflow, and in that case, the model name must be ``kubeflow``. So it's not a bad habit to have.
 
-The controller can work with different `models`, which map 1:1 to namespaces in Kubernetes. In this case, the model name must be `kubeflow`, due to an assumption made in the upstream Kubeflow Dashboard code.
+The controller can work with different ``models``, which map 1:1 to namespaces in Kubernetes. In this case, the model name must be ``kubeflow``, due to an assumption made in the upstream Kubeflow Dashboard code.
 
 Great job: Juju has now been installed and configured for Kubeflow!
 
