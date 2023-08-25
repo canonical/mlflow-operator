@@ -24,10 +24,10 @@ Install other tools
 -------------------
 
 Next, we install the following tools:
-- `juju`: Juju is an open-source application and service modeling tool that simplifies the deployment and management of complex software systems in cloud and container environments.
-- `juju-wait`: CLI tool used for waiting during juju deployments.
-- `kubectl`: Kubernetes client used to communicate with a Kubernetes cluster.
-- `jq`: A lightweight and versatile command-line tool for parsing and manipulating JSON data.
+- ``juju``: Juju is an open-source application and service modeling tool that simplifies the deployment and management of complex software systems in cloud and container environments.
+- ``juju-wait``: CLI tool used for waiting during juju deployments.
+- ``kubectl``: Kubernetes client used to communicate with a Kubernetes cluster.
+- ``jq``: A lightweight and versatile command-line tool for parsing and manipulating JSON data.
 
 Run this command:
 
@@ -88,4 +88,4 @@ Retrieve the Kubernetes configuration from the control plane leader unit.
    mkdir ~/.kube
    juju ssh kubernetes-control-plane/leader -- cat config > ~/.kube/config
 
-Now you can use `kubectl` to talk to your newly created Charmed Kubernetes cluster.
+Now you can use ``kubectl`` to talk to your newly created Charmed Kubernetes cluster.
