@@ -215,7 +215,7 @@ class TestCharm:
             [
                 "kubectl",
                 "-n",
-                "kubeflow",
+                f"{ops_test.model_name}",
                 "port-forward",
                 f"svc/{CHARM_NAME}",
                 f"{exporter_port}:{exporter_port}",
@@ -246,7 +246,7 @@ class TestCharm:
             [
                 "kubectl",
                 "-n",
-                "kubeflow",
+                f"{ops_test.model_name}",
                 "port-forward",
                 f"svc/{OBJECT_STORAGE_CHARM_NAME}",
                 f"{port}:{port}",
@@ -275,7 +275,7 @@ class TestCharm:
             [
                 "kubectl",
                 "-n",
-                "kubeflow",
+                f"{ops_test.model_name}",
                 "port-forward",
                 f"svc/{CHARM_NAME}",
                 f"{mlflow_port}:{mlflow_port}",
@@ -386,7 +386,7 @@ class TestCharm:
             [
                 "kubectl",
                 "-n",
-                "kubeflow",
+                f"{ops_test.model_name}",
                 "port-forward",
                 f"svc/{PROMETHEUS_CHARM_NAME}",
                 "9090:9090",
