@@ -44,6 +44,7 @@ certifi==2023.7.22
     #   httpcore
     #   httpx
     #   kubernetes
+    #   minio
     #   requests
 cffi==1.15.1
     # via
@@ -204,6 +205,8 @@ matplotlib==3.7.2
     # via mlflow
 matplotlib-inline==0.1.6
     # via ipython
+minio==7.1.16
+    # via -r requirements-integration.in
 mlflow==2.5.0
     # via -r requirements-integration.in
 multidict==6.0.4
@@ -440,6 +443,7 @@ urllib3==1.26.16
     #   docker
     #   google-auth
     #   kubernetes
+    #   minio
     #   requests
 wcwidth==0.2.6
     # via prompt-toolkit
