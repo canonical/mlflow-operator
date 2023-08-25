@@ -1,3 +1,5 @@
+.. _mlflow-integration-label:
+
 Getting Started with Charmed MLflow and Kubeflow
 ================================================
 
@@ -157,7 +159,7 @@ When you connect to the notebook server, you'll be taken to the notebook environ
 
 To test this, create a new notebook and paste the following command into it, in a cell:
 
-.. code-block:: python
+.. code-block:: bash
 
    !printenv | grep MLFLOW
 
