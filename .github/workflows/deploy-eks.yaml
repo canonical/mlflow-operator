@@ -1,37 +1,44 @@
-name: Configure EKS and run MLflow bundle test
-
+name: Create EKS cluster, deploy MLflow and run bundle test
 on:
-  workflow_dispatch: # This event allows manual triggering from the GitHub UI
+  workflow_dispatch: # This event allows manual triggering from the Github UI
     secrets:
-      AWS_ACCESS_KEY_ID:
+      BUNDLE_KUBEFLOW_EKS_AWS_ACCESS_KEY_ID:
         required: true
-      AWS_SECRET_ACCESS_KEY:
+      BUNDLE_KUBEFLOW_EKS_AWS_SECRET_ACCESS_KEY:
         required: true
+    inputs:
+      region:
+        description: 'Insert the AWS Region name in which the script will deploy the EKS cluster.'
+        required: false
+        default: 'eu-central-1'
+        type: string
+  schedule:
+    - cron: "23 0 * * 2"
 jobs:
-  deploy-eks:
+  deploy-mlflow-to-eks:
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      
-      - name: Install tox and run tests
+
+      - name: Install tox
         run: |
-          sudo apt-get install -y python3-pip
-          sudo pip3 install tox
+          python -m pip install --upgrade pip
+          pip install tox
       
       - name: Configure AWS Credentials
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUNDLE_KUBEFLOW_EKS_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUNDLE_KUBEFLOW_EKS_AWS_SECRET_ACCESS_KEY }}
         run: |
           aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
           aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-          aws configure set default.region eu-central-1
+          aws configure set default.region ${{ inputs.region }}
       
       - name: Install kubectl
         run: |
-          sudo snap install kubectl --classic
+          sudo snap install kubectl --classic --channel=1.24/stable
           mkdir ~/.kube
           kubectl version --client
       
@@ -45,12 +52,13 @@ jobs:
       
       - name: Install juju
         run: |
-          sudo snap install juju --classic
+          sudo snap install juju --classic --channel=2.9/stable
           sudo snap install charmcraft --classic
           juju version
       
       - name: Create cluster
         run: |
+          sed -i "s/{{ region }}/${{ inputs.region }}/" .github/cluster.yaml
           eksctl create cluster -f .github/cluster.yaml
           kubectl get nodes
       
@@ -63,11 +71,6 @@ jobs:
       - name: Test bundle deployment
         run: |
           tox -vve bundle-test -- --model kubeflow --keep-models -vv -s
-      
-      - name: Remove eks 
-        if: always()
-        run: |
-          eksctl delete cluster --name=mlflow-bundle-test
       
       # On failure, capture debugging resources
       - name: Get all kubernetes resources
@@ -85,3 +88,16 @@ jobs:
       - name: Get operator logs
         run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server
         if: failure()
+
+      - name: Remove eks 
+        if: always()
+        run: |
+          eksctl delete cluster --name=mlflow-bundle-test
+
+  delete-unattached-volumes:
+    if: always()
+    uses: ./.github/workflows/delete-aws-volumes.yaml
+    secrets: inherit
+    with:
+      region: ${{ inputs.region }}
+    needs: [deploy-mlflow-to-eks]
