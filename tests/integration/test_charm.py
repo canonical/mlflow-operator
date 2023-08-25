@@ -154,7 +154,7 @@ def get_ingress_url(lightkube_client: lightkube.Client, model_name: str):
     if ingress_record.ip:
         public_url = f"http://{ingress_record.ip}.nip.io"
     if ingress_record.hostname:
-        public_url = f"http://{ingress_record.hostname}"  # Use hostname in case ip is not there (e.g. EKS)
+        public_url = f"http://{ingress_record.hostname}"  # Use hostname (e.g. EKS)
     return public_url
 
 
