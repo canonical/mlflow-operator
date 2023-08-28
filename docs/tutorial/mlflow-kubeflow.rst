@@ -103,7 +103,7 @@ This will periodically run a `juju status` command and filter to components whic
 
 Don’t be surprised if some of the components’ statuses change to `blocked` or `error` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states for more than 5 minutes or so, consult the troubleshooting steps below.
 
-.. details:: Expand to troubleshoot: Waiting for gateway relation
+.. dropdown:: Expand to troubleshoot: Waiting for gateway relation
 
    An issue you might have is the `tensorboard-controller` component might be stuck with a status of `waiting` and a message “Waiting for gateway relation”. To fix this, run:
 
