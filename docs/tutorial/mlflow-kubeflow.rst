@@ -85,7 +85,7 @@ This will deploy the latest edge version of the dispatcher. See `Resource Dispat
 
 Now, at this point, we've deployed MLflow, Kubeflow and the resource dispatcher. But that doesn't mean our system is ready yet: Juju will need to download charm data from CharmHub and the charms themselves will take some time to initialise.
 
-So, how do you know when all the charms are ready, then? You can do this using the `juju status` command. First, let’s run a basic status command and review the output. Run the following command to print out the status of all the components of Juju:
+So, how do you know when all the charms are ready, then? You can do this using the ``juju status`` command. First, let’s run a basic status command and review the output. Run the following command to print out the status of all the components of Juju:
 
 .. code-block:: bash
 
@@ -93,19 +93,19 @@ So, how do you know when all the charms are ready, then? You can do this using t
 
 Review the output for yourself. You should see some summary information, a list of Apps and associated information, and another list of Units and their associated information. Don’t worry too much about what this all means for now. If you’re interested in learning more about this command and its output, see the `Juju Status command <https://juju.is/docs/olm/juju-status>`_.
 
-The main thing we’re interested in at this stage is the statuses of all the applications and units running through Juju. We want all the statuses to eventually become `active`, indicating that the bundle is ready. Run the following command to keep a watch on the components which are not active yet:
+The main thing we’re interested in at this stage is the statuses of all the applications and units running through Juju. We want all the statuses to eventually become ``active``, indicating that the bundle is ready. Run the following command to keep a watch on the components which are not active yet:
 
 .. code-block:: bash
 
    watch -c 'juju status --color | grep -E "blocked|error|maintenance|waiting|App|Unit"'
 
-This will periodically run a `juju status` command and filter to components which are in a state of `blocked`, `error`, `maintenance` or `waiting` i.e. not `active`. When this output becomes empty except for the “App” and “Unit” headings, then we know all statuses are active and our system is ready.
+This will periodically run a ``juju status`` command and filter to components which are in a state of ``blocked``, ``error``, ``maintenance`` or ``waiting`` i.e. not ``active``. When this output becomes empty except for the “App” and “Unit” headings, then we know all statuses are active and our system is ready.
 
-Don’t be surprised if some of the components’ statuses change to `blocked` or `error` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states for more than 5 minutes or so, consult the troubleshooting steps below.
+Don’t be surprised if some of the components’ statuses change to ``blocked`` or ``error`` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states for more than 5 minutes or so, consult the troubleshooting steps below.
 
 .. dropdown:: Expand to troubleshoot: Waiting for gateway relation
 
-   An issue you might have is the `tensorboard-controller` component might be stuck with a status of `waiting` and a message “Waiting for gateway relation”. To fix this, run:
+   An issue you might have is the ``tensorboard-controller`` component might be stuck with a status of ``waiting`` and a message “Waiting for gateway relation”. To fix this, run:
 
    .. code-block:: bash
 
@@ -120,11 +120,11 @@ Integrate MLflow with Notebook
 
 In this section, we're going to create a notebook server in Kubeflow and connect it to MLflow. This will allow our notebook logic to talk to MLFlow in the background. Let's get started.
 
-First, to be able to use MLflow credentials in your Kubeflow notebook, visit the dashboard at http://10.64.140.43.nip.io/ and fill the username and password which you configured in the previous section e.g. `user123@email.com` and `user123`. You should now see the following screen.
+First, to be able to use MLflow credentials in your Kubeflow notebook, visit the dashboard at http://10.64.140.43.nip.io/ and fill the username and password which you configured in the previous section e.g. ``user123@email.com`` and ``user123``. You should now see the following screen.
 
 Click on start setup to setup the Kubeflow user for the first time.
 
-Select `Finish` to finish the process.
+Select ``Finish`` to finish the process.
 
 Now a Kubernetes namespace was created for your user. To use MLflow for this user, label the namespace with the following command:
 
@@ -140,10 +140,10 @@ Now go back to the Dashboard. From the left panel, choose notebooks. Select +New
 
 At this point, we can name the notebook as we want, and choose the desired image and resource limits. For now, let's just keep things simple:
 
-1. For `Name`, enter `test-notebook`.
-2. Expand the *Custom Notebook* section and for `image`, select `kubeflownotebookswg/jupyter-tensorflow-full:v1.7.0`.
+1. For ``Name``, enter ``test-notebook``.
+2. Expand the *Custom Notebook* section and for ``image``, select ``kubeflownotebookswg/jupyter-tensorflow-full:v1.7.0``.
 
-Now, in order to allow our notebook server access to MLflow, we need to enable some special configuration options. Scroll down to `Data Volumes -> Advanced options` and from the `Configurations` drop-down, choose the following options:
+Now, in order to allow our notebook server access to MLflow, we need to enable some special configuration options. Scroll down to ``Data Volumes -> Advanced options`` and from the ``Configurations`` drop-down, choose the following options:
 
 1. Allow access to Kubeflow pipelines.
 2. Allow access to Minio.
@@ -153,7 +153,7 @@ Now, in order to allow our notebook server access to MLflow, we need to enable s
 
 Great, that's all the configuration for the notebook server done. Hit the Launch button to launch the notebook server. Be patient, the notebook server will take a little while to initialise.
 
-When the notebook server is ready, you'll see it listed in the Notebooks table with a success status. At this point, select `Connect` to connect to the notebook server.
+When the notebook server is ready, you'll see it listed in the Notebooks table with a success status. At this point, select ``Connect`` to connect to the notebook server.
 
 When you connect to the notebook server, you'll be taken to the notebook environment in a new tab. Because of our earlier configurations, this environment is now connected to MLflow in the background. This means the notebooks we create here can access MLflow. Cool!
 
@@ -163,7 +163,7 @@ To test this, create a new notebook and paste the following command into it, in 
 
    !printenv | grep MLFLOW
 
-Run the cell. This will print out two environment variables `MLFLOW_S3_ENDPOINT_URL` and `MLFLOW_TRACKING_URI`, confirming MLflow is indeed connected.
+Run the cell. This will print out two environment variables ``MLFLOW_S3_ENDPOINT_URL`` and ``MLFLOW_TRACKING_URI``, confirming MLflow is indeed connected.
 
 Great, we've launched a notebook server that's connected to MLflow! Now let's upload some example notebooks to this server to see MLflow in practice.
 
@@ -172,17 +172,17 @@ Run MLflow examples
 
 To run MLflow examples on your newly created notebook server, click on the source control icon in the leftmost navigation bar.
 
-From the menu, choose the `Clone a Repository` option.
+From the menu, choose the ``Clone a Repository`` option.
 
 Now insert this repository address https://github.com/canonical/kubeflow-examples.git
 
-This will clone a whole `kubeflow-examples` repository onto the notebook server. The cloned repository will be a folder on the server, with the same name as the remote repository. Go inside the folder and after that, choose the `mlflow-v2-examples` subfolder.
+This will clone a whole ``kubeflow-examples`` repository onto the notebook server. The cloned repository will be a folder on the server, with the same name as the remote repository. Go inside the folder and after that, choose the ``mlflow-v2-examples`` subfolder.
 
 There you will find two notebooks:
 
-- `notebook-example.ipynb`: demonstrates how to talk to MLflow from inside a notebook. The example uses a simple classifier which is stored in the MLflow registry.
-- `pipeline-example.ipynb`: demonstrates how to talk to MLflow from a Kubeflow pipeline. The example creates and executes a three-step Kubeflow pipeline with the last step writing a model object to the MLflow registry.
+- ``notebook-example.ipynb``: demonstrates how to talk to MLflow from inside a notebook. The example uses a simple classifier which is stored in the MLflow registry.
+- ``pipeline-example.ipynb``: demonstrates how to talk to MLflow from a Kubeflow pipeline. The example creates and executes a three-step Kubeflow pipeline with the last step writing a model object to the MLflow registry.
 
 Go ahead, try those notebooks out for yourself! You can run them cell by cell using the run button, or all at once using the double chevron `>>`.
 
-.. note:: If you get an error in the Notebooks related to `sklearn`, try replacing `sklearn` with `scikit-learn`. See `here <https://github.com/canonical/kubeflow-examples/issues/34>`_ for more details.
+.. note:: If you get an error in the Notebooks related to ``sklearn``, try replacing ``sklearn`` with ``scikit-learn``. See `here <https://github.com/canonical/kubeflow-examples/issues/34>`_ for more details.

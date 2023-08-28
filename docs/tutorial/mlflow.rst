@@ -11,7 +11,7 @@ Welcome to the tutorial on Charmed MLflow! `MLflow <https://mlflow.org/>`_ is an
 
 So wait, what does "Charmed MLflow" mean? Is it the same thing as MLflow? Yes and no. MLflow is a complex application, consisting of many components running together and communicating with each other. Charmed MLflow is a `charm bundle <https://juju.is/docs/sdk/charm-bundles>`_ that allows us to deploy MLflow quickly and easily. Don't worry too much about what a "charm bundle" is right now. The key thing is that it's going to make deploying MLflow very convenient for us: we'll get MLflow up and running with just a few command line commands!
 
-In this tutorial, we're going to explore Charmed MLflow in a practical way. Using the CLI tool `juju <https://juju.is/>`, we'll deploy MLflow to a local `microk8s <https://microk8s.io/>`_ cloud.
+In this tutorial, we're going to explore Charmed MLflow in a practical way. Using the CLI tool `juju <https://juju.is/>`_, we'll deploy MLflow to a local `microk8s <https://microk8s.io/>`_ cloud.
 
 Prerequisites
 -------------
@@ -142,4 +142,4 @@ To use mlflow you need to have credentials to the object storage. The aforementi
 
    juju run-action mlflow-server/0  get-minio-credentials --wait
 
-This action will output `secret-key` and `secret-access-key`
+This action will output ``secret-key`` and ``secret-access-key``.
