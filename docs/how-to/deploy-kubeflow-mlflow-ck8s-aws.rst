@@ -1,15 +1,15 @@
 Integrating Charmed MLflow with Charmed Kubeflow v2 on Charmed Kubernetes
 =========================================================================
 
-Welcome to the guide on how to integrate Charmed MLflow on `Charmed Kubernetes <https://ubuntu.com/kubernetes/charmed-k8s>`_. In this guide, we will guide you through the process of integrating charm MLflow with the Charmed Kubeflow on the Charmed Kubernetes.
+In this guide, we will guide you through the process of integrating Charmed MLflow with Charmed Kubeflow on `Charmed Kubernetes <https://ubuntu.com/kubernetes/charmed-k8s>`_.
 
 Prerequisites
 --------------
 We assume that:
 
-* You have access to a Charmed Kubernetes cluster using ``kubectl``. If you don't have a cluster set up, you can follow `this guide <https://discourse.charmhub.io/t/create-a-charmed-kubernetes-cluster-for-use-with-an-mlops-platform-on-aws/11634>`_ to deploy one on AWS.
+* You have access to a Charmed Kubernetes cluster using ``kubectl``. If you don't have a cluster set up, you can follow the `creation guide <../create-ck8s-aws>`_ to deploy one on AWS.
 * You have deployed the Charmed Kubeflow bundle. If you don't have it, here is `a guide <https://discourse.charmhub.io/t/deploying-charmed-kubeflow-to-charmed-kubernetes-on-aws/11667>`_ on how to do it.
-* You have deployed the Charmed MLflow bundle. If you don't have it, here is a guide on how to do it: :ref:`deploy_mlflow_ck8s_label` .
+* You have deployed the Charmed MLflow bundle. To see how, follow our `deployment guide <../deploy-ck8s-aws>`_.
 
 Deploy resource dispatcher
 --------------------------
@@ -33,4 +33,4 @@ Relate the Resource dispatcher to MLflow:
 Integrate MLflow with Kubeflow notebook
 ---------------------------------------
 
-Please refer to this doc: :ref:`mlflow-integration-label`.
+Please refer to this doc: :doc:`../tutorial/mlflow-kubeflow`.

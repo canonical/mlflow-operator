@@ -1,3 +1,4 @@
+.. _create_mlflow_ck8s_label:
 Create a Charmed Kubernetes cluster for use with an MLOps platform on AWS
 =========================================================================
 

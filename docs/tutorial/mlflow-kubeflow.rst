@@ -1,5 +1,3 @@
-.. _mlflow-integration-label:
-
 Getting Started with Charmed MLflow and Kubeflow
 ================================================
 
