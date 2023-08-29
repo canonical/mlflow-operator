@@ -95,7 +95,7 @@ Next, we'll need to add a model for Kubeflow to the controller. Run the followin
 
    juju add-model kubeflow
 
->The model name here can be anything. We're just using ``kubeflow`` because often you may want to deploy MLflow along with Kubeflow, and in that case, the model name must be ``kubeflow``. So it's not a bad habit to have.
+.. note:: The model name here can be anything. We're just using ``kubeflow`` because often you may want to deploy MLflow along with Kubeflow, and in that case, the model name must be ``kubeflow``. So it's not a bad habit to have.
 
 The controller can work with different ``models``, which map 1:1 to namespaces in Kubernetes. In this case, the model name must be ``kubeflow``, due to an assumption made in the upstream Kubeflow Dashboard code.
 
@@ -130,7 +130,7 @@ To access MLflow, visit the following URL in your web browser:
 
 This will take you to the MLflow UI.
 
-> Note: by default Charmed MLflow creates a `nodeport <https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport>`_ on port 31380 where you can access the MLflow UI.
+.. note:: by default Charmed MLflow creates a `nodeport <https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport>`_ on port 31380 where you can access the MLflow UI.
 
 That's it! Charmed MLflow has been deployed locally with microk8s and Juju. You can now start using MLflow.
 
