@@ -2,19 +2,12 @@
 Create a Charmed Kubernetes cluster for use with an MLOps platform on AWS
 =========================================================================
 
-Welcome to the Charmed Kubernetes cluster guide. This how-to guide will take you through the steps of creating a Charmed Kubernetes cluster with an appropriate configuration for deploying an MLOps platform such as Kubeflow or MLflow.
+This how-to guide will show you how to create a Charmed Kubernetes (CK8s) cluster with an appropriate configuration for deploying an MLOps platforms such as Kubeflow or MLflow.
 
 **Prerequisites**
 
 - A local machine with Ubuntu 22.04 or later.
 - An AWS account (`How to create an AWS account <https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-creating.html>`_).
-
-**Contents:**
-- Install and set up AWS CLI
-- Install other tools
-- Setup Juju with AWS
-- Create Juju controller
-- Deploy Charmed Kubernetes 1.24
 
 Install and set up AWS CLI
 ---------------------------
@@ -24,13 +17,7 @@ First, `install the AWS CLI <https://docs.aws.amazon.com/cli/latest/userguide/ge
 Install other tools
 -------------------
 
-Next, we install the following tools:
-- ``juju``: Juju is an open-source application and service modeling tool that simplifies the deployment and management of complex software systems in cloud and container environments.
-- ``juju-wait``: CLI tool used for waiting during juju deployments.
-- ``kubectl``: Kubernetes client used to communicate with a Kubernetes cluster.
-- ``jq``: A lightweight and versatile command-line tool for parsing and manipulating JSON data.
-
-Run this command:
+To install some helpful tools, run this command:
 
 .. code-block:: bash
 
@@ -38,6 +25,15 @@ Run this command:
    for snap in juju-wait kubectl jq; \
      do sudo snap install $snap --classic; \
    done
+
+This installs the following:
+
+* ``juju``: Needed to deploy and manage the CK8s cluster.
+* ``juju-wait``: CLI tool used for waiting during juju deployments.
+* ``kubectl``: Kubernetes client used to communicate with a Kubernetes cluster.
+* ``jq``: A lightweight and versatile command-line tool for parsing and manipulating JSON data.
+
+
 
 Setup Juju with AWS
 -------------------
@@ -69,7 +65,7 @@ Clone the `Charmed Kubernetes bundle repository <https://github.com/charmed-kube
    git clone https://github.com/charmed-kubernetes/bundle.git
    sed -i '/^ *charm: kubernetes-worker/,/^ *[^:]*:/s/constraints: cores=2 mem=8G root-disk=16G/constraints: cores=8 mem=32G root-disk=200G/' ./bundle/releases/1.24/bundle.yaml
 
-Deploy the updated Charmed Kubernetes bundle on AWS with the storage overlay. This overlay enables you to create Kubernetes volumes backed by AWS EBS.
+Deploy the Charmed Kubernetes bundle on AWS with the storage overlay. This overlay enables you to create Kubernetes volumes backed by AWS EBS.
 
 .. code-block:: bash
 
