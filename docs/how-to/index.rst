@@ -6,6 +6,7 @@ Welcome to the How-To section. These guides provide practical instructions for s
 .. toctree::
    :maxdepth: 1
 
-   create-ck8s-aws
+   create-ck8s-aws   
    deploy-ck8s-aws
+   deploy-eks
    deploy-kubeflow-mlflow-ck8s-aws
