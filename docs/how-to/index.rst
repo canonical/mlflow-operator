@@ -10,3 +10,4 @@ Welcome to the How-To section. These guides provide practical instructions for s
    deploy-ck8s-aws
    deploy-eks
    deploy-kubeflow-mlflow-ck8s-aws
+   deploy-mlflow-kubeflow-eks
