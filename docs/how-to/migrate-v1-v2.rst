@@ -53,7 +53,7 @@ Rename the database from ``database`` (used in MariaDB) to ``mlflow`` (used in M
 
    sed 's/`database`/`mlflow`/g' mlflow-db.sql > mlflow-db-updated.sql
 
-Rename one duplicate constraint as MySQL does not allow that:
+Rename any duplicate constraints as MySQL does not allow that. In practice, the only duplicate constraint we've encountered is ``CONSTRAINT_1``. It has two occurrences. The first occurrence can be renamed to ``CONSTRAINT-1``, for example:
 
 .. code-block:: bash
 
