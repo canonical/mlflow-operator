@@ -134,3 +134,4 @@ id_rsa
 kubeconfig
 *.charm
 .kube/
+*.DS_Store

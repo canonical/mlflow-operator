@@ -13,3 +13,4 @@ Welcome to the How-To section. These guides provide practical instructions for s
    deploy-kubeflow-mlflow-ck8s-aws
    deploy-mlflow-kubeflow-eks
    migrate-v1-v2
+   notebook-integration
