@@ -1,4 +1,4 @@
-Deploying Charmed MLflow to Charmed Kubernetes on AWS
+Deploy Charmed MLflow to Charmed Kubernetes on AWS
 ========================================================
 
 +------------+---------+

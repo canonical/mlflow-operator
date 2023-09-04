@@ -6,10 +6,10 @@ Welcome to the How-To section. These guides provide practical instructions for s
 .. toctree::
    :maxdepth: 1
 
-   cos-integration
    create-ck8s-aws
-   deploy-ck8s-aws
+   deploy-ck8s-aws   
    deploy-eks
-   deploy-kubeflow-mlflow-ck8s-aws
-   deploy-mlflow-kubeflow-eks
+   deploy-mlflow-kubeflow-eks      
+   integrate-cos
+   integrate-ml-ckf-ck8s
    migrate-v1-v2
