@@ -1,4 +1,4 @@
-How-To Guides
+How-to guides
 =============
 
 Welcome to the How-To section. These guides provide practical instructions for specific tasks related to deploying, managing and using MLflow.
