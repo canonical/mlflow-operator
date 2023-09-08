@@ -98,7 +98,7 @@ The main thing we’re interested in at this stage is the statuses of all the ap
 
 This will periodically run a ``juju status`` command and filter to components which are in a state of ``blocked``, ``error``, ``maintenance`` or ``waiting`` i.e. not ``active``. When this output becomes empty except for the “App” and “Unit” headings, then we know all statuses are active and our system is ready.
 
-Don’t be surprised if some of the components’ statuses change to ``blocked`` or ``error`` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states for more than 5 minutes or so, consult the troubleshooting steps below.
+Don’t be surprised if some of the components’ statuses change to ``blocked`` or ``error`` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states, consult the troubleshooting steps below.
 
 .. dropdown:: Expand to troubleshoot: Waiting for gateway relation
 
