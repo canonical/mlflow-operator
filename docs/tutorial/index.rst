@@ -1,10 +1,18 @@
 Tutorial
 ========
 
-Welcome to the tutorial section! Here, you will find step-by-step guides to help you get started with deploying and managing machine learning workflows using Charmed MLflow.
+Step-by-step guides to help you get started with deploying and managing machine learning workflows using Charmed MLflow.
+
+We provide two pathways. For users who just want to try MLflow:
 
 .. toctree::
    :maxdepth: 1
 
    mlflow
+
+For users who want to try MLflow and Kubeflow together:
+
+.. toctree::
+   :maxdepth: 1
+
    mlflow-kubeflow
