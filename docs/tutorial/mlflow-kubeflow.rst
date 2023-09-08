@@ -42,8 +42,6 @@ Let's deploy Charmed Kubeflow alongside MLflow. Run the following command to ini
 
    juju deploy kubeflow --trust  --channel=1.7/stable
 
-Be patient. Kubeflow is large and will take a few minutes to deploy.
-
 Configure Dashboard Access
 --------------------------
 
@@ -78,6 +76,9 @@ This will deploy the latest edge version of the dispatcher. See `Resource Dispat
 
    juju relate mlflow-server:secrets resource-dispatcher:secrets
    juju relate mlflow-server:pod-defaults resource-dispatcher:pod-defaults
+
+Monitor The Deployment
+----------------------
 
 Now, at this point, we've deployed MLflow and Kubeflow and we've related them via the resource dispatcher. But that doesn't mean our system is ready yet: Juju will need to download charm data from CharmHub and the charms themselves will take some time to initialise.
 
