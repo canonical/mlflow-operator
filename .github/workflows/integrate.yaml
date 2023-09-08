@@ -73,7 +73,7 @@ jobs:
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
 
     - name: Run integration tests
-      run: tox -vve integration -- --model testing
+      run: sg snap_microk8s -c "tox -vve integration -- --model testing"
 
     # On failure, capture debugging resources      
     - name: Get all
