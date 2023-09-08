@@ -5,6 +5,6 @@
 
 .. _Code of conduct: https://ubuntu.com/community/ethos/code-of-conduct
 .. _Join our online chat: https://chat.charmhub.io/charmhub/channels/charmed-mlops
-.. _Contribute: https://github.com/canonical/mlflow-operator
+.. _Contribute: https://github.com/canonical/mlflow-operator/blob/main/CONTRIBUTING.md
 .. _Upstream Project: https://mlflow.org/
 .. _Discourse Forum: https://discourse.charmhub.io/tag/mlflow
