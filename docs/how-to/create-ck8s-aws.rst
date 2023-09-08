@@ -1,5 +1,5 @@
-Create a Charmed Kubernetes cluster for use with an MLOps platform on AWS
-=========================================================================
+Create an MLOps-ready Charmed Kubernetes cluster
+================================================
 
 This how-to guide will show you how to create a Charmed Kubernetes (CK8s) cluster with an appropriate configuration for deploying an MLOps platforms such as Kubeflow or MLflow.
 
