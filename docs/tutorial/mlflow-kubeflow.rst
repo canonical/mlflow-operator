@@ -28,8 +28,6 @@ We’ll also assume that you have a laptop that meets the following conditions:
 
 In the remainder of this tutorial, unless otherwise stated, it is assumed you will be running all command line operations on the VM, through the open SSH tunnel. It’s also assumed you’ll be using the web browser on your local machine to access the Kubeflow and MLflow dashboards.
 
-.. note:: With a few tweaks to the instructions, it is possible to do this entire tutorial on a laptop, but running it on a VM will give you a better feel for deploying Kubeflow and MLflow in production. So, we recommend using the VM, even if your laptop is powerful enough to deploy Kubeflow.
-
 Deploy MLflow
 -------------
 
