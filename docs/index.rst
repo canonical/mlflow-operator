@@ -5,14 +5,13 @@
 Charmed MLflow Documentation
 ============================
 
-**Charmed MLflow: Enhancing the MLflow Experience with Charms.**
-Charmed MLflow offers an enhanced platform to manage the end-to-end machine learning lifecycle, leveraging the power of charms.
+Charmed MLflow is a platform for managing the end-to-end machine learning lifecycle.
 
-**Charmed MLflow provides tools for tracking experiments, packaging code into reproducible runs, and sharing and deploying models with charm integrations.** It not only integrates with popular machine learning frameworks but also brings in the robustness of charms to simplify the process of handling various stages of ML projects. With Charmed MLflow, teams can collaborate efficiently and ensure consistent, reproducible results.
+It provides tools for tracking experiments, packaging code into reproducible runs, and sharing and deploying models. It integrates with popular machine learning frameworks.
 
-**Addressing the challenges of ML projects with charm.** Charmed MLflow recognizes the complexities involved in machine learning projects – from data preprocessing, model training, to deployment with charms. It provides a unified platform to streamline these processes, ensuring that projects are manageable, scalable and reproducible.
+It addresses a number of challenges facing machine learning teams: collaboration, reproducibility, maintenance, organisation and scaling.
 
-**Ideal for data scientists, ML engineers, and teams looking to optimize their ML workflows with charms.** Whether you're an individual researcher or part of a large team, Charmed MLflow offers tools and features that cater to your needs.
+It's ideal for data scientists, ML engineers, hobbyists and teams looking to optimize their ML workflows with charms.
 
 ---------
 
