@@ -14,7 +14,7 @@ Welcome to this tutorial on getting started with Charmed MLflow alongside Charme
 Prerequisites
 -------------
 
-This tutorial assumes you will be deploying Kubeflow and MLflow on a public cloud VM with the following specs:
+This tutorial assumes you will be deploying Kubeflow and MLflow on a public cloud Virtual Machine (VM) with the following specs:
 
 - Runs Ubuntu 20.04 (focal) or later.
 - Has at least 4 cores, 32GB RAM and 100GB of disk space available.
@@ -31,7 +31,7 @@ In the remainder of this tutorial, unless otherwise stated, it is assumed you wi
 Deploy MLflow
 -------------
 
-Follow the steps in this tutorial to deploy MLflow on your VM: :doc:`mlflow`. Before moving on with this tutorial, confirm that you can now access the MLflow UI on http://localhost:31380.
+Follow the steps in this tutorial to deploy MLflow on your VM: :doc:`mlflow`. Before moving on with this tutorial, confirm that you can now access the MLflow UI on ``http://localhost:31380``.
 
 Deploy Kubeflow bundle
 ----------------------
@@ -52,7 +52,7 @@ Run the following commands:
    juju config dex-auth public-url=http://10.64.140.43.nip.io
    juju config oidc-gatekeeper public-url=http://10.64.140.43.nip.io
 
-This tells the authentication and authorization components of the bundle that users who access the bundle will be doing so via the URL http://10.64.140.43.nip.io. In turn, this allows those components to construct appropriate responses to incoming traffic.
+This tells the authentication and authorisation components of the bundle that users who access the bundle will be doing so via the URL ``http://10.64.140.43.nip.io``. In turn, this allows those components to construct appropriate responses to incoming traffic.
 
 Now set the dashboard username and password:
 
@@ -115,7 +115,7 @@ Be patient, it can take up to an hour for all those charms to download and initi
 Integrate MLflow with Notebook
 ------------------------------
 
-In this section, we're going to create a notebook server in Kubeflow and connect it to MLflow. This will allow our notebook logic to talk to MLFlow in the background. Let's get started.
+In this section, we're going to create a notebook server in Kubeflow and connect it to MLflow. This will allow our notebook logic to talk to MLflow in the background. Let's get started.
 
 First, to be able to use MLflow credentials in your Kubeflow notebook, visit the dashboard at http://10.64.140.43.nip.io/ and fill the username and password which you configured in the previous section e.g. ``user123@email.com`` and ``user123``.
 
@@ -140,10 +140,10 @@ At this point, we can name the notebook as we want, and choose the desired image
 1. For ``Name``, enter ``test-notebook``.
 2. Expand the *Custom Notebook* section and for ``image``, select ``kubeflownotebookswg/jupyter-tensorflow-full:v1.7.0``.
 
-Now, in order to allow our notebook server access to MLflow, we need to enable some special configuration options. Scroll down to ``Data Volumes -> Advanced options`` and from the ``Configurations`` drop-down, choose the following options:
+Now, in order to allow our notebook server access to MLflow, we need to enable some special configuration options. Scroll down to ``Data Volumes -> Advanced options`` and from the ``Configurations`` dropdown, choose the following options:
 
 1. Allow access to Kubeflow pipelines.
-2. Allow access to Minio.
+2. Allow access to MinIO.
 3. Allow access to MLflow.
 
 .. note:: Remember we related Kubeflow to MLflow earlier using the resource dispatcher? This is why we're seeing the Minio and MLflow options in the dropdown!
@@ -171,9 +171,9 @@ To run MLflow examples on your newly created notebook server, click on the sourc
 
 From the menu, choose the ``Clone a Repository`` option.
 
-Now insert this repository address https://github.com/canonical/kubeflow-examples.git
+Now insert this repository address ``https://github.com/canonical/kubeflow-examples.git``.
 
-This will clone a whole ``kubeflow-examples`` repository onto the notebook server. The cloned repository will be a folder on the server, with the same name as the remote repository. Go inside the folder and after that, choose the ``mlflow-v2-examples`` subfolder.
+This will clone a whole ``kubeflow-examples`` repository onto the notebook server. The cloned repository will be a folder on the server, with the same name as the remote repository. Go inside the folder and after that, choose the ``mlflow-v2-examples`` sub-folder.
 
 There you will find two notebooks:
 

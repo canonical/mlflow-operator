@@ -48,7 +48,7 @@ Enable the following Microk8s add-ons to configure your Kubernetes cluster with 
 
    microk8s enable dns hostpath-storage ingress metallb:10.64.140.43-10.64.140.49
 
-Here, we added a DNS service, so the applications can find each other, storage, an ingress controller so we can access Kubeflow components and the MetalLB load balancer application.
+Here, we added a ``dns`` service, so the applications can find each other, storage, an ingress controller so we can access Kubeflow components and the ``MetalLB`` load-balancer application.
 You can see that we added some detail when enabling MetalLB, in this case the address pool to use.
 
 > See More : `Microk8s | How to use addons <https://microk8s.io/docs/addons>`_
@@ -110,7 +110,7 @@ Before deploying, run these commands:
    sudo sysctl fs.inotify.max_user_instances=1280
    sudo sysctl fs.inotify.max_user_watches=655360
 
-We need to run the above because under the hood, MicroK8s uses inotify to interact with the filesystem, and in large MicroK8s deployments sometimes the default inotify limits are exceeded.
+We need to run the above because under the hood, MicroK8s uses inotify to interact with the filesystem, and in large MicroK8s deployments sometimes the default ``inotify`` limits are exceeded.
 
 Let's now use Juju to deploy Charmed MLflow. Run the following command:
 
@@ -136,7 +136,7 @@ That's it! Charmed MLflow has been deployed locally with MicroK8s and Juju. You 
 
 Reference: Object storage credentials
 -------------------------------------
-To use mlflow you need to have credentials to the object storage. The aforementioned bundle comes with minio. To get the minio credentials run the following command:
+To use mlflow you need to have credentials to the object storage. The aforementioned bundle comes with MinIO. To get the minio credentials run the following command:
 
 .. code-block:: bash
 
