@@ -42,9 +42,7 @@ reStructuredText
 RTD
 subdirectories
 subtree
-txt
 UI
-yaml
 Jira
 MLflow
 mlflow
