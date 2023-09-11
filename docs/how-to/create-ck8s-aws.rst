@@ -28,7 +28,7 @@ To install some helpful tools, run this command:
 This installs the following:
 
 * ``juju``: Needed to deploy and manage the CK8s cluster.
-* ``juju-wait``: CLI tool used for waiting during juju deployments.
+* ``juju-wait``: CLI tool used for waiting during Juju deployments.
 * ``kubectl``: Kubernetes client used to communicate with a Kubernetes cluster.
 * ``jq``: A lightweight and versatile command-line tool for parsing and manipulating JSON data.
 

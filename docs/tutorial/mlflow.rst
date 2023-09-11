@@ -42,7 +42,7 @@ It is also useful to make sure the user has the proper access and ownership of a
 
    sudo chown -f -R $USER ~/.kube
 
-Enable the following Microk8s add-ons to configure your Kubernetes cluster with extra services needed to run Charmed Kubeflow.
+Enable the following Microk8s addons to configure your Kubernetes cluster with extra services needed to run Charmed Kubeflow.
 
 .. code-block:: bash
 

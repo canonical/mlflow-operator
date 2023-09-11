@@ -117,7 +117,7 @@ Integrate MLflow with Notebook
 
 In this section, we're going to create a notebook server in Kubeflow and connect it to MLflow. This will allow our notebook logic to talk to MLflow in the background. Let's get started.
 
-First, to be able to use MLflow credentials in your Kubeflow notebook, visit the dashboard at http://10.64.140.43.nip.io/ and fill the username and password which you configured in the previous section e.g. ``user123@email.com`` and ``user123``.
+First, to be able to use MLflow credentials in your Kubeflow notebook, visit the dashboard at ``http://10.64.140.43.nip.io/`` and fill the username and password which you configured in the previous section e.g. ``user123@email.com`` and ``user123``.
 
 Click on start setup to setup the Kubeflow user for the first time.
 
@@ -129,7 +129,7 @@ Now a Kubernetes namespace was created for your user. To use MLflow with this us
 
    microk8s kubectl label ns user123 user.kubeflow.org/enabled="true"
 
-You will get the following output: `namespace/user123 labeled`.
+You will get the following output: ``namespace/user123 labeled``.
 
 For more info on the label command, check `Kubernetes labels <https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/>`_. For more info on Kubernetes namespaces for users, see the `upstream docs on Multi-user isolation <https://www.kubeflow.org/docs/components/multi-tenancy/getting-started/>`_.
 
@@ -146,7 +146,7 @@ Now, in order to allow our notebook server access to MLflow, we need to enable s
 2. Allow access to MinIO.
 3. Allow access to MLflow.
 
-.. note:: Remember we related Kubeflow to MLflow earlier using the resource dispatcher? This is why we're seeing the Minio and MLflow options in the dropdown!
+.. note:: Remember we related Kubeflow to MLflow earlier using the resource dispatcher? This is why we're seeing the MinIO and MLflow options in the dropdown!
 
 Great, that's all the configuration for the notebook server done. Hit the Launch button to launch the notebook server. Be patient, the notebook server will take a little while to initialise.
 

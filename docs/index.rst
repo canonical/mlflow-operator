@@ -11,7 +11,7 @@ It provides tools for tracking experiments, packaging code into reproducible run
 
 It addresses a number of challenges facing machine learning teams: collaboration, reproducibility, maintenance, organisation and scaling.
 
-It's ideal for data scientists, ML engineers, hobbyists and teams looking to optimize their ML workflows with charms.
+It's ideal for data scientists, ML engineers, hobbyists and teams looking to optimise their ML workflows with charms.
 
 ---------
 

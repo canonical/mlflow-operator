@@ -6,7 +6,7 @@ This guide shows how to integrate MLflow with the Canonical Observability Stack 
 Prerequisites
 -------------
 
-This guide asssumes:
+This guide assumes:
 
 #. You have deployed the COS stack in the ``cos`` model. For steps on how to do this, see the `MicroK8s tutorial <https://charmhub.io/topics/canonical-observability-stack/tutorials/install-microk8s>`_.
 #. You have deployed the MLflow bundle in the ``kubeflow`` model. For steps on how to do this, see :doc:`../tutorial/mlflow`.
