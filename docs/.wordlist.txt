@@ -30,7 +30,7 @@ MyST
 namespace
 namespaces
 NodePort
-Observability
+observability
 OIDC
 OLM
 Permalink
