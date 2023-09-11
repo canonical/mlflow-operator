@@ -45,7 +45,7 @@ Create a controller:
 
 .. note:: You can use whatever controller name you like here, we chose ``kubeflow-controller``.
 
-Add a juju model:
+Add a Juju model:
 
 .. code-block:: bash
 

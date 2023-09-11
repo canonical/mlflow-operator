@@ -1,6 +1,7 @@
 addons
 API
 APIs
+balancer
 CharmHub
 CLI
 DEX
@@ -11,12 +12,12 @@ EKS
 favicon
 filesystem
 Grafana
+hostname
 https
 IAM
 installable
 JSON
 Juju
-Juju’s
 Kubernetes
 Kubeflow
 lifecycle

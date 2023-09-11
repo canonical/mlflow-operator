@@ -25,7 +25,7 @@ See our `EKS creation guide <https://charmed-kubeflow.io/docs/create-eks-cluster
 Setup Juju
 ----------
 
-Set up your local ``juju`` to talk to the remote Kubernetes cloud. First, install juju with:
+Set up your local ``juju`` to talk to the remote Kubernetes cloud. First, install Juju with:
 
 .. code-block:: bash
 
@@ -45,7 +45,7 @@ Create the controller:
 
 .. note:: we chose the name ``kubeflow-controller``, but you can choose any other name.
 
-Add a juju model:
+Add a Juju model:
 
 .. code-block:: bash
 
