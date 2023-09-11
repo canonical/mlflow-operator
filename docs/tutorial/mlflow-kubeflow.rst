@@ -88,7 +88,7 @@ So, how do you know when all the charms are ready, then? You can do this using t
 
    juju status
 
-Review the output for yourself. You should see some summary information, a list of Apps and associated information, and another list of Units and their associated information. Don’t worry too much about what this all means for now. If you’re interested in learning more about this command and its output, see the `Juju Status command <https://juju.is/docs/olm/juju-status>`_.
+Review the output for yourself. You should see some summary information, a list of Apps and associated information, and another list of Units and their associated information. Don’t worry too much about what this all means for now. If you’re interested in learning more about this command and its output, see the `Juju Status command <https://juju.is/docs/juju/juju-status>`_.
 
 The main thing we’re interested in at this stage is the statuses of all the applications and units running through Juju. We want all the statuses to eventually become ``active``, indicating that the bundle is ready. Run the following command to keep a watch on the components which are not active yet:
 
@@ -110,7 +110,7 @@ Don’t be surprised if some of the components’ statuses change to ``blocked``
 
    This is a known issue, see `tensorboard-controller GitHub issue <https://github.com/canonical/bundle-kubeflow/issues/488>`_ for more info.
 
-Be patient, it can take up to an hour for all those charms to download and initialise. In the meantime, why not try our `Juju tutorial <https://juju.is/docs/olm/get-started-with-juju>`_?
+Be patient, it can take up to an hour for all those charms to download and initialise. In the meantime, why not try our `Juju tutorial <https://juju.is/docs/juju/get-started-with-juju>`_?
 
 Integrate MLflow with Notebook
 ------------------------------

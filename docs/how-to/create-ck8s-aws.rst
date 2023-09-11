@@ -57,11 +57,11 @@ Bootstrap a Juju controller that will be responsible for deploying cluster appli
 Deploy Charmed Kubernetes 1.24
 ------------------------------
 
-Clone the `Charmed Kubernetes bundle repository <https://github.com/charmed-kubernetes/bundle.git>`_, and update CPU, disk, and memory constraints to meet Kubeflow requirements.
+Clone the `Charmed Kubernetes bundle repository <https://github.com/charmed-kubernetes/bundle>`_, and update CPU, disk, and memory constraints to meet Kubeflow requirements.
 
 .. code-block:: bash
 
-   git clone https://github.com/charmed-kubernetes/bundle.git
+   git clone https://github.com/charmed-kubernetes/bundle
    sed -i '/^ *charm: kubernetes-worker/,/^ *[^:]*:/s/constraints: cores=2 mem=8G root-disk=16G/constraints: cores=8 mem=32G root-disk=200G/' ./bundle/releases/1.24/bundle.yaml
 
 Deploy the Charmed Kubernetes bundle on AWS with the storage overlay. This overlay enables you to create Kubernetes volumes backed by AWS EBS.

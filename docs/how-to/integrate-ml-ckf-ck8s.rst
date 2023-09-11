@@ -13,9 +13,9 @@ Prerequisites
 --------------
 We assume that:
 
-* You have access to a Charmed Kubernetes cluster using ``kubectl``. If you don't have a cluster set up, you can follow the `creation guide <../create-ck8s-aws>`_ to deploy one on AWS.
+* You have access to a Charmed Kubernetes cluster using ``kubectl``. If you don't have a cluster set up, you can follow the :doc:`creation guide <create-ck8s-aws>` to deploy one on AWS.
 * You have deployed the Charmed Kubeflow bundle. If you don't have it, here is `a guide <https://discourse.charmhub.io/t/deploying-charmed-kubeflow-to-charmed-kubernetes-on-aws/11667>`_ on how to do it.
-* You have deployed the Charmed MLflow bundle. To see how, follow our `deployment guide <../deploy-ck8s-aws>`_.
+* You have deployed the Charmed MLflow bundle. To see how, follow our :doc:`deployment guide <deploy-ck8s-aws>`.
 
 Deploy resource dispatcher
 --------------------------

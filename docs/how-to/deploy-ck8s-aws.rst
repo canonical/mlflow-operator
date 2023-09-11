@@ -12,7 +12,7 @@ This guide shows how to connect Juju to an existing `Charmed Kubernetes <https:/
 Prerequisites
 -------------
 
-We assume that you have access to a CK8s cluster using ``kubectl``. If you don't have a cluster set up, you can follow this guide: `Create CK8s on AWS <../create-ck8s-aws>`_.
+We assume that you have access to a CK8s cluster using ``kubectl``. If you don't have a cluster set up, you can follow this guide: :doc:`Create CK8s on AWS <create-ck8s-aws>`.
 
 Install Juju
 ------------
