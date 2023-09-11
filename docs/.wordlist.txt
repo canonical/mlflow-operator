@@ -13,7 +13,6 @@ favicon
 filesystem
 Grafana
 hostname
-https
 IAM
 installable
 JSON
