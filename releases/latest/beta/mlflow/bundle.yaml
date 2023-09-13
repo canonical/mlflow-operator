@@ -11,7 +11,6 @@ applications:
   mlflow-mysql:
     charm: mysql-k8s
     channel: 8.0/stable
-    series: jammy
     scale: 1
     trust: true
     _github_repo_name: mysql-k8s-operator
