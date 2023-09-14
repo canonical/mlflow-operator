@@ -9,7 +9,7 @@ Charmed MLflow is a platform for managing the end-to-end machine learning lifecy
 
 It provides tools for tracking experiments, packaging code into reproducible runs, and sharing and deploying models. It integrates with popular machine learning frameworks.
 
-It addresses a number of challenges facing machine learning teams: collaboration, reproducibility, maintenance, organisation and scaling.
+It addresses a number of common machine learning challenges: collaboration, reproducibility, maintenance, organisation and scaling.
 
 It's ideal for data scientists, ML engineers, hobbyists and teams looking to optimise their ML workflows with charms.
 
