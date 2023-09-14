@@ -46,7 +46,7 @@ Deploy the MLflow bundle:
 
 .. code-block:: bash
 
-   juju deploy mlflow --channel=2.1/edge --trust
+   juju deploy mlflow --channel=2.1/stable --trust
 
 Wait until the deployments are active:
 

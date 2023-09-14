@@ -59,7 +59,7 @@ Deploy the MLflow bundle with the following command:
 
 .. code-block:: bash
 
-    juju deploy mlflow --channel=2.1/edge --trust
+    juju deploy mlflow --channel=2.1/stable --trust
 
 Wait until all charms are in the active state. You can check the state of the charms with the command:
 
