@@ -68,7 +68,7 @@ Next, let's deploy the resource dispatcher. The resource dispatcher is an option
 
 .. code-block:: bash
 
-   juju deploy resource-dispatcher --channel 1.0/stabe --trust
+   juju deploy resource-dispatcher --channel 1.0/stable --trust
 
 This will deploy the latest edge version of the dispatcher. See `Resource Dispatcher on GitHub <https://github.com/canonical/resource-dispatcher>`_ for more info. Now we must relate the dispatcher to MLflow:
 

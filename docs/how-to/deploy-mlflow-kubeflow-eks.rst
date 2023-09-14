@@ -88,7 +88,7 @@ The resource dispatcher is used to connect MLflow with Kubeflow. In particular, 
 
 .. code-block:: bash
 
-    juju deploy resource-dispatcher --channel 1.0/stabe --trust
+    juju deploy resource-dispatcher --channel 1.0/stable --trust
 
 Relate the resource dispatcher to MLflow with the following commands:
 

@@ -24,7 +24,7 @@ Deploy the resource dispatcher:
 
 .. code-block:: bash
 
-   juju deploy resource-dispatcher --channel 1.0/stabe --trust
+   juju deploy resource-dispatcher --channel 1.0/stable --trust
 
 Relate Resource dispatcher to MLflow
 ------------------------------------
