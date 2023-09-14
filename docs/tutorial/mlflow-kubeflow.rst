@@ -6,7 +6,7 @@ Getting Started with Charmed MLflow and Kubeflow
 +-----------+---------+
 |   MLflow  |    2    |
 +-----------+---------+
-| Kubeflow  | 1.7     |
+|  Kubeflow |   1.7   |
 +-----------+---------+
 
 Welcome to this tutorial on getting started with Charmed MLflow alongside Charmed Kubeflow. If you would like to deploy Kubeflow by itself, see our tutorial on `Charmed Kubeflow <https://charmed-kubeflow.io/docs/get-started-with-charmed-kubeflow>`_.
