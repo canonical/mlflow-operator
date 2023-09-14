@@ -1,11 +1,11 @@
 Deploy Charmed MLflow to Charmed Kubernetes on AWS
 ========================================================
 
-+------------+---------+
-| Component  | Version |
-+============+=========+
-| MLflow     | 2       |
-+------------+---------+
++-----------+---------+
+| Component | Version |
++-----------+---------+
+|   MLflow  |    2    |
++-----------+---------+
 
 This guide shows how to connect Juju to an existing `Charmed Kubernetes <https://ubuntu.com/kubernetes/charmed-k8s>`_ (CK8s) cluster and deploy the MLflow bundle on top of it.
 
