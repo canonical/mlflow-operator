@@ -2,17 +2,24 @@
 # See LICENSE file for licensing details.
 name: mlflow-server
 description: |
-  MLflow
+  mlflow is a Kubernetes charm bundle for MLflow. This bundle automates the deployment and operation of MLflow on any Kubernetes cluster.
 summary: |
   A charm which provides a Kubernetes installation of the MLflow (https://mlflow.org/) server.
+docs: https://discourse.charmhub.io/t/mlflow-server-docs-index/10816
 containers:
   mlflow-server:
     resource: oci-image
+  mlflow-prometheus-exporter:
+    resource: exporter-oci-image
 resources:
   oci-image:
     type: oci-image
     description: Backing OCI image
     upstream-source: docker.io/ubuntu/mlflow:2.1.1_1.0-22.04
+  exporter-oci-image:
+    type: oci-image
+    description: Image for Prometheus exporter
+    upstream-source: docker.io/charmedkubeflow/mlflow-prometheus-exporter:1.0-22.04
 requires:
   relational-db:
     interface: mysql_client
@@ -45,9 +52,53 @@ requires:
           - service
     versions: [v1]
     __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
+  dashboard-links:
+    interface: kubeflow_dashboard_links
+  ingress:
+    interface: ingress
+    schema:
+      v2:
+        requires:
+          type: object
+          properties:
+            service:
+              type: string
+            port:
+              type: integer
+            namespace:
+              type: string
+            prefix:
+              type: string
+            rewrite:
+              type: string
+          required:
+          - service
+          - port
+          - namespace
+          - prefix
+      v1:
+        requires:
+          type: object
+          properties:
+            service:
+              type: string
+            port:
+              type: integer
+            prefix:
+              type: string
+            rewrite:
+              type: string
+          required:
+          - service
+          - port
+          - prefix
+    versions: [v1]
+    __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/ingress.yaml
 provides:
   metrics-endpoint:
     interface: prometheus_scrape
+  grafana-dashboard:
+    interface: grafana_dashboard
   secrets:
     interface: secrets
     schema:

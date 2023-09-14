@@ -16,7 +16,7 @@ applications:
     _github_repo_name: mysql-k8s-operator
   mlflow-server:
     charm: mlflow-server
-    channel: latest/edge
+    channel: 2.1/stable
     scale: 1
     trust: true
     _github_repo_name: mlflow-operator

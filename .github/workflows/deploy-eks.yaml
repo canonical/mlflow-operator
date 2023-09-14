@@ -1,0 +1,103 @@
+name: Create EKS cluster, deploy MLflow and run bundle test
+on:
+  workflow_dispatch: # This event allows manual triggering from the Github UI
+    secrets:
+      BUNDLE_KUBEFLOW_EKS_AWS_ACCESS_KEY_ID:
+        required: true
+      BUNDLE_KUBEFLOW_EKS_AWS_SECRET_ACCESS_KEY:
+        required: true
+    inputs:
+      region:
+        description: 'Insert the AWS Region name in which the script will deploy the EKS cluster.'
+        required: false
+        default: 'eu-central-1'
+        type: string
+  schedule:
+    - cron: "23 0 * * 2"
+jobs:
+  deploy-mlflow-to-eks:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install tox
+        run: |
+          python -m pip install --upgrade pip
+          pip install tox
+      
+      - name: Configure AWS Credentials
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUNDLE_KUBEFLOW_EKS_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUNDLE_KUBEFLOW_EKS_AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+          aws configure set default.region ${{ inputs.region }}
+      
+      - name: Install kubectl
+        run: |
+          sudo snap install kubectl --classic --channel=1.24/stable
+          mkdir ~/.kube
+          kubectl version --client
+      
+      - name: Install eksctl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+          sudo mv /tmp/eksctl /usr/local/bin
+          eksctl version
+      
+      - name: Install juju
+        run: |
+          sudo snap install juju --classic --channel=2.9/stable
+          sudo snap install charmcraft --classic
+          juju version
+      
+      - name: Create cluster
+        run: |
+          sed -i "s/{{ region }}/${{ inputs.region }}/" .github/cluster.yaml
+          eksctl create cluster -f .github/cluster.yaml
+          kubectl get nodes
+      
+      - name: Setup juju
+        run: |
+          juju add-k8s kubeflow --client
+          juju bootstrap --no-gui kubeflow kubeflow-controller
+          juju add-model kubeflow
+      
+      - name: Test bundle deployment
+        run: |
+          tox -vve bundle-test -- --model kubeflow --keep-models -vv -s
+      
+      # On failure, capture debugging resources
+      - name: Get all kubernetes resources
+        run: kubectl get all -A
+        if: failure()
+
+      - name: Get juju status
+        run: juju status
+        if: failure()
+
+      - name: Get workload logs
+        run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server
+        if: failure()
+
+      - name: Get operator logs
+        run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server
+        if: failure()
+
+      - name: Remove eks 
+        if: always()
+        run: |
+          eksctl delete cluster --name=mlflow-bundle-test
+
+  delete-unattached-volumes:
+    if: always()
+    uses: ./.github/workflows/delete-aws-volumes.yaml
+    secrets: inherit
+    with:
+      region: ${{ inputs.region }}
+    needs: [deploy-mlflow-to-eks]

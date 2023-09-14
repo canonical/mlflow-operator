@@ -1,48 +1,6 @@
 {
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "rebaseWhen": "behind-base-branch",
-    "dependencyDashboard": false,
-    "branchPrefix": "renovate-",
-    "constraints": {
-        "python": "3.8.0"
-    },
-    "pip-compile": {
-        "fileMatch": [
-            "(^|/)requirements\\.in$",
-            "(^|/)requirements-fmt\\.in$",
-            "(^|/)requirements-lint\\.in$",
-            "(^|/)requirements-unit\\.in$",
-            "(^|/)requirements-integration\\.in$",
-            "(^|/)requirements.*\\.in$"
-        ],
-        "lockFileMaintenance": {
-            "enabled": true,
-            "schedule": null
-        }
-    },
-    "pip_requirements": {
-        "enabled": false
-    },
-    "automergeType": "branch",
-    "packageRules": [
-        {
-            "groupName": "testing deps",
-            "matchPackagePatterns": [
-                "^black$",
-                "codespell",
-                "flake8",
-                "flake8-builtins",
-                "flake8-copyright",
-                "flake8-docstrings",
-                "isort",
-                "pep8-naming",
-                "pyproject-flake8",
-                "pytest",
-                "pytest-asyncio",
-                "selenium",
-                "selenium-wire"
-            ],
-            "automerge": true
-        }
+    "extends": [
+        "github>canonical/charmed-kubeflow-workflows"
     ]
 }
