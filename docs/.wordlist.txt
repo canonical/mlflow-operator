@@ -45,5 +45,5 @@ UI
 Jira
 MLflow
 mlflow
-tensorboard
+TensorBoard
 VM

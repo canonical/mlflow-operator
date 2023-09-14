@@ -108,7 +108,7 @@ Don’t be surprised if some of the components’ statuses change to ``blocked``
 
       juju run --unit istio-pilot/0 -- "export JUJU_DISPATCH_PATH=hooks/config-changed; ./dispatch"
 
-   This is a known issue, see `tensorboard-controller GitHub issue <https://github.com/canonical/bundle-kubeflow/issues/488>`_ for more info.
+   This is a known issue, see `TensorBoard controller GitHub issue <https://github.com/canonical/bundle-kubeflow/issues/488>`_ for more info.
 
 Be patient, it can take up to an hour for all those charms to download and initialise. In the meantime, why not try our `Juju tutorial <https://juju.is/docs/juju/get-started-with-juju>`_?
 
