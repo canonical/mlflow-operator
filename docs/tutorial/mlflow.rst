@@ -136,7 +136,7 @@ That's it! Charmed MLflow has been deployed locally with MicroK8s and Juju. You 
 
 Reference: Object storage credentials
 -------------------------------------
-To use mlflow you need to have credentials to the object storage. The aforementioned bundle comes with MinIO. To get the ``MinIO`` credentials run the following command:
+To use MLflow you need to have credentials to the object storage. The aforementioned bundle comes with MinIO. To get the ``MinIO`` credentials run the following command:
 
 .. code-block:: bash
 
