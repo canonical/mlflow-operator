@@ -20,13 +20,13 @@ This tutorial assumes you will be deploying Kubeflow and MLflow on a public clou
 - Has at least 4 cores, 32GB RAM and 100GB of disk space available.
 - Is connected to the internet for downloading the required snaps and charms.
 
-We’ll also assume that you have a laptop that meets the following conditions:
+We'll also assume that you have a laptop that meets the following conditions:
 
 - Has an SSH tunnel open to the VM with port forwarding and a SOCKS proxy. To see how to set this up, see `How to setup SSH VM Access <https://charmed-kubeflow.io/docs/how-tosetup-ssh-vm-access-with-port-forwarding>`_.
 - Runs Ubuntu 20.04 (focal) or later.
 - Has a web browser installed e.g. Chrome / Firefox / Edge.
 
-In the remainder of this tutorial, unless otherwise stated, it is assumed you will be running all command line operations on the VM, through the open SSH tunnel. It’s also assumed you’ll be using the web browser on your local machine to access the Kubeflow and MLflow dashboards.
+In the remainder of this tutorial, unless otherwise stated, it is assumed you will be running all command line operations on the VM, through the open SSH tunnel. It's also assumed you'll be using the web browser on your local machine to access the Kubeflow and MLflow dashboards.
 
 Deploy MLflow
 -------------
@@ -82,15 +82,15 @@ Monitor The Deployment
 
 Now, at this point, we've deployed MLflow and Kubeflow and we've related them via the resource dispatcher. But that doesn't mean our system is ready yet: Juju will need to download charm data from CharmHub and the charms themselves will take some time to initialise.
 
-So, how do you know when all the charms are ready, then? You can do this using the ``juju status`` command. First, let’s run a basic status command and review the output. Run the following command to print out the status of all the components of Juju:
+So, how do you know when all the charms are ready, then? You can do this using the ``juju status`` command. First, let's run a basic status command and review the output. Run the following command to print out the status of all the components of Juju:
 
 .. code-block:: bash
 
    juju status
 
-Review the output for yourself. You should see some summary information, a list of Apps and associated information, and another list of Units and their associated information. Don’t worry too much about what this all means for now. If you’re interested in learning more about this command and its output, see the `Juju Status command <https://juju.is/docs/juju/juju-status>`_.
+Review the output for yourself. You should see some summary information, a list of Apps and associated information, and another list of Units and their associated information. Don't worry too much about what this all means for now. If you're interested in learning more about this command and its output, see the `Juju Status command <https://juju.is/docs/juju/juju-status>`_.
 
-The main thing we’re interested in at this stage is the statuses of all the applications and units running through Juju. We want all the statuses to eventually become ``active``, indicating that the bundle is ready. Run the following command to keep a watch on the components which are not active yet:
+The main thing we're interested in at this stage is the statuses of all the applications and units running through Juju. We want all the statuses to eventually become ``active``, indicating that the bundle is ready. Run the following command to keep a watch on the components which are not active yet:
 
 .. code-block:: bash
 
@@ -98,7 +98,7 @@ The main thing we’re interested in at this stage is the statuses of all the ap
 
 This will periodically run a ``juju status`` command and filter to components which are in a state of ``blocked``, ``error``, ``maintenance`` or ``waiting`` i.e. not ``active``. When this output becomes empty except for the “App” and “Unit” headings, then we know all statuses are active and our system is ready.
 
-Don’t be surprised if some of the components’ statuses change to ``blocked`` or ``error`` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states, consult the troubleshooting steps below.
+Don't be surprised if some of the components' statuses change to ``blocked`` or ``error`` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states, consult the troubleshooting steps below.
 
 .. dropdown:: Expand to troubleshoot: Waiting for gateway relation
 
