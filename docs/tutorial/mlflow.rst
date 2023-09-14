@@ -1,11 +1,11 @@
 Get Started with Charmed MLflow
 ==================================
 
-+------------+---------+
-| Component  | Version |
-+============+=========+
-| MLflow     | 2       |
-+------------+---------+
++-----------+---------+
+| Component | Version |
++-----------+---------+
+|   MLflow  |    2    |
++-----------+---------+
 
 Welcome to the tutorial on Charmed MLflow! `MLflow <https://mlflow.org/>`_ is an open-source platform, used for managing machine learning workflows. It has four primary functions that include experiment tracking, model registry, model management and code reproducibility.
 

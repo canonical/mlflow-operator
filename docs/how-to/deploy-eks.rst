@@ -1,11 +1,11 @@
 Deploy Charmed MLflow to EKS
 ============================
 
-+------------+---------+
-| Component  | Version |
-+============+=========+
-| MLflow     | 2       |
-+------------+---------+
++-----------+---------+
+| Component | Version |
++-----------+---------+
+|   MLflow  |    2    |
++-----------+---------+
 
 This guide shows how to deploy Charmed MLflow on `AWS Elastic Kubernetes Service <https://aws.amazon.com/eks/>`_ (EKS). In this guide, we will create an AWS EKS cluster, connect Juju to it, and deploy the MLflow bundle.
 

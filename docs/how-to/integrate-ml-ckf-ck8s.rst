@@ -1,11 +1,11 @@
 Integrate Charmed MLflow with Charmed Kubeflow on Charmed Kubernetes
 =========================================================================
 
-+------------+---------+
-| Component  | Version |
-+============+=========+
-| MLflow     | 2       |
-+------------+---------+
++-----------+---------+
+| Component | Version |
++-----------+---------+
+|   MLflow  |    2    |
++-----------+---------+
 
 In this guide, we will guide you through the process of integrating Charmed MLflow with Charmed Kubeflow on `Charmed Kubernetes <https://ubuntu.com/kubernetes/charmed-k8s>`_.
 
