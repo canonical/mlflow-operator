@@ -8,24 +8,24 @@ Knowing the answer to this will help any prospective MLflow users decide whether
 Simplified deployment, upgrades, and updates
 --------------------------------------------
 
-Charmed MLFlow offers simplified deployment, upgrade guides, and the latest updates.
+Charmed MLflow offers simplified deployment, upgrade guides, and the latest updates.
 
 Like any charmed product, Charmed MLflow is deployed as a `charm bundle <https://juju.is/docs/juju/bundle>`_ using `Juju <https://juju.is/>`_. Deploying an application with Juju is arguably simpler than deploying to a raw Kubernetes cluster.
 
 Security, stability, and maintenance
 -------------------------------------
 
-Charmed MLFlow benefits from the following:
+Charmed MLflow benefits from the following:
 
 - Automated security scanning: The bundle is scanned periodically.
-- Security patching: Charmed MLFlow follows Canonical’s process and procedure for security patching. Vulnerabilities are prioritized based on severity, the presence of patches in the upstream project, and the risk of exploitability.
-- Maintained images: All Charmed MLFlow images are actively maintained.
-- Comprehensive testing: Charmed MLFlow is thoroughly tested on multiple platforms, including public cloud, local workstations, on-premises deployments, and various CNCF-compliant Kubernetes distributions.
+- Security patching: Charmed MLflow follows Canonical’s process and procedure for security patching. Vulnerabilities are prioritised based on severity, the presence of patches in the upstream project, and the risk of exploitation.
+- Maintained images: All Charmed MLflow images are actively maintained.
+- Comprehensive testing: Charmed MLflow is thoroughly tested on multiple platforms, including public cloud, local workstations, on-premises deployments, and various CNCF-compliant Kubernetes distributions.
 
-Integrations
-------------
+Integration
+-----------
 
-Charmed MLFlow integrates with a wide variety of tools, including:
+Charmed MLflow integrates with a wide variety of tools, including:
 
 - Canonical Observability Stack
 - Charmed Kubeflow
@@ -35,10 +35,10 @@ Charmed MLFlow integrates with a wide variety of tools, including:
 Enterprise Offering
 --------------------
 
-Charmed MLFlow offers an enterprise offering from Canonical, which includes:
+Charmed MLflow offers an enterprise offering from Canonical, which includes:
 
-- 24/7 support for deployment, uptime monitoring, and security patching with Charmed MLFlow.
-- Hardening features and compliance with standards like FedRAMP, HIPAA, and PCI-DSS, making it suitable for enterprises running AI/ML workloads in highly regulated environments.
+- 24/7 support for deployment, up-time monitoring, and security patching with Charmed MLflow.
+- Hardening features and compliance with standards like Federal Risk and Authorisation Management Program, Health Insurance Portability and Accountability Act, and Payment Card Industry Digital Signature Standard, making it suitable for enterprises running AI/ML workloads in highly regulated environments.
 - Timely patches for common vulnerabilities and exposures (CVEs).
 - A ten-year security maintenance commitment.
 - Hybrid cloud and multi-cloud support.
