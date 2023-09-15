@@ -29,6 +29,7 @@ Integration
 
    integrate-cos
    integrate-ml-ckf-ck8s
+   integrate-notebook
 
 Upgrading
 ---------

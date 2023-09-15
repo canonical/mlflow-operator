@@ -18,6 +18,8 @@ installable
 Jira
 JSON
 Juju
+Jupyter
+JupyterLab
 Kubeflow
 Kubernetes
 lifecycle
@@ -43,5 +45,6 @@ RTD
 subdirectories
 subtree
 UI
+URI
 TensorBoard
 VM
