@@ -1,7 +1,7 @@
 Why choose charmed MLflow?
 ==========================
 
-Are you considering using Charmed MLflow? Wondering what the advantages are of charmed MLflow vs. upstream `MLflow`_?
+Are you considering using Charmed MLflow? Wondering what the advantages are of charmed MLflow vs. upstream `MLflow <https://mlflow.org/>`_?
 
 Knowing the answer to this will help any prospective MLflow users decide whether they want the charmed version.
 
@@ -10,7 +10,7 @@ Simplified deployment, upgrades, and updates
 
 Charmed MLFlow offers simplified deployment, upgrade guides, and the latest updates.
 
-Like any charmed product, Charmed MLflow is deployed as a `charm bundle <https://juju.is/docs/juju/bundle>`_ using `Juju <https://juju.is/>`. Deploying an application with Juju is arguably simpler than deploying to a raw Kubernetes cluster.
+Like any charmed product, Charmed MLflow is deployed as a `charm bundle <https://juju.is/docs/juju/bundle>`_ using `Juju <https://juju.is/>`_. Deploying an application with Juju is arguably simpler than deploying to a raw Kubernetes cluster.
 
 Security, stability, and maintenance
 -------------------------------------
