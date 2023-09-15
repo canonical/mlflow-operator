@@ -20,6 +20,8 @@ installable
 Jira
 JSON
 Juju
+Jupyter
+JupyterLab
 KServe
 Kubeflow
 Kubernetes
@@ -46,5 +48,6 @@ RTD
 subdirectories
 subtree
 UI
+URI
 TensorBoard
 VM
