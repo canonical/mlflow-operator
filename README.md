@@ -16,7 +16,7 @@
 ### Deploy Standalone mlflow-server
 ```shell
 juju deploy mlflow-server
-juju deploy charmed-osm-mariadb-k8s mlflow-db
+juju deploy mysql-k8s mlflow-db
 juju deploy minio
 juju relate minio mlflow-server
 juju relate mlflow-db mlflow-server
@@ -29,7 +29,7 @@ Follow the [quick start guide](https://charmed-kubeflow.io/docs/quickstart) to d
 
 ```shell
 juju deploy mlflow-server
-juju deploy charmed-osm-mariadb-k8s mlflow-db
+juju deploy mysql-k8s mlflow-db
 juju relate minio mlflow-server
 juju relate istio-pilot mlflow-server
 juju relate mlflow-db mlflow-server
