@@ -60,3 +60,4 @@ Charmed MLflow is an open-source project that values its community. We warmly we
    how-to/index
    reference/index
    explanation/index
+   contributing

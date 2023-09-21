@@ -4,6 +4,8 @@ APIs
 balancer
 CharmHub
 CLI
+CNCF
+CVEs
 DEX
 Diátaxis
 dropdown
@@ -20,10 +22,12 @@ JSON
 Juju
 Jupyter
 JupyterLab
+KServe
 Kubeflow
 Kubernetes
 lifecycle
 Makefile
+Mattermost
 MicroK
 MinIO
 MLflow
@@ -38,6 +42,7 @@ OLM
 Permalink
 ReadMe
 readthedocs
+rebasing
 reproducibility
 reST
 reStructuredText
@@ -48,3 +53,4 @@ UI
 URI
 TensorBoard
 VM
+YAML

@@ -1,5 +1,7 @@
 # Contributing
 
+<!-- Include start contributing -->
+
 ## Overview
 
 This document outlines the processes and practices recommended for contributing enhancements to
@@ -7,7 +9,7 @@ this operator.
 
 ## Talk to us First
 
-Before developing enhancements to this charm, you should [open an issue](/../../issues) explaining your use case. If you would like to chat with us about your use-cases or proposed implementation, you can reach us at [MLOps Mattermost public channel](https://chat.charmhub.io/charmhub/channels/mlops-documentation) or on [Discourse](https://discourse.charmhub.io/).
+Before developing enhancements to this charm, you should [open an issue](https://github.com/canonical/mlflow-operator/issues) explaining your use case. If you would like to chat with us about your use-cases or proposed implementation, you can reach us at [MLOps Mattermost public channel](https://chat.charmhub.io/charmhub/channels/mlops-documentation) or on [Discourse](https://discourse.charmhub.io/).
 
 ## Pull Requests
 
@@ -73,3 +75,5 @@ To upgrade the source and resources of this charm, you must:
 ## Canonical Contributor Agreement
 
 Canonical welcomes contributions to this charm. Please check out our [contributor agreement](https://ubuntu.com/legal/contributors) if you're interested in contributing.
+
+<!-- Include end contributing -->
