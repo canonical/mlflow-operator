@@ -5,18 +5,17 @@ Are you considering using Charmed MLflow? Wondering what the advantages are of c
 
 Knowing the answer to this will help any prospective MLflow users decide whether they want the charmed version.
 
-Simplified deployment, upgrades, and updates
+Simplified deployment
 --------------------------------------------
 
-Charmed MLflow offers simplified deployment, upgrade guides, and the latest updates.
-
-Like any charmed product, Charmed MLflow is deployed as a `charm bundle <https://juju.is/docs/juju/bundle>`_ using `Juju <https://juju.is/>`_. Deploying an application with Juju is arguably simpler than deploying to a raw Kubernetes cluster.
+Charmed MLflow offers simplified deployment. Like any charmed product, Charmed MLflow is deployed as a `charm bundle <https://juju.is/docs/juju/bundle>`_ using `Juju <https://juju.is/>`_. Deploying an application with Juju is arguably simpler than deploying to a raw Kubernetes cluster.
 
 Security, stability, and maintenance
 -------------------------------------
 
 Charmed MLflow benefits from the following:
 
+- Upgrade guides.
 - Automated security scanning: The bundle is scanned periodically.
 - Security patching: Charmed MLflow follows Canonical’s process and procedure for security patching. Vulnerabilities are prioritised based on severity, the presence of patches in the upstream project, and the risk of exploitation.
 - Maintained images: All Charmed MLflow images are actively maintained.
@@ -25,12 +24,12 @@ Charmed MLflow benefits from the following:
 Integration
 -----------
 
-Charmed MLflow integrates with a wide variety of tools, including:
+Charmed MLflow provides integration capabilities, including:
 
+- Customised Prometheus exporter metrics
+- Customised MLflow dashboard for Grafana
 - Canonical Observability Stack
-- Charmed Kubeflow
-- KServe
-- Charmed Spark
+- Charmed Kubeflow: including the ability use the MLflow registry directly from Kubeflow pipelines and notebooks
 
 Enterprise Offering
 --------------------
