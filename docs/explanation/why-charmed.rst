@@ -1,4 +1,4 @@
-Why choose charmed MLflow?
+Why choose Charmed MLflow?
 ==========================
 
 Are you considering using Charmed MLflow? Wondering what the advantages are of charmed MLflow vs. upstream `MLflow <https://mlflow.org/>`_?
