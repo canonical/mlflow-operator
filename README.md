@@ -2,95 +2,57 @@
 
 - [Kubeflow + MLflow on Juju with Microk8s](#kubeflow--mlflow-on-juju-with-microk8s)
   - [Get Started](#get-started)
-    - [Deploy Standalone mlflow-server](#deploy-standalone-mlflow-server)
-    - [Deploy mlflow-server with kubeflow](#deploy-mlflow-server-with-kubeflow)
-  - [MLFlow Dashboard](#mlflow-dashboard)
+    - [Deploy Standalone MLflow Server](#deploy-standalone-mlflow-server)
+    - [Deploy MLflow Server with Kubeflow](#deploy-mlflow-server-with-kubeflow)
   - [Run an Example Model with Kubeflow](#run-an-example-model-with-kubeflow)
   - [Access Artifacts](#access-artifacts)
-    - [Get minio key and secret](#get-minio-key-and-secret)
-    - [minio client](#minio-client)
-    - [boto3](#boto3)
+    - [Get MinIO Key and Secret](#get-minio-key-and-secret)
+    - [MinIO Client](#minio-client)
+    - [Boto3](#boto3)
 
 ## Get Started
 
-### Deploy Standalone mlflow-server
-```shell
-juju deploy mlflow-server
-juju deploy charmed-osm-mariadb-k8s mlflow-db
-juju deploy minio
-juju relate minio mlflow-server
-juju relate mlflow-db mlflow-server
-```
+### Deploy Standalone MLflow Server
+You can follow [these always up-to-date docs](https://documentation.ubuntu.com/charmed-mlflow/en/latest/tutorial/mlflow/) for a step-by-step procedure.
 
-You could then use [MLFlow Tracking API](https://www.mlflow.org/docs/latest/tracking.html#logging-data-to-runs) in your script to record your runs.
-
-### Deploy mlflow-server with kubeflow
-Follow the [quick start guide](https://charmed-kubeflow.io/docs/quickstart) to deploy kubeflow on microk8s.
-
-```shell
-juju deploy mlflow-server
-juju deploy charmed-osm-mariadb-k8s mlflow-db
-juju relate minio mlflow-server
-juju relate istio-pilot mlflow-server
-juju relate mlflow-db mlflow-server
-juju relate mlflow-server admission-webhook
-```
-
-## MLFlow Dashboard
-
-If you deployed MLFlow with Kubeflow, you could access the dashboard by going to [http://10.64.140.43.nip.io/mlflow/#/](http://10.64.140.43.nip.io/mlflow/#/)
-Otherwise, run `microk8s kubectl get services -A | grep "mlflow-server"`, and open the `mlflow` `ClusterIP` in the browser with `:5000` on the end.
-
-![MLFlow Dashboard Screenshot](mlflow-dashboard.png "MLFlow Dashboard Screenshot")
+### Deploy MLflow Server with Kubeflow
+You can follow [these always up-to-date docs](https://documentation.ubuntu.com/charmed-mlflow/en/latest/tutorial/mlflow-kubeflow/) for a step-by-step procedure.
 
 ## Run an Example Model with Kubeflow
-
-First, deploy MLFlow server with kubeflow.
-
-Temporary workaround for missing pod-defaults:
-Run the following command to make a copy of pod defaults to user's namespace, which is `admin` following the guide.
-`microk8s kubectl get poddefaults mlflow-server-minio -o yaml -n kubeflow | sed 's/namespace: kubeflow/namespace: admin/' | microk8s kubectl create -f -`
-
-Open [http://10.64.140.43.nip.io/](http://10.64.140.43.nip.io/) and log in with the username and password set in the quick start guide.
-
-Create a new notebook server, taking care to specify the `mlflow-server-minio` configuration. This will ensure that the correct environment variables are set so that the MLflow SDK can connect to the MLflow server.
-
-![config](config.png "Selecting the mlflow-minio configuration when launching a kubeflow notebook server")
-
-Upload or paste in the [example model code](./examples/elastic_net_wine_model.ipynb) to the notebook server.
-
-Run the first two cells and observe that your model metrics are recorded in MLflow!
-Run the other two cells to view list of files in the object storage and download a file to the notebook server.
-
-![screenshot](demo.png "Screenshot showing kubeflow notebook publishing to mlflow")
+Our docs also provide [instructions](https://documentation.ubuntu.com/charmed-mlflow/en/latest/tutorial/mlflow-kubeflow/#run-mlflow-examples) on how to run MLflow examples.
 
 ## Access Artifacts
-Based on the setup in the Get Started section, artifacts would be stored in minio.
-You could access the artifacts using the minio client or boto3 with python.
+Based on the setup in the Get Started section, artifacts will be stored in MinIO. You can access the artifacts using the MinIO client or Boto3 with Python.
 
-### Get minio key and secret
-
-Find admission webhook unit's name
-`juju status | grep admission-webhook/`
-
-Run the command below to get minio envs 
+### Get MinIO Access Key and Secret Access Key
+Run the MLflow action to retrieve MinIO credentials:
 ```shell
-juju show-unit <admission webhook unit name> | yq .admission-webhook/*.relation-info[0].application-data
+juju run-action mlflow-server/0 get-minio-credentials --wait
 
-# expect result
-pod-defaults: '{"minio": {"env": {"AWS_ACCESS_KEY_ID": "some id", "AWS_SECRET_ACCESS_KEY": "some secret key", "MLFLOW_S3_ENDPOINT_URL": "http://minio.kubeflow:9000", "MLFLOW_TRACKING_URI": "http://mlflow-server.kubeflow.svc.cluster.local:5000"}}}'
+# Expected result
+unit-mlflow-server-0:
+  UnitId: mlflow-server/0
+  id: "2"
+  results:
+    access-key: minio
+    secret-access-key: P7B9CT4YX39QDF22LOG83EU9PA2UOA
+  status: completed
+  timing:
+    completed: 2023-10-05 06:15:16 +0000 UTC
+    enqueued: 2023-10-05 06:15:15 +0000 UTC
+    started: 2023-10-05 06:15:15 +0000 UTC
 ```
 
-### minio client
+### MinIO client
 
-Install minio client following the [official guide](https://docs.min.io/docs/minio-client-quickstart-guide.html).
+Install the MinIO client following the [official guide](https://docs.min.io/docs/minio-client-quickstart-guide.html).
 
 Set alias for the minio
 ```
 mc alias set <alias> http://`juju status --format yaml | yq .applications.minio.units.minio/*.address`:9000 $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY
 ```
 
-To list content in the default mlflow bucket:
+To list the content in the default MLflow bucket:
 ```
 mc ls <alias>/mlflow
 ```
@@ -100,8 +62,8 @@ To read the content of a specific file:
 mc cat <alias>/<path to file>
 ```
 
-### boto3
-These code are also included in the [example notebook](./examples/elastic_net_wine_model.ipynb).
+### Boto3
+As an alternative, you can use Boto3 to interact with MinIO in Python:
 ```python
 import boto3
 minio = boto3.client(
@@ -110,14 +72,13 @@ minio = boto3.client(
         config=boto3.session.Config(signature_version="s3v4"),
     )
 ```
-Note: If you are accessing the bucket outside of a kubeflow notebook server, replace the os env with minio unit's ip with `:9000` at the end.
-Run this in the terminal to get the ip: 
+Note: If you are accessing the bucket outside of a Kubeflow notebook server, replace the OS environment variable with the MinIO unit's IP with :9000 at the end. Run this in the terminal to get the IP:
 ```shell
 echo http://`juju status --format yaml | yq .applications.minio.units.minio/*.address`:9000
 ```
 <br>
 
-To list of files in the default bucket `mlflow`:
+To list files in the default bucket mlflow:
 ```python
 response = minio.list_objects_v2(Bucket="mlflow")
 files = response.get("Contents")
