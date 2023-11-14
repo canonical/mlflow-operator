@@ -1,6 +1,6 @@
 name: Bug Report
 description: File a bug report
-labels: ["Type: bug"]
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
@@ -43,7 +43,7 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Relevant log output
+      label: Relevant Log Output
       description: >
         Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
         Fetch the logs using `juju debug-log --replay` and `kubectl logs ...`. Additional details available in the juju docs
@@ -54,5 +54,4 @@ body:
   - type: textarea
     id: additional-context
     attributes:
-      label: Additional context
-
+      label: Additional Context
