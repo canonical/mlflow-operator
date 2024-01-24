@@ -451,7 +451,9 @@ class TestCharm:
     )
     @patch("charm.MlflowCharm._create_manifests")
     @patch("charm.MlflowCharm.secrets_manifests_wrapper")
-    def test_send_manifests(self, secrets_manifests_wrapper:MagicMock, create_manifests: MagicMock, harness: Harness):
+    def test_send_manifests(
+        self, secrets_manifests_wrapper: MagicMock, create_manifests: MagicMock, harness: Harness
+    ):
         tmp_manifests = "[]"
         create_manifests.return_value = tmp_manifests
         secrets_manifests_wrapper = MagicMock()

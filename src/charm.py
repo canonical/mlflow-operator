@@ -3,12 +3,10 @@
 # See LICENSE file for licensing details.
 #
 
-import json
 import logging
 from pathlib import Path
 
 import botocore.exceptions
-import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
@@ -18,7 +16,10 @@ from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
 )
 from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
-from charms.resource_dispatcher.v0.kubernetes_manifests import KubernetesManifestRequirerWrapper, KubernetesManifest
+from charms.resource_dispatcher.v0.kubernetes_manifests import (
+    KubernetesManifest,
+    KubernetesManifestRequirerWrapper,
+)
 from jinja2 import Template
 from lightkube.models.core_v1 import ServicePort
 from ops.charm import CharmBase
@@ -59,12 +60,10 @@ class MlflowCharm(CharmBase):
         )
 
         self._secrets_manifests_wrapper = KubernetesManifestRequirerWrapper(
-            charm = self,
-            relation_name = "secrets"
+            charm=self, relation_name="secrets"
         )
         self._poddefaults_manifests_wrapper = KubernetesManifestRequirerWrapper(
-            charm = self,
-            relation_name = "pod-defaults"
+            charm=self, relation_name="pod-defaults"
         )
 
         self.framework.observe(self.on.upgrade_charm, self._on_event)
@@ -399,11 +398,12 @@ class MlflowCharm(CharmBase):
         """Event is fired when relation with postgres is broken."""
         self.unit.status = BlockedStatus("Please add relation to the database")
 
-    def _send_manifests(self, context, manifest_files, relation_requirer: KubernetesManifestRequirerWrapper):
+    def _send_manifests(
+        self, context, manifest_files, relation_requirer: KubernetesManifestRequirerWrapper
+    ):
         """Send manifests from folder to desired relation."""
         manifests = self._create_manifests(manifest_files, context)
         relation_requirer.send_data(manifests)
-
 
     def _create_manifests(self, manifest_files, context):
         """Create manifests string for given folder and context."""
