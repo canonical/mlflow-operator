@@ -18,6 +18,7 @@ from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
 )
 from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
+from charms.resource_dispatcher.v0.kubernetes_manifests import KubernetesManifestRequirerWrapper, KubernetesManifest
 from jinja2 import Template
 from lightkube.models.core_v1 import ServicePort
 from ops.charm import CharmBase
@@ -55,6 +56,15 @@ class MlflowCharm(CharmBase):
         self._exporter_container = self.unit.get_container(self._exporter_container_name)
         self.database = DatabaseRequires(
             self, relation_name="relational-db", database_name=self._database_name
+        )
+
+        self._secrets_manifests_wrapper = KubernetesManifestRequirerWrapper(
+            charm = self,
+            relation_name = "secrets"
+        )
+        self._poddefaults_manifests_wrapper = KubernetesManifestRequirerWrapper(
+            charm = self,
+            relation_name = "pod-defaults"
         )
 
         self.framework.observe(self.on.upgrade_charm, self._on_event)
@@ -125,6 +135,14 @@ class MlflowCharm(CharmBase):
     def exporter_container(self):
         """Return container."""
         return self._exporter_container
+
+    @property
+    def secrets_manifests_wrapper(self):
+        return self._secrets_manifests_wrapper
+
+    @property
+    def poddefaults_manifests_wrapper(self):
+        return self._poddefaults_manifests_wrapper
 
     def _create_service(self):
         """Create k8s service based on charm'sconfig."""
@@ -381,11 +399,11 @@ class MlflowCharm(CharmBase):
         """Event is fired when relation with postgres is broken."""
         self.unit.status = BlockedStatus("Please add relation to the database")
 
-    def _send_manifests(self, interfaces, context, manifest_files, relation):
+    def _send_manifests(self, context, manifest_files, relation_requirer: KubernetesManifestRequirerWrapper):
         """Send manifests from folder to desired relation."""
-        if relation in interfaces and interfaces[relation]:
-            manifests = self._create_manifests(manifest_files, context)
-            interfaces[relation].send_data({relation: manifests})
+        manifests = self._create_manifests(manifest_files, context)
+        relation_requirer.send_data(manifests)
+
 
     def _create_manifests(self, manifest_files, context):
         """Create manifests string for given folder and context."""
@@ -393,9 +411,9 @@ class MlflowCharm(CharmBase):
         for file in manifest_files:
             template = Template(Path(file).read_text())
             rendered_template = template.render(**context)
-            manifest = yaml.safe_load(rendered_template)
+            manifest = KubernetesManifest(rendered_template)
             manifests.append(manifest)
-        return json.dumps(manifests)
+        return manifests
 
     def _send_ingress_info(self, interfaces):
         if interfaces["ingress"]:
@@ -461,9 +479,9 @@ class MlflowCharm(CharmBase):
                 "s3_endpoint": secrets_context["s3_endpoint"],
                 "mlflow_endpoint": f"http://{self.app.name}.{self.model.name}.svc.cluster.local:{self._port}",  # noqa: E501
             }
-            self._send_manifests(interfaces, secrets_context, SECRETS_FILES, "secrets")
+            self._send_manifests(secrets_context, SECRETS_FILES, self._secrets_manifests_wrapper)
             self._send_manifests(
-                interfaces, poddefaults_context, PODDEFAULTS_FILES, "pod-defaults"
+                poddefaults_context, PODDEFAULTS_FILES, self._poddefaults_manifests_wrapper
             )
             self._send_ingress_info(interfaces)
         except ErrorWithStatus as err:
