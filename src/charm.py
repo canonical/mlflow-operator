@@ -59,12 +59,8 @@ class MlflowCharm(CharmBase):
             self, relation_name="relational-db", database_name=self._database_name
         )
 
-        self._secrets_manifests_wrapper = KubernetesManifestRequirerWrapper(
-            charm=self, relation_name="secrets"
-        )
-        self._poddefaults_manifests_wrapper = KubernetesManifestRequirerWrapper(
-            charm=self, relation_name="pod-defaults"
-        )
+        self._secrets_manifests_wrapper = None
+        self._poddefaults_manifests_wrapper = None
 
         self.framework.observe(self.on.upgrade_charm, self._on_event)
         self.framework.observe(self.on.config_changed, self._on_event)
@@ -137,10 +133,18 @@ class MlflowCharm(CharmBase):
 
     @property
     def secrets_manifests_wrapper(self):
+        if not self._secrets_manifests_wrapper:
+            self._secrets_manifests_wrapper = KubernetesManifestRequirerWrapper(
+                charm=self, relation_name="secrets"
+            )
         return self._secrets_manifests_wrapper
 
     @property
     def poddefaults_manifests_wrapper(self):
+        if not self._poddefaults_manifests_wrapper:
+            self._poddefaults_manifests_wrapper = KubernetesManifestRequirerWrapper(
+                charm=self, relation_name="pod-defaults"
+            )
         return self._poddefaults_manifests_wrapper
 
     def _create_service(self):
@@ -479,9 +483,9 @@ class MlflowCharm(CharmBase):
                 "s3_endpoint": secrets_context["s3_endpoint"],
                 "mlflow_endpoint": f"http://{self.app.name}.{self.model.name}.svc.cluster.local:{self._port}",  # noqa: E501
             }
-            self._send_manifests(secrets_context, SECRETS_FILES, self._secrets_manifests_wrapper)
+            self._send_manifests(secrets_context, SECRETS_FILES, self.secrets_manifests_wrapper)
             self._send_manifests(
-                poddefaults_context, PODDEFAULTS_FILES, self._poddefaults_manifests_wrapper
+                poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
             )
             self._send_ingress_info(interfaces)
         except ErrorWithStatus as err:

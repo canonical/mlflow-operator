@@ -134,7 +134,7 @@ class KubernetesManifest:
 
     def __post_init__(self):
         """Validate that the manifest content is a valid YAML."""
-        self. manifest = yaml.safe_load(self.manifest_content)
+        self.manifest = yaml.safe_load(self.manifest_content)
 
 
 class KubernetesManifestsUpdatedEvent(RelationEvent):
