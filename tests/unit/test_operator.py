@@ -1,6 +1,7 @@
 # Copyright 2021 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -437,9 +438,10 @@ class TestCharm:
             "secret_access_key": "s",
         }
         harness.begin()
-        manifests = harness.charm._create_manifests(SECRETS_TEST_FILES, secrets_context)
+        manifests_items = harness.charm._create_manifests(SECRETS_TEST_FILES, secrets_context)
+        manifests_as_json = json.dumps([item.manifest for item in manifests_items])
         assert (
-            manifests
+            manifests_as_json
             == '[{"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "mlpipeline-minio-artifact"}, "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"}}]'  # noqa: E501
         )
 
@@ -448,14 +450,16 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.MlflowCharm._create_manifests")
-    def test_send_manifests(self, create_manifests: MagicMock, harness: Harness):
+    @patch("charm.MlflowCharm.secrets_manifests_wrapper")
+    def test_send_manifests(
+        self, secrets_manifests_wrapper: MagicMock, create_manifests: MagicMock, harness: Harness
+    ):
         tmp_manifests = "[]"
         create_manifests.return_value = tmp_manifests
-        secrets_interface = MagicMock()
-        interfaces = {"secrets": secrets_interface}
+        secrets_manifests_wrapper = MagicMock()
         harness.begin()
-        harness.charm._send_manifests(interfaces, {}, "", "secrets")
-        secrets_interface.send_data.assert_called_with({"secrets": tmp_manifests})
+        harness.charm._send_manifests({}, [""], secrets_manifests_wrapper)
+        secrets_manifests_wrapper.send_data.assert_called_once()
 
     @patch(
         "charm.KubernetesServicePatch",

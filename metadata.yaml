@@ -94,32 +94,12 @@ requires:
           - prefix
     versions: [v1]
     __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/ingress.yaml
+  secrets:
+    interface: kubernetes_manifest
+  pod-defaults:
+    interface: kubernetes_manifest
 provides:
   metrics-endpoint:
     interface: prometheus_scrape
   grafana-dashboard:
     interface: grafana_dashboard
-  secrets:
-    interface: secrets
-    schema:
-      v1:
-        provides:
-          type: object
-          properties:
-            secrets:
-              type: string
-        required:
-        - secrets
-    versions: [v1]
-  pod-defaults:
-    interface: pod-defaults
-    schema:
-      v1:
-        provides:
-          type: object
-          properties:
-            pod-defaults:
-              type: string
-        required:
-        - pod-defaults
-    versions: [v1]
