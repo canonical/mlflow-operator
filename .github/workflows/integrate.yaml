@@ -54,6 +54,8 @@ jobs:
     name: Integration tests (microk8s)
     runs-on: ubuntu-20.04
     steps:
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
     - name: Maximise GH runner space
       uses: easimon/maximize-build-space@v8
       with:
