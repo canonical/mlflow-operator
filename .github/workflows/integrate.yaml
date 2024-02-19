@@ -71,8 +71,6 @@ jobs:
         provider: microk8s
         channel: 1.25-strict/stable
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
     - name: Run integration tests
       run: sg snap_microk8s -c "tox -vve integration -- --model testing"
 

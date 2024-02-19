@@ -183,7 +183,7 @@ class TestCharm:
         )
         await ops_test.model.deploy(
             RELATIONAL_DB_CHARM_NAME,
-            channel="8.0/stable",
+            channel="8.0/edge",
             series="jammy",
             trust=True,
         )

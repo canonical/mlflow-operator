@@ -10,7 +10,7 @@ applications:
     _github_repo_name: minio-operator
   mlflow-mysql:
     charm: mysql-k8s
-    channel: 8.0/stable
+    channel: 8.0/edge
     scale: 1
     trust: true
     _github_repo_name: mysql-k8s-operator
