@@ -10,6 +10,8 @@ applications:
     _github_repo_name: minio-operator
   mlflow-mysql:
     charm: mysql-k8s
+    # We should use `8.0/stable` once changes for
+    # https://github.com/canonical/mysql-k8s-operator/issues/337 are published there.
     channel: 8.0/edge
     scale: 1
     trust: true
