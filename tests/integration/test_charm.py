@@ -183,7 +183,9 @@ class TestCharm:
         )
         await ops_test.model.deploy(
             RELATIONAL_DB_CHARM_NAME,
-            channel="8.0/stable",
+            # We should use `8.0/stable` once changes for
+            # https://github.com/canonical/mysql-k8s-operator/issues/337 are published there.
+            channel="8.0/edge",
             series="jammy",
             trust=True,
         )
