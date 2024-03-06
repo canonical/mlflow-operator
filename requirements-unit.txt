@@ -31,7 +31,7 @@ charset-normalizer==3.2.0
     # via
     #   -r requirements.txt
     #   requests
-coverage==7.3.0
+coverage==7.4.3
     # via -r requirements-unit.in
 deepdiff==6.2.1
     # via
@@ -102,26 +102,26 @@ ordered-set==4.1.0
     # via
     #   -r requirements.txt
     #   deepdiff
-packaging==23.1
+packaging==23.2
     # via pytest
 pkgutil-resolve-name==1.3.10
     # via
     #   -r requirements.txt
     #   jsonschema
-pluggy==1.2.0
+pluggy==1.4.0
     # via pytest
 pyrsistent==0.19.3
     # via
     #   -r requirements.txt
     #   jsonschema
-pytest==7.4.0
+pytest==8.0.2
     # via
     #   -r requirements-unit.in
     #   pytest-lazy-fixture
     #   pytest-mock
 pytest-lazy-fixture==0.6.3
     # via -r requirements-unit.in
-pytest-mock==3.11.1
+pytest-mock==3.12.0
     # via -r requirements-unit.in
 python-dateutil==2.8.2
     # via
