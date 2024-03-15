@@ -299,7 +299,7 @@ class TestCharm:
     async def test_deploy_resource_dispatcher(self, ops_test: OpsTest):
         await ops_test.model.deploy(
             entity_url=METACONTROLLER_CHARM_NAME,
-            channel="latest/edge",
+            channel="3.0/stable",
             trust=True,
         )
         await ops_test.model.wait_for_idle(
@@ -310,7 +310,7 @@ class TestCharm:
             timeout=120,
         )
         await ops_test.model.deploy(
-            RESOURCE_DISPATCHER_CHARM_NAME, channel="latest/edge", trust=True
+            RESOURCE_DISPATCHER_CHARM_NAME, channel="1.0/stable", trust=True
         )
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
