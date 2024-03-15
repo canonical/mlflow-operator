@@ -183,7 +183,9 @@ class TestCharm:
         )
         await ops_test.model.deploy(
             RELATIONAL_DB_CHARM_NAME,
-            channel="8.0/stable",
+            # We should use `8.0/stable` once changes for
+            # https://github.com/canonical/mysql-k8s-operator/issues/337 are published there.
+            channel="8.0/edge",
             series="jammy",
             trust=True,
         )
@@ -297,7 +299,7 @@ class TestCharm:
     async def test_deploy_resource_dispatcher(self, ops_test: OpsTest):
         await ops_test.model.deploy(
             entity_url=METACONTROLLER_CHARM_NAME,
-            channel="latest/edge",
+            channel="3.0/stable",
             trust=True,
         )
         await ops_test.model.wait_for_idle(
@@ -308,7 +310,7 @@ class TestCharm:
             timeout=120,
         )
         await ops_test.model.deploy(
-            RESOURCE_DISPATCHER_CHARM_NAME, channel="latest/edge", trust=True
+            RESOURCE_DISPATCHER_CHARM_NAME, channel="1.0/stable", trust=True
         )
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
