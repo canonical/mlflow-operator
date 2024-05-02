@@ -8,3 +8,7 @@
 .. _Contribute: https://github.com/canonical/mlflow-operator/blob/main/CONTRIBUTING.md
 .. _Upstream Project: https://mlflow.org/
 .. _Discourse Forum: https://discourse.charmhub.io/tag/mlflow
+.. _rclone: https://snapcraft.io/rclone
+.. _configured: https://rclone.org/s3/#configuration
+.. _yq binary: https://snapcraft.io/yq
+.. _Create a backup: https://charmhub.io/mysql-k8s/docs/h-create-and-list-backups

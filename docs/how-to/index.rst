@@ -17,7 +17,7 @@ Deployment
 .. toctree::
    :maxdepth: 1
 
-   deploy-ck8s-aws   
+   deploy-ck8s-aws
    deploy-eks
    deploy-mlflow-kubeflow-eks
 
@@ -38,3 +38,12 @@ Upgrading
    :maxdepth: 1
 
    migrate-v1-v2
+
+Managing
+--------
+
+.. toctree::
+   :maxdepth: 1
+
+   backup
+   restore
