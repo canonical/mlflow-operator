@@ -1,16 +1,16 @@
 .. _backup:
 
-Backup MLFlow data
+Backup MLflow data
 ==================
 
-This how-to guide will show you how to make a backup of all of MLFlow's
+This how-to guide will show you how to make a backup of all of MLflow's
 data, that live in MySQL and S3.
 
 Pre-requisites
 --------------
 
 1. Access to a S3 storage - only AWS S3 and S3 RadosGW are supported
-2. Admin access to the Kubernetes cluster where Charmed MLFlow is deployed
+2. Admin access to the Kubernetes cluster where Charmed MLflow is deployed
 3. Juju admin access to the `mlflow` model
 4. `rclone`_ installed and `configured`_ to connect to the S3 storage from 1
 5. `s3-integrator` deployed and configured
@@ -21,7 +21,7 @@ Pre-requisites
 
 6. `yq binary`_
 
-.. note:: This S3 storage will be used for storing all backup data from MLFlow.
+.. note:: This S3 storage will be used for storing all backup data from MLflow.
 
 Throughout the following guide we’ll use the following ENV vars in the commands
 
@@ -47,7 +47,7 @@ the backup to an S3 endpoint. An example configuration looks like this:
 
 .. note:: You can check where this configuration file is located with `rclone config file`
 
-Backup MLFlow DBs
+Backup MLflow DBs
 -----------------
 
 1. Scale up `mlflow-mysql`
@@ -62,7 +62,7 @@ Backup MLFlow DBs
 2. Create a backup of DB
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-To see how to make a backup of MLFlow's MySQL database, follow this guide on
+To see how to make a backup of MLflow's MySQL database, follow this guide on
 how to `Create a backup`_.
 
 .. note:: Please replace `mysql-k8s` with the name of the database you intend to create a backup for in the commands form that guide. E.g. `mlflow-mysql` instead of `mysql-k8s`.
@@ -70,7 +70,7 @@ how to `Create a backup`_.
 Backup `mlflow` MinIO bucket
 ----------------------------
 
-.. note:: The name of the MLFlow MinIO bucket defaults to `mlflow`, the bucket name can be verified with `juju config mlflow default_artifact_root`.
+.. note:: The name of the MLflow MinIO bucket defaults to `mlflow`, the bucket name can be verified with `juju config mlflow default_artifact_root`.
 
 1. Configure `rclone` for MinIO
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -118,4 +118,4 @@ In the future the MinIO Charm will be extended so that it can send it's data dir
 Next Steps
 ----------
 
-* Want to restore your Charmed MLFlow from a backup? See :ref:`restore`
+* Want to restore your Charmed MLflow from a backup? See :ref:`restore`

@@ -1,16 +1,16 @@
 .. _restore:
 
-Restore MLFlow data
+Restore MLflow data
 ===================
 
-The following instructions will allow you to restore the Charmed MLFlow
+The following instructions will allow you to restore the Charmed MLflow
 control plane data from a compatible S3 storage.
 
 Pre-requisites
 --------------
 
 1. Access to a S3 storage - only AWS S3 and S3 RadosGW are supported
-2. Admin access to the Kubernetes cluster where Charmed MLFlow is deployed
+2. Admin access to the Kubernetes cluster where Charmed MLflow is deployed
 3. Juju admin access to the `mlflow` model
 4. `rclone`_ installed and `configured`_ to connect to the S3 storage from 1
 5. `s3-integrator` deployed and configured
@@ -21,7 +21,7 @@ Pre-requisites
 
 6. `yq binary`_
 
-.. note:: This S3 storage will be used for storing all backup data from MLFlow.
+.. note:: This S3 storage will be used for storing all backup data from MLflow.
 
 Throughout the following guide we’ll use the following ENV vars in the commands
 
@@ -68,7 +68,7 @@ Restore DB from S3
 Restore `mlflow` MinIO bucket
 -----------------------------
 
-.. note:: The name of the MLFlow MinIO bucket defaults to `mlflow`, the bucket name can be verified with `juju config mlflow default_artifact_root`.
+.. note:: The name of the MLflow MinIO bucket defaults to `mlflow`, the bucket name can be verified with `juju config mlflow default_artifact_root`.
 
 1. Configure `rclone` for MinIO
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -116,4 +116,4 @@ In the future the MinIO Charm will be extended so that it can send it's data dir
 Next Steps
 ----------
 
-* Want to create a backup of MLFlow's data? See :ref:`backup`
+* Want to create a backup of MLflow's data? See :ref:`backup`
