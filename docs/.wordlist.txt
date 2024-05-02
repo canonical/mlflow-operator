@@ -72,3 +72,4 @@ multinode
 artifact
 juju
 Pre
+radosgw
