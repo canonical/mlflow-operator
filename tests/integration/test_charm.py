@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 CHARM_NAME = METADATA["name"]
 RELATIONAL_DB_CHARM_NAME = "mysql-k8s"
+RELATIONAL_DB_CHANNEL = "8.0/stable"
 OBJECT_STORAGE_CHARM_NAME = "minio"
 PROMETHEUS_CHARM_NAME = "prometheus-k8s"
 GRAFANA_CHARM_NAME = "grafana-k8s"
@@ -185,7 +186,7 @@ class TestCharm:
             RELATIONAL_DB_CHARM_NAME,
             # We should use `8.0/stable` once changes for
             # https://github.com/canonical/mysql-k8s-operator/issues/337 are published there.
-            channel="8.0/edge",
+            channel=RELATIONAL_DB_CHANNEL,
             series="jammy",
             trust=True,
         )
