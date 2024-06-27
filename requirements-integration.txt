@@ -14,6 +14,8 @@ anyio==3.7.1
     # via
     #   -r requirements.txt
     #   httpcore
+appnope==0.1.4
+    # via ipython
 asttokens==2.4.0
     # via stack-data
 async-timeout==4.0.3
@@ -105,8 +107,6 @@ gitpython==3.1.35
     # via mlflow
 google-auth==2.22.0
     # via kubernetes
-greenlet==2.0.2
-    # via sqlalchemy
 gunicorn==21.2.0
     # via mlflow
 h11==0.14.0
@@ -229,7 +229,7 @@ oauthlib==3.2.2
     #   requests-oauthlib
 oci-image==1.0.0
     # via -r requirements.txt
-ops==2.5.0
+ops==2.14.0
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
