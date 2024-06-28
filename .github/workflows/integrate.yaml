@@ -67,7 +67,7 @@ jobs:
     - name: Setup operator environment
       uses: charmed-kubernetes/actions-operator@1.1.0
       with:
-        juju-channel: "3.5/stable"
+        juju-channel: "3.4/stable"
         provider: microk8s
         channel: 1.29-strict/stable
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
