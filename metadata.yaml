@@ -15,7 +15,7 @@ resources:
   oci-image:
     type: oci-image
     description: Backing OCI image
-    upstream-source: docker.io/misohu/ubuntu-base-mlflow:2.15.0-v1 
+    upstream-source: docker.io/misohu/ubuntu-base-mlflow:2.15.0-v1-rock
   exporter-oci-image:
     type: oci-image
     description: Image for Prometheus exporter
