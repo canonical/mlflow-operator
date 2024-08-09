@@ -180,7 +180,7 @@ class TestCharm:
     async def test_add_relational_db_with_relation_expect_active(self, ops_test: OpsTest):
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
         await ops_test.model.deploy(
-            OBJECT_STORAGE_CHARM_NAME, channel="ckf-1.7/stable", config=OBJECT_STORAGE_CONFIG
+            OBJECT_STORAGE_CHARM_NAME, channel="ckf-1.9/stable", config=OBJECT_STORAGE_CONFIG
         )
         await ops_test.model.deploy(
             RELATIONAL_DB_CHARM_NAME,
