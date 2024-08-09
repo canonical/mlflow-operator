@@ -19,7 +19,7 @@ applications:
     _github_dependency_repo_branch: main
   mlflow-server:
     charm: mlflow-server
-    channel: latest/stable
+    channel: 2.15/beta
     scale: 1
     trust: true
     _github_dependency_repo_name: mlflow-operator

@@ -4,24 +4,26 @@ docs: https://discourse.charmhub.io/t/mlflow-docs-index/10836
 applications:
   mlflow-minio:
     charm: minio
-    channel: ckf-1.7/stable
+    channel: ckf-1.9/stable
     scale: 1
     trust: true
     _github_repo_name: minio-operator
+    _github_repo_branch: main
   mlflow-mysql:
     charm: mysql-k8s
-    # We should use `8.0/stable` once changes for
-    # https://github.com/canonical/mysql-k8s-operator/issues/337 are published there.
-    channel: 8.0/edge
+    channel: 8.0/stable
     scale: 1
     trust: true
-    _github_repo_name: mysql-k8s-operator
+    constraints: mem=2G
+    _github_dependency_repo_name: mysql-k8s-operator
+    _github_dependency_repo_branch: main
   mlflow-server:
     charm: mlflow-server
     channel: latest/edge
     scale: 1
     trust: true
-    _github_repo_name: mlflow-operator
+    _github_dependency_repo_name: mlflow-operator
+    _github_dependency_repo_branch: main
 relations:
 - [mlflow-server, mlflow-minio]
 - [mlflow-server, mlflow-mysql]
