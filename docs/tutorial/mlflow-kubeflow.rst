@@ -97,10 +97,13 @@ This will periodically run a ``juju status`` command and filter to components wh
 
 Don't be surprised if some of the components' statuses change to ``blocked`` or ``error`` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states, consult the troubleshooting steps below.
 
-It can take up to half an hour for all charms to be downloaded and initialised.
+.. note::
+
+   It can take up to half an hour for all charms to be downloaded and initialised.
 
 Integrate MLflow with Kubeflow Dashboard
 ----------------------------------------
+
 You can integrate your charmed MLflow deployment with the Kubeflow dashboard by running following commands:
 
 .. code-block:: bash
@@ -126,24 +129,29 @@ Now you should see the MLflow tab in the left sidebar of your Kubeflow dashboard
 Integrate MLflow with Notebook
 ------------------------------
 
-In this section, we're going to create a notebook server in Kubeflow and connect it to MLflow. This will allow our notebook logic to talk to MLflow in the background. Let's get started.
+In this section, you are going to create a Kubeflow notebook server and connect it to MLflow. 
 
-First, to be able to use MLflow credentials in your Kubeflow notebook, visit the dashboard at ``http://10.64.140.43.nip.io/`` and fill the username and password which you configured in the previous :ref:`kubeflow-section` section e.g. ``admin`` and ``admin``.
+First, to be able to use MLflow credentials in your Kubeflow notebook, go to the MLflow dashboard at ``http://10.64.140.43.nip.io/`` 
+and use the username and password you configured in the previous :ref:`kubeflow-section` section.
+For example, ``admin`` and ``admin``.
 
-Click on start setup to setup the Kubeflow user for the first time.
+Click on ``Start setup`` to setup the Kubeflow user for the first time.
 
 Select ``Finish`` to finish the process.
 
-Now a Kubernetes namespace was created for your user. 
+Now a Kubernetes namespace is created for your user. 
 
-Now go back to the Dashboard. From the left panel, choose notebooks. Select +New Notebook.
+Now go back to the dashboard. From the left panel, choose ``Ǹotebooks``. 
+Select ``+New Notebook``.
 
-At this point, we can name the notebook as we want, and choose the desired image and resource limits. For now, let's just keep things simple:
+At this point, name the notebook as you prefer, and choose the desired image and resource limits. 
+For example, you can use the following details:
 
-1. For ``Name``, enter ``test-notebook``.
+1. ``Name``: ``test-notebook``.
 2. Expand the *Custom Notebook* section and for ``image``, select ``kubeflownotebookswg/jupyter-tensorflow-full:v1.7.0``.
 
-Now, in order to allow our notebook server access to MLflow, we need to enable some special configuration options. Scroll down to ``Data Volumes -> Advanced options`` and from the ``Configurations`` dropdown, choose the following options:
+Now, to allow your notebook server access to MLflow, you need to enable some configuration options. 
+Scroll down to ``Data Volumes -> Advanced options`` and from the ``Configurations`` dropdown, choose the following options:
 
 1. Allow access to Kubeflow pipelines.
 2. Allow access to MinIO.
