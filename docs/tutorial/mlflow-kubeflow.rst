@@ -65,7 +65,7 @@ This will deploy the latest stable version of the dispatcher. See `Resource Disp
    juju relate mlflow-server:secrets resource-dispatcher:secrets
    juju relate mlflow-server:pod-defaults resource-dispatcher:pod-defaults
 
-Because we also want to deploy sotred MLflow models using KServe, in the next step we will create needed relations:
+Because we also want to deploy sorted MLflow models using KServe, in the next step we will create needed relations:
 
 .. code-block:: bash
 
@@ -97,6 +97,18 @@ This will periodically run a ``juju status`` command and filter to components wh
 Don't be surprised if some of the components' statuses change to ``blocked`` or ``error`` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states, consult the troubleshooting steps below.
 
 Be patient, it can take up to half an hour for all those charms to download and initialise. In the meantime, why not try our `Juju tutorial <https://juju.is/docs/juju/get-started-with-juju>`_?
+
+Integrate MLflow with Kubeflow Dashboard
+----------------------------------------
+You can integrate your charmed MLflow deployment with Kubeflow dashboard by running folowing commands: 
+
+.. code-block:: bash
+
+   juju relate mlflow-server:ingress istio-pilot:ingress
+   juju relate mlflow-server:dashboard-links kubeflow-dashboard:links
+
+Now you should see the MLflow tab in the left sidebar of your Kubeflow Dashboard at ``http://10.64.140.43.nip.io/``. 
+
 
 Integrate MLflow with Notebook
 ------------------------------
@@ -157,6 +169,6 @@ There you will find following folders:
 
 - ``mlflow-kserve``: demonstrates how to talk to MLflow and KServe from inside a notebook. This example will train a simple ML model, store it in MLflow, deploy it with KServe from MLflow and run inference.
 - ``mlflow-minio``: demonstrates how to talk to MinIO from inside a notebook. This example shows how you can use mounted MinIO secrets to talk to MinIO object store.
-- ``mlflow``: demonstrates how to talk to MLflow from inside a notebook. The example uses a simple regressor which is stored in the MLflow registry.
+- ``mlflow``: demonstrates how to talk to MLflow from inside a notebook. The example uses a simple regression model which is stored in the MLflow registry.
 
 Go ahead, try those notebooks out for yourself! You can run them cell by cell using the run button, or all at once using the double chevron `>>`.
