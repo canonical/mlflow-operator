@@ -46,7 +46,7 @@ Enable the following MicroK8s addons to configure your Kubernetes cluster with e
 
 .. code-block:: bash
 
-   sudo microk8s enable dns hostpath-storage metallb:10.64.140.43-10.64.140.49 rbac
+   microk8s enable dns hostpath-storage metallb:10.64.140.43-10.64.140.49 rbac
 
 Here, we added a ``dns`` service, so the applications can find each other, storage, an ingress controller so we can access Kubeflow components and the ``MetalLB`` load-balancer application.
 You can see that we added some detail when enabling ``MetalLB``, in this case the address pool to use.

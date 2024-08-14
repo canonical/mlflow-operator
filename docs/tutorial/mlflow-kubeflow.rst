@@ -23,7 +23,7 @@ This tutorial assumes you will be deploying Kubeflow and MLflow on a public clou
 We'll also assume that you have a laptop that meets the following conditions:
 
 - Has an SSH tunnel open to the VM with port forwarding and a SOCKS proxy. To see how to set this up, see `How to setup SSH VM Access <https://charmed-kubeflow.io/docs/how-tosetup-ssh-vm-access-with-port-forwarding>`_.
-- Runs Ubuntu 22.04 (focal) or later.
+- Runs Ubuntu 20.04 (focal) or later.
 - Has a web browser installed e.g. Chrome / Firefox / Edge.
 
 In the remainder of this tutorial, unless otherwise stated, it is assumed you will be running all command line operations on the VM, through the open SSH tunnel. It's also assumed you'll be using the web browser on your local machine to access the Kubeflow and MLflow dashboards.
@@ -62,16 +62,16 @@ This will deploy the latest stable version of the dispatcher. See `Resource Disp
 
 .. code-block:: bash
 
-   juju relate mlflow-server:secrets resource-dispatcher:secrets
-   juju relate mlflow-server:pod-defaults resource-dispatcher:pod-defaults
+   juju integrate mlflow-server:secrets resource-dispatcher:secrets
+   juju integrate mlflow-server:pod-defaults resource-dispatcher:pod-defaults
 
 Because we also want to deploy sorted MLflow models using KServe, in the next step we will create needed relations:
 
 .. code-block:: bash
 
-   juju relate mlflow-minio:object-storage kserve-controller:object-storage
-   juju relate kserve-controller:service-accounts resource-dispatcher:service-accounts
-   juju relate kserve-controller:secrets resource-dispatcher:secrets
+   juju integrate mlflow-minio:object-storage kserve-controller:object-storage
+   juju integrate kserve-controller:service-accounts resource-dispatcher:service-accounts
+   juju integrate kserve-controller:secrets resource-dispatcher:secrets
 
 Monitor The Deployment
 ----------------------
@@ -100,14 +100,22 @@ Be patient, it can take up to half an hour for all those charms to download and 
 
 Integrate MLflow with Kubeflow Dashboard
 ----------------------------------------
-You can integrate your charmed MLflow deployment with Kubeflow dashboard by running folowing commands: 
+You can integrate your charmed MLflow deployment with Kubeflow dashboard by running following commands: 
 
 .. code-block:: bash
 
-   juju relate mlflow-server:ingress istio-pilot:ingress
-   juju relate mlflow-server:dashboard-links kubeflow-dashboard:links
+   juju integrate mlflow-server:ingress istio-pilot:ingress
+   juju integrate mlflow-server:dashboard-links kubeflow-dashboard:links
 
-Now you should see the MLflow tab in the left sidebar of your Kubeflow Dashboard at ``http://10.64.140.43.nip.io/``. 
+Now you should see the MLflow tab in the left sidebar of your Kubeflow Dashboard at ``http://10.64.140.43.nip.io/``.
+
+.. note:: 
+   
+   The address of your Kubeflow Dashboard may differ depending on your setup. You can always check the IP by running: 
+   
+   .. code-block:: bash
+      
+      microk8s kubectl -n kubeflow get svc istio-ingressgateway-workload -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 
 
 Integrate MLflow with Notebook
