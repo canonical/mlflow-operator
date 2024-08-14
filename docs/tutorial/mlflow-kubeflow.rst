@@ -9,18 +9,17 @@ Getting Started with Charmed MLflow and Kubeflow
 |  Kubeflow |   1.9   |
 +-----------+---------+
 
-Welcome to this tutorial on getting started with Charmed MLflow alongside Charmed Kubeflow. If you would like to deploy Kubeflow by itself, see our tutorial on `Charmed Kubeflow <https://charmed-kubeflow.io/docs/get-started-with-charmed-kubeflow>`_.
+This tutorial gets you started with Charmed MLflow integrated with `Charmed Kubeflow (CKF) <https://charmed-kubeflow.io/docs>`_.
 
 Prerequisites
 -------------
 
-This tutorial assumes you will be deploying Kubeflow and MLflow on a public cloud Virtual Machine (VM) with the following specs:
+This guide assumes you are deploying Kubeflow and MLflow on a public cloud Virtual Machine (VM) with the following specifications:
 
 - Runs Ubuntu 20.04 (focal) or later.
 - Has at least 4 cores, 32GB RAM and 200GB of disk space available.
-- Is connected to the internet for downloading the required snaps and charms.
 
-We'll also assume that you have a laptop that meets the following conditions:
+Also, your machine should meet the following requirements:
 
 - Has an SSH tunnel open to the VM with port forwarding and a SOCKS proxy. To see how to set this up, see `How to setup SSH VM Access <https://charmed-kubeflow.io/docs/how-tosetup-ssh-vm-access-with-port-forwarding>`_.
 - Runs Ubuntu 20.04 (focal) or later.
@@ -33,6 +32,8 @@ Deploy MLflow
 
 Follow the steps in this tutorial to deploy MLflow on your VM: :doc:`mlflow`. Before moving on with this tutorial, confirm that you can now access the MLflow UI on ``http://localhost:31380``.
 
+.. _kubeflow-section:
+
 Deploy Kubeflow bundle
 ----------------------
 
@@ -42,7 +43,7 @@ Let's deploy Charmed Kubeflow alongside MLflow. Run the following command to ini
 
    juju deploy kubeflow --trust  --channel=2.15/stable
 
-Don't forget to set credentials for your Kubeflow deployment:
+Set credentials for your Kubeflow deployment:
 
 .. code-block:: bash
 
@@ -52,20 +53,20 @@ Don't forget to set credentials for your Kubeflow deployment:
 Deploy Resource Dispatcher
 --------------------------
 
-Next, let's deploy the resource dispatcher. The resource dispatcher is an optional component which will distribute Kubernetes objects related to MLflow credentials to all user namespaces in Kubeflow. This means that all your Kubeflow users can access the MLflow model registry from their namespaces. To deploy the dispatcher, run the following command:
+Next, deploy the resource dispatcher. The resource dispatcher is an optional component which distributes Kubernetes objects related to MLflow credentials to all user namespaces in Kubeflow. This means that all your Kubeflow users can access the MLflow model registry from their namespaces. To deploy the dispatcher, run the following command:
 
 .. code-block:: bash
 
    juju deploy resource-dispatcher --channel 2.0/stable --trust
 
-This will deploy the latest stable version of the dispatcher. See `Resource Dispatcher on GitHub <https://github.com/canonical/resource-dispatcher>`_ for more info. Now we must relate the dispatcher to MLflow:
+This deploys the latest stable version of the dispatcher. See `Resource Dispatcher on GitHub <https://github.com/canonical/resource-dispatcher>`_ for more details. Now, relate the dispatcher to MLflow as follows:
 
 .. code-block:: bash
 
    juju integrate mlflow-server:secrets resource-dispatcher:secrets
    juju integrate mlflow-server:pod-defaults resource-dispatcher:pod-defaults
 
-Because we also want to deploy sorted MLflow models using KServe, in the next step we will create needed relations:
+To deploy sorted MLflow models using KServe, create the required relations as follows:
 
 .. code-block:: bash
 
@@ -96,22 +97,26 @@ This will periodically run a ``juju status`` command and filter to components wh
 
 Don't be surprised if some of the components' statuses change to ``blocked`` or ``error`` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states, consult the troubleshooting steps below.
 
-Be patient, it can take up to half an hour for all those charms to download and initialise. In the meantime, why not try our `Juju tutorial <https://juju.is/docs/juju/get-started-with-juju>`_?
+It can take up to half an hour for all charms to be downloaded and initialised.
 
 Integrate MLflow with Kubeflow Dashboard
 ----------------------------------------
-You can integrate your charmed MLflow deployment with Kubeflow dashboard by running following commands: 
+You can integrate your charmed MLflow deployment with the Kubeflow dashboard by running following commands:
 
 .. code-block:: bash
 
    juju integrate mlflow-server:ingress istio-pilot:ingress
    juju integrate mlflow-server:dashboard-links kubeflow-dashboard:links
 
-Now you should see the MLflow tab in the left sidebar of your Kubeflow Dashboard at ``http://10.64.140.43.nip.io/``.
+Now you should see the MLflow tab in the left sidebar of your Kubeflow dashboard at:
+
+.. code-block:: bash
+   
+   http://10.64.140.43.nip.io/
 
 .. note:: 
    
-   The address of your Kubeflow Dashboard may differ depending on your setup. You can always check the IP by running: 
+   The address of your Kubeflow dashboard may differ depending on your setup. You can always check its URL by running: 
    
    .. code-block:: bash
       
@@ -123,7 +128,7 @@ Integrate MLflow with Notebook
 
 In this section, we're going to create a notebook server in Kubeflow and connect it to MLflow. This will allow our notebook logic to talk to MLflow in the background. Let's get started.
 
-First, to be able to use MLflow credentials in your Kubeflow notebook, visit the dashboard at ``http://10.64.140.43.nip.io/`` and fill the username and password which you configured in the previous section e.g. ``admin`` and ``admin``.
+First, to be able to use MLflow credentials in your Kubeflow notebook, visit the dashboard at ``http://10.64.140.43.nip.io/`` and fill the username and password which you configured in the previous :ref:`kubeflow-section` section e.g. ``admin`` and ``admin``.
 
 Click on start setup to setup the Kubeflow user for the first time.
 
@@ -171,11 +176,11 @@ From the menu, choose the ``Clone a Repository`` option.
 
 Now insert this repository address ``https://github.com/canonical/charmed-kubeflow-uats.git``.
 
-This will clone a whole ``charmed-kubeflow-uats`` repository onto the notebook server. The cloned repository will be a folder on the server, with the same name as the remote repository. Go inside the folder and after that, choose the ``tests/notebooks`` sub-folder.
+This clones a whole ``charmed-kubeflow-uats`` repository onto the notebook server. The cloned repository is a folder on the server, with the same name as the remote repository. Go inside the folder and after that, choose the ``tests/notebooks`` sub-folder.
 
-There you will find following folders:
+There you find following folders:
 
-- ``mlflow-kserve``: demonstrates how to talk to MLflow and KServe from inside a notebook. This example will train a simple ML model, store it in MLflow, deploy it with KServe from MLflow and run inference.
+- ``mlflow-kserve``: demonstrates how to talk to MLflow and KServe from inside a notebook. This example trains a simple ML model, stores it in MLflow, deploys it with KServe from MLflow and runs inference.
 - ``mlflow-minio``: demonstrates how to talk to MinIO from inside a notebook. This example shows how you can use mounted MinIO secrets to talk to MinIO object store.
 - ``mlflow``: demonstrates how to talk to MLflow from inside a notebook. The example uses a simple regression model which is stored in the MLflow registry.
 

@@ -130,7 +130,7 @@ Let's now use Juju to deploy Charmed MLflow. Run the following command:
 
    juju deploy mlflow --channel=2.15/stable --trust
 
-This deploys the stable version of MLflow with `MinIO <https://min.io/product/multicloud-google-kubernetes-service?utm_term=&utm_campaign=MinIO+for+Google+Kubernetes+Engine+1.0&utm_source=adwords&utm_medium=ppc&hsa_acc=8976569894&hsa_cam=15844157882&hsa_grp=135899807670&hsa_ad=608661225284&hsa_src=g&hsa_tgt=dsa-1425788495958&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gclid=Cj0KCQjwyLGjBhDKARIsAFRNgW-yGkAWWWjl0Nm7d0xJDiDqrExgaBQ8R-VnJGsPpzoACKsGaYqliycaAlOiEALw_wcB>`_ as object storage and `MySQL <https://www.mysql.com/>`_ as metadata store.
+This deploys the stable version of MLflow with `MinIO <https://min.io/product/multicloud-google-kubernetes-service?utm_term=&utm_campaign=MinIO+for+Google+Kubernetes+Engine+1.0&utm_source=adwords&utm_medium=ppc&hsa_acc=8976569894&hsa_cam=15844157882&hsa_grp=135899807670&hsa_ad=608661225284&hsa_src=g&hsa_tgt=dsa-1425788495958&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gclid=Cj0KCQjwyLGjBhDKARIsAFRNgW-yGkAWWWjl0Nm7d0xJDiDqrExgaBQ8R-VnJGsPpzoACKsGaYqliycaAlOiEALw_wcB>`_ as the object storage and `MySQL <https://www.mysql.com/>`_ as the metadata store.
 
 Access MLflow
 -------------
