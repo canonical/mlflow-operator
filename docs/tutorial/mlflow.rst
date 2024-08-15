@@ -27,26 +27,20 @@ Let's install MicroK8s. MicroK8s is installed from a snap package. The published
 
 .. code-block:: bash
 
-   sudo snap install microk8s --classic --channel=1.24/stable
+   sudo snap install microk8s --channel=1.29-strict/stable
 
 For MicroK8s to work without having to use ``sudo`` for every command, it creates a group called ``microk8s``. To make it more convenient to run commands, you will add the current user to this group:
 
 .. code-block:: bash
 
-   sudo usermod -a -G microk8s $USER
-   newgrp microk8s
-
-It is also useful to make sure the user has the proper access and ownership of any ``kubectl`` configuration files:
-
-.. code-block:: bash
-
-   sudo chown -f -R $USER ~/.kube
+   sudo usermod -a -G snap_microk8s ubuntu
+   newgrp snap_microk8s
 
 Enable the following MicroK8s addons to configure your Kubernetes cluster with extra services needed to run Charmed Kubeflow.
 
 .. code-block:: bash
 
-   microk8s enable dns hostpath-storage ingress metallb:10.64.140.43-10.64.140.49
+   sudo microk8s enable dns hostpath-storage metallb:10.64.140.43-10.64.140.49 rbac
 
 Here, we added a ``dns`` service, so the applications can find each other, storage, an ingress controller so we can access Kubeflow components and the ``MetalLB`` load-balancer application.
 You can see that we added some detail when enabling ``MetalLB``, in this case the address pool to use.
@@ -77,7 +71,19 @@ To install Juju from snap, run this command:
 
 .. code-block:: bash
 
-   sudo snap install juju --classic --channel=2.9/stable
+   sudo snap install juju --channel=3.4/stable
+
+On some machines there might be a missing folder which is required for Juju to run correctly. To ensure that this folder exists, run:
+
+.. code-block:: bash
+   
+   mkdir -p ~/.local/share
+
+As a next step, configure MicroK8s to work properly with Juju by running:
+
+.. code-block:: bash
+
+   microk8s config | juju add-k8s my-k8s --client
 
 Now, run the following command to deploy a Juju controller to the Kubernetes we set up with MicroK8s:
 
@@ -116,9 +122,29 @@ Let's now use Juju to deploy Charmed MLflow. Run the following command:
 
 .. code-block:: bash
 
-   juju deploy mlflow --channel=2.1/stable --trust
+   juju deploy mlflow --channel=2.15/stable --trust
 
-This deploys the latest edge version of MLflow with `MinIO <https://min.io/product/multicloud-google-kubernetes-service?utm_term=&utm_campaign=MinIO+for+Google+Kubernetes+Engine+1.0&utm_source=adwords&utm_medium=ppc&hsa_acc=8976569894&hsa_cam=15844157882&hsa_grp=135899807670&hsa_ad=608661225284&hsa_src=g&hsa_tgt=dsa-1425788495958&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gclid=Cj0KCQjwyLGjBhDKARIsAFRNgW-yGkAWWWjl0Nm7d0xJDiDqrExgaBQ8R-VnJGsPpzoACKsGaYqliycaAlOiEALw_wcB>`_ as object storage and `MySQL <https://www.mysql.com/>`_ as metadata store.
+This deploys the stable version of MLflow with `MinIO <https://min.io/product/multicloud-google-kubernetes-service?utm_term=&utm_campaign=MinIO+for+Google+Kubernetes+Engine+1.0&utm_source=adwords&utm_medium=ppc&hsa_acc=8976569894&hsa_cam=15844157882&hsa_grp=135899807670&hsa_ad=608661225284&hsa_src=g&hsa_tgt=dsa-1425788495958&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gclid=Cj0KCQjwyLGjBhDKARIsAFRNgW-yGkAWWWjl0Nm7d0xJDiDqrExgaBQ8R-VnJGsPpzoACKsGaYqliycaAlOiEALw_wcB>`_ as the object storage and `MySQL <https://www.mysql.com/>`_ as the metadata store.
+
+Once the deployment is completed, you get a message such as:
+
+.. code-block:: bash
+   
+   Deploy of bundle completed.
+
+You can use the following command to check the status of all the model components:
+
+.. code-block:: bash
+
+   juju status
+
+The deployment is ready when the statuses of all the applications and the units in the bundle have an active status. You can also use this option to continuously watch the status of the model:
+
+.. code-block:: bash
+
+   juju status --watch 5s
+
+During the deployment process, some of the components statuses may momentarily change to blocked or error state. This is an expected behaviour, and these statuses should resolve by themselves as the bundle configures.
 
 Access MLflow
 -------------
@@ -140,6 +166,6 @@ To use MLflow you need to have credentials to the object storage. The aforementi
 
 .. code-block:: bash
 
-   juju run-action mlflow-server/0  get-minio-credentials --wait
+   juju run mlflow-server/0 get-minio-credentials
 
 This action will output ``secret-key`` and ``secret-access-key``.
