@@ -41,7 +41,7 @@ Let's deploy Charmed Kubeflow alongside MLflow. Run the following command to ini
 
 .. code-block:: bash
 
-   juju deploy kubeflow --trust  --channel=2.15/stable
+   juju deploy kubeflow --trust  --channel=1.9/stable
 
 Set credentials for your Kubeflow deployment:
 
@@ -91,15 +91,15 @@ The main thing we're interested in at this stage is the statuses of all the appl
 
 .. code-block:: bash
 
-   watch -c 'juju status --color | grep -E "blocked|error|maintenance|waiting|App|Unit"'
+   juju status --watch 5s
 
-This will periodically run a ``juju status`` command and filter to components which are in a state of ``blocked``, ``error``, ``maintenance`` or ``waiting`` i.e. not ``active``. When this output becomes empty except for the “App” and “Unit” headings, then we know all statuses are active and our system is ready.
+This will periodically run a ``juju status`` command.
 
 Don't be surprised if some of the components' statuses change to ``blocked`` or ``error`` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states, consult the troubleshooting steps below.
 
 .. note::
 
-   It can take up to half an hour for all charms to be downloaded and initialised.
+   It can take up to 15 minutes for all charms to be downloaded and initialised.
 
 Integrate MLflow with Kubeflow Dashboard
 ----------------------------------------
@@ -148,7 +148,7 @@ At this point, name the notebook as you prefer, and choose the desired image and
 For example, you can use the following details:
 
 1. ``Name``: ``test-notebook``.
-2. Expand the *Custom Notebook* section and for ``image``, select ``kubeflownotebookswg/jupyter-tensorflow-full:v1.7.0``.
+2. Expand the *Custom Notebook* section and for ``image``, select ``kubeflownotebookswg/jupyter-tensorflow-full:v1.9.0``.
 
 Now, to allow your notebook server access to MLflow, you need to enable some configuration options. 
 Scroll down to ``Data Volumes -> Advanced options`` and from the ``Configurations`` dropdown, choose the following options:
