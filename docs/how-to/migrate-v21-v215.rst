@@ -16,7 +16,7 @@ Backup data (Optional)
 
 Although the process of upgrading MLflow 2.11 to 2.15 should be seamless you might still want to backup your MinIO data with your experiments and models. You can find all the details in the :ref:`backup` how to guide.
 
-.. note:: We don't have to backup the MySQL data as we are stil using the same version `8.0/stable` in both versions of MLflow.
+.. note:: We don't have to backup the MySQL data as we are still using the same version `8.0/stable` in both versions of MLflow.
 
 Update MLflow bundle
 --------------------
