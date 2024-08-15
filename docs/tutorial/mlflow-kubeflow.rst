@@ -4,23 +4,22 @@ Getting Started with Charmed MLflow and Kubeflow
 +-----------+---------+
 | Component | Version |
 +-----------+---------+
-|   MLflow  |    2    |
+|   MLflow  |   2.15  |
 +-----------+---------+
-|  Kubeflow |   1.7   |
+|  Kubeflow |   1.9   |
 +-----------+---------+
 
-Welcome to this tutorial on getting started with Charmed MLflow alongside Charmed Kubeflow. If you would like to deploy Kubeflow by itself, see our tutorial on `Charmed Kubeflow <https://charmed-kubeflow.io/docs/get-started-with-charmed-kubeflow>`_.
+This tutorial gets you started with Charmed MLflow integrated with `Charmed Kubeflow (CKF) <https://charmed-kubeflow.io/docs>`_.
 
 Prerequisites
 -------------
 
-This tutorial assumes you will be deploying Kubeflow and MLflow on a public cloud Virtual Machine (VM) with the following specs:
+This guide assumes you are deploying Kubeflow and MLflow on a public cloud Virtual Machine (VM) with the following specifications:
 
 - Runs Ubuntu 20.04 (focal) or later.
-- Has at least 4 cores, 32GB RAM and 100GB of disk space available.
-- Is connected to the internet for downloading the required snaps and charms.
+- Has at least 4 cores, 32GB RAM and 200GB of disk space available.
 
-We'll also assume that you have a laptop that meets the following conditions:
+Also, your machine should meet the following requirements:
 
 - Has an SSH tunnel open to the VM with port forwarding and a SOCKS proxy. To see how to set this up, see `How to setup SSH VM Access <https://charmed-kubeflow.io/docs/how-tosetup-ssh-vm-access-with-port-forwarding>`_.
 - Runs Ubuntu 20.04 (focal) or later.
@@ -33,6 +32,8 @@ Deploy MLflow
 
 Follow the steps in this tutorial to deploy MLflow on your VM: :doc:`mlflow`. Before moving on with this tutorial, confirm that you can now access the MLflow UI on ``http://localhost:31380``.
 
+.. _kubeflow-section:
+
 Deploy Kubeflow bundle
 ----------------------
 
@@ -40,42 +41,38 @@ Let's deploy Charmed Kubeflow alongside MLflow. Run the following command to ini
 
 .. code-block:: bash
 
-   juju deploy kubeflow --trust  --channel=1.7/stable
+   juju deploy kubeflow --trust  --channel=1.9/stable
 
-Configure Dashboard Access
---------------------------
-
-Run the following commands:
+Set credentials for your Kubeflow deployment:
 
 .. code-block:: bash
 
-   juju config dex-auth public-url=http://10.64.140.43.nip.io
-   juju config oidc-gatekeeper public-url=http://10.64.140.43.nip.io
-
-This tells the authentication and authorisation components of the bundle that users who access the bundle will be doing so via the URL ``http://10.64.140.43.nip.io``. In turn, this allows those components to construct appropriate responses to incoming traffic.
-
-Now set the dashboard username and password:
-
-.. code-block:: bash
-
-   juju config dex-auth static-username=user123@email.com
-   juju config dex-auth static-password=user123
+   juju config dex-auth static-username=admin
+   juju config dex-auth static-password=admin
 
 Deploy Resource Dispatcher
 --------------------------
 
-Next, let's deploy the resource dispatcher. The resource dispatcher is an optional component which will distribute Kubernetes objects related to MLflow credentials to all user namespaces in Kubeflow. This means that all your Kubeflow users can access the MLflow model registry from their namespaces. To deploy the dispatcher, run the following command:
+Next, deploy the resource dispatcher. The resource dispatcher is an optional component which distributes Kubernetes objects related to MLflow credentials to all user namespaces in Kubeflow. This means that all your Kubeflow users can access the MLflow model registry from their namespaces. To deploy the dispatcher, run the following command:
 
 .. code-block:: bash
 
-   juju deploy resource-dispatcher --channel 1.0/stable --trust
+   juju deploy resource-dispatcher --channel 2.0/stable --trust
 
-This will deploy the latest edge version of the dispatcher. See `Resource Dispatcher on GitHub <https://github.com/canonical/resource-dispatcher>`_ for more info. Now we must relate the dispatcher to MLflow:
+This deploys the latest stable version of the dispatcher. See `Resource Dispatcher on GitHub <https://github.com/canonical/resource-dispatcher>`_ for more details. Now, relate the dispatcher to MLflow as follows:
 
 .. code-block:: bash
 
-   juju relate mlflow-server:secrets resource-dispatcher:secrets
-   juju relate mlflow-server:pod-defaults resource-dispatcher:pod-defaults
+   juju integrate mlflow-server:secrets resource-dispatcher:secrets
+   juju integrate mlflow-server:pod-defaults resource-dispatcher:pod-defaults
+
+To deploy sorted MLflow models using KServe, create the required relations as follows:
+
+.. code-block:: bash
+
+   juju integrate mlflow-minio:object-storage kserve-controller:object-storage
+   juju integrate kserve-controller:service-accounts resource-dispatcher:service-accounts
+   juju integrate kserve-controller:secrets resource-dispatcher:secrets
 
 Monitor The Deployment
 ----------------------
@@ -94,53 +91,67 @@ The main thing we're interested in at this stage is the statuses of all the appl
 
 .. code-block:: bash
 
-   watch -c 'juju status --color | grep -E "blocked|error|maintenance|waiting|App|Unit"'
+   juju status --watch 5s
 
-This will periodically run a ``juju status`` command and filter to components which are in a state of ``blocked``, ``error``, ``maintenance`` or ``waiting`` i.e. not ``active``. When this output becomes empty except for the “App” and “Unit” headings, then we know all statuses are active and our system is ready.
+This will periodically run a ``juju status`` command.
 
 Don't be surprised if some of the components' statuses change to ``blocked`` or ``error`` every now and then. This is expected behaviour, and these statuses should resolve by themselves as the bundle configures itself. However, if components remain stuck in the same error states, consult the troubleshooting steps below.
 
-.. dropdown:: Expand to troubleshoot: Waiting for gateway relation
+.. note::
 
-   An issue you might have is the ``tensorboard-controller`` component might be stuck with a status of ``waiting`` and a message “Waiting for gateway relation”. To fix this, run:
+   It can take up to 15 minutes for all charms to be downloaded and initialised.
 
+Integrate MLflow with Kubeflow Dashboard
+----------------------------------------
+
+You can integrate your charmed MLflow deployment with the Kubeflow dashboard by running following commands:
+
+.. code-block:: bash
+
+   juju integrate mlflow-server:ingress istio-pilot:ingress
+   juju integrate mlflow-server:dashboard-links kubeflow-dashboard:links
+
+Now you should see the MLflow tab in the left sidebar of your Kubeflow dashboard at:
+
+.. code-block:: bash
+   
+   http://10.64.140.43.nip.io/
+
+.. note:: 
+   
+   The address of your Kubeflow dashboard may differ depending on your setup. You can always check its URL by running: 
+   
    .. code-block:: bash
+      
+      microk8s kubectl -n kubeflow get svc istio-ingressgateway-workload -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 
-      juju run --unit istio-pilot/0 -- "export JUJU_DISPATCH_PATH=hooks/config-changed; ./dispatch"
-
-   This is a known issue, see `TensorBoard controller GitHub issue <https://github.com/canonical/bundle-kubeflow/issues/488>`_ for more info.
-
-Be patient, it can take up to an hour for all those charms to download and initialise. In the meantime, why not try our `Juju tutorial <https://juju.is/docs/juju/get-started-with-juju>`_?
 
 Integrate MLflow with Notebook
 ------------------------------
 
-In this section, we're going to create a notebook server in Kubeflow and connect it to MLflow. This will allow our notebook logic to talk to MLflow in the background. Let's get started.
+In this section, you are going to create a Kubeflow notebook server and connect it to MLflow. 
 
-First, to be able to use MLflow credentials in your Kubeflow notebook, visit the dashboard at ``http://10.64.140.43.nip.io/`` and fill the username and password which you configured in the previous section e.g. ``user123@email.com`` and ``user123``.
+First, to be able to use MLflow credentials in your Kubeflow notebook, go to the MLflow dashboard at ``http://10.64.140.43.nip.io/`` 
+and use the username and password you configured in the previous :ref:`kubeflow-section` section.
+For example, ``admin`` and ``admin``.
 
-Click on start setup to setup the Kubeflow user for the first time.
+Click on ``Start setup`` to setup the Kubeflow user for the first time.
 
 Select ``Finish`` to finish the process.
 
-Now a Kubernetes namespace was created for your user. To use MLflow with this user, label the namespace with the following command:
+Now a Kubernetes namespace is created for your user. 
 
-.. code-block:: bash
+Now go back to the dashboard. From the left panel, choose ``Ǹotebooks``. 
+Select ``+New Notebook``.
 
-   microk8s kubectl label ns user123 user.kubeflow.org/enabled="true"
+At this point, name the notebook as you prefer, and choose the desired image and resource limits. 
+For example, you can use the following details:
 
-You will get the following output: ``namespace/user123 labeled``.
+1. ``Name``: ``test-notebook``.
+2. Expand the *Custom Notebook* section and for ``image``, select ``kubeflownotebookswg/jupyter-tensorflow-full:v1.9.0``.
 
-For more info on the label command, check `Kubernetes labels <https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/>`_. For more info on Kubernetes namespaces for users, see the `upstream docs on Multi-user isolation <https://www.kubeflow.org/docs/components/multi-tenancy/getting-started/>`_.
-
-Now go back to the Dashboard. From the left panel, choose notebooks. Select +New Notebook.
-
-At this point, we can name the notebook as we want, and choose the desired image and resource limits. For now, let's just keep things simple:
-
-1. For ``Name``, enter ``test-notebook``.
-2. Expand the *Custom Notebook* section and for ``image``, select ``kubeflownotebookswg/jupyter-tensorflow-full:v1.7.0``.
-
-Now, in order to allow our notebook server access to MLflow, we need to enable some special configuration options. Scroll down to ``Data Volumes -> Advanced options`` and from the ``Configurations`` dropdown, choose the following options:
+Now, to allow your notebook server access to MLflow, you need to enable some configuration options. 
+Scroll down to ``Data Volumes -> Advanced options`` and from the ``Configurations`` dropdown, choose the following options:
 
 1. Allow access to Kubeflow pipelines.
 2. Allow access to MinIO.
@@ -171,15 +182,14 @@ To run MLflow examples on your newly created notebook server, click on the sourc
 
 From the menu, choose the ``Clone a Repository`` option.
 
-Now insert this repository address ``https://github.com/canonical/kubeflow-examples.git``.
+Now insert this repository address ``https://github.com/canonical/charmed-kubeflow-uats.git``.
 
-This will clone a whole ``kubeflow-examples`` repository onto the notebook server. The cloned repository will be a folder on the server, with the same name as the remote repository. Go inside the folder and after that, choose the ``mlflow-v2-examples`` sub-folder.
+This clones a whole ``charmed-kubeflow-uats`` repository onto the notebook server. The cloned repository is a folder on the server, with the same name as the remote repository. Go inside the folder and after that, choose the ``tests/notebooks`` sub-folder.
 
-There you will find two notebooks:
+There you find following folders:
 
-- ``notebook-example.ipynb``: demonstrates how to talk to MLflow from inside a notebook. The example uses a simple classifier which is stored in the MLflow registry.
-- ``pipeline-example.ipynb``: demonstrates how to talk to MLflow from a Kubeflow pipeline. The example creates and executes a three-step Kubeflow pipeline with the last step writing a model object to the MLflow registry.
+- ``mlflow-kserve``: demonstrates how to talk to MLflow and KServe from inside a notebook. This example trains a simple ML model, stores it in MLflow, deploys it with KServe from MLflow and runs inference.
+- ``mlflow-minio``: demonstrates how to talk to MinIO from inside a notebook. This example shows how you can use mounted MinIO secrets to talk to MinIO object store.
+- ``mlflow``: demonstrates how to talk to MLflow from inside a notebook. The example uses a simple regression model which is stored in the MLflow registry.
 
 Go ahead, try those notebooks out for yourself! You can run them cell by cell using the run button, or all at once using the double chevron `>>`.
-
-.. note:: If you get an error in the Notebooks related to ``sklearn``, try replacing ``sklearn`` with ``scikit-learn``. See `here <https://github.com/canonical/kubeflow-examples/issues/34>`_ for more details.

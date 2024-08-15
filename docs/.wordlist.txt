@@ -3,6 +3,7 @@ API
 APIs
 balancer
 CharmHub
+CKF
 CLI
 CNCF
 CVEs
