@@ -211,6 +211,7 @@ class TestCharm:
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
+            idle_period=60,
         )
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
