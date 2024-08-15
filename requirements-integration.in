@@ -6,4 +6,7 @@ minio
 mlflow
 pytest-operator
 requests
--r requirements.txt
+lightkube
+lightkube-models>=1.25.4.4
+# This is required due to the abstraction of cos integration
+charmed-kubeflow-chisme>=0.4.0
