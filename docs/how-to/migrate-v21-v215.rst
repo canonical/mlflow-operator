@@ -18,13 +18,37 @@ Although the process of upgrading MLflow 2.11 to 2.15 should be seamless you mig
 
 .. note:: We don't have to backup the MySQL data as we are still using the same version `8.0/stable` in both versions of MLflow.
 
-Update MLflow bundle
+Update MicroK8s
+---------------
+
+Make sure that your system is running MicroK8s version 1.29 or higher.
+
+If the version is lower please refer to this `MicroK8s Upgrade Documentation <https://microk8s.io/docs/upgrading>`_.
+
+Update Juju
+-----------
+
+Make sure that your system is running Juju version 3.4.
+
+If the version is lower please refer to this `Juju Upgrade Documentation <https://juju.is/docs/juju/upgrade-your-juju-deployment>`_.
+
+Upgrade MLflow bundle
 --------------------
 
-To update MLflow bundle components from 2.11 to 2.15 please run these commands.
+To update MLflow bundle components from 2.11 to 2.15 please run these commands:
 
 .. code-block:: bash
 
     juju refresh mlflow-minio --channel=ckf-1.9/stable --trust
-    juju refresh mlflow-mysql --channel=8.0/stable --trust 
     juju refresh mlflow-server --channel=2.15/stable --trust 
+
+Upgrade Resource dispatcher (Optional)
+--------------------------------------
+
+If you are running MLflow with Kubeflow you must upgrade your Resource dispatcher deployment. MLflow 2.15 works only with Resource dispatcher version 2.0/stable.
+
+To upgrade your Resource dispatcher charm run these commands:
+
+.. code-block:: bash
+
+    juju refresh resource-dispatcher --channel=2.0/stable --trust
