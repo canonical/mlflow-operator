@@ -40,7 +40,9 @@ Upgrade resource dispatcher
 --------------------------------------
 
 Only if you are running MLflow within Kubeflow, you must upgrade your `resource dispatcher <https://github.com/canonical/resource-dispatcher>`_ deployment. 
-MLflow 2.15 works only with resource dispatcher version 2.0/stable.
+
+.. note::
+    MLflow 2.15 works only with resource dispatcher version 2.0/stable.
 
 To upgrade your resource dispatcher, do the following:
 
