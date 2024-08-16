@@ -39,8 +39,8 @@ To Upgrade MLflow bundle components from 2.11 to 2.15 please run these commands:
 
 .. code-block:: bash
 
-    juju refresh mlflow-minio --channel=ckf-1.9/stable --trust
-    juju refresh mlflow-server --channel=2.15/stable --trust 
+    juju refresh mlflow-minio --channel=ckf-1.9/stable
+    juju refresh mlflow-server --channel=2.15/stable
 
 Upgrade Resource dispatcher (Optional)
 --------------------------------------
@@ -51,4 +51,4 @@ To upgrade your Resource dispatcher charm run these commands:
 
 .. code-block:: bash
 
-    juju refresh resource-dispatcher --channel=2.0/stable --trust
+    juju refresh resource-dispatcher --channel=2.0/stable
