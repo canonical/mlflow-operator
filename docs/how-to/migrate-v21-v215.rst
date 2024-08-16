@@ -1,53 +1,48 @@
-Upgrade Charmed MLflow Version 2.1 to Version 2.15
+Upgrade Charmed MLflow 2.1 to 2.15
 ==================================================
 
-This guide shows how to upgrade Charmed MLflow version 2.1 to version 2.15. This guide assumes you are running the old Charmed MLflow stack version 2.11.
+This guide describes how to upgrade Charmed MLflow version 2.1 to 2.15. 
 
 Prerequisites
 -------------
 
-This guide assumes the following:
+This guide assumes:
 
-#. You have deployed MLflow version 2.11.
-#. You have a CLI access to the machine where the Juju controller is deployed (all commands will be executed from there).
+* You have deployed MLflow version 2.11.
+* You have Command Line Interface (CLI) access to the machine where the Juju controller is deployed. All commands in this guide are executed from it.
 
-Backup data (Optional)
-----------------------
+.. tip:: 
+    Before proceeding, you might want to backup MinIO data including your experiments and models. See :ref:`backup` for more details.
 
-Although the process of upgrading MLflow 2.11 to 2.15 should be seamless you might still want to backup your MinIO data with your experiments and models. You can find all the details in the :ref:`backup` how to guide.
+Upgrade dependencies
+---------------------
 
-.. note:: We don't have to backup the MySQL data as we are still using the same version `8.0/stable` in both versions of MLflow.
+Charmed MLflow 2.15 requires:
 
-Upgrade MicroK8s
----------------
+1. `MicroK8s`_ version 1.29 or higher.
+2. Juju version 3.4.
 
-Make sure that your system is running MicroK8s version 1.29 or higher.
-
-If the version is lower please refer to this `MicroK8s Upgrade Documentation <https://microk8s.io/docs/upgrading>`_.
-
-Upgrade Juju
------------
-
-Make sure that your system is running Juju version 3.4.
-
-If the version is lower please refer to this `Juju Upgrade Documentation <https://juju.is/docs/juju/upgrade-your-juju-deployment>`_.
+If you do not meet these requirements, please upgrade these components. 
+See `MicroK8s Upgrade Documentation <https://microk8s.io/docs/upgrading>`_ 
+and `Juju Upgrade Documentation <https://juju.is/docs/juju/upgrade-your-juju-deployment>`_ respectively for more details.
 
 Upgrade MLflow bundle
---------------------
+----------------------
 
-To Upgrade MLflow bundle components from 2.11 to 2.15 please run these commands:
+To upgrade the MLflow bundle components from 2.11 to 2.15, run the following commands:
 
 .. code-block:: bash
 
     juju refresh mlflow-minio --channel=ckf-1.9/stable
     juju refresh mlflow-server --channel=2.15/stable
 
-Upgrade Resource dispatcher (Optional)
+Upgrade resource dispatcher
 --------------------------------------
 
-If you are running MLflow with Kubeflow you must upgrade your Resource dispatcher deployment. MLflow 2.15 works only with Resource dispatcher version 2.0/stable.
+Only if you are running MLflow within Kubeflow, you must upgrade your resource dispatcher deployment. 
+MLflow 2.15 works only with resource dispatcher version 2.0/stable.
 
-To upgrade your Resource dispatcher charm run these commands:
+To upgrade your resource dispatcher, do the following:
 
 .. code-block:: bash
 
