@@ -1,7 +1,7 @@
-Migrate Charmed MLflow Version 2.1 to Version 2.15
+Upgrade Charmed MLflow Version 2.1 to Version 2.15
 ==================================================
 
-This guide shows how to migrate Charmed MLflow version 2.1 to version 2.15. This guide assumes you are running the old Charmed MLflow stack version 2.11.
+This guide shows how to upgrade Charmed MLflow version 2.1 to version 2.15. This guide assumes you are running the old Charmed MLflow stack version 2.11.
 
 Prerequisites
 -------------
@@ -18,14 +18,14 @@ Although the process of upgrading MLflow 2.11 to 2.15 should be seamless you mig
 
 .. note:: We don't have to backup the MySQL data as we are still using the same version `8.0/stable` in both versions of MLflow.
 
-Update MicroK8s
+Upgrade MicroK8s
 ---------------
 
 Make sure that your system is running MicroK8s version 1.29 or higher.
 
 If the version is lower please refer to this `MicroK8s Upgrade Documentation <https://microk8s.io/docs/upgrading>`_.
 
-Update Juju
+Upgrade Juju
 -----------
 
 Make sure that your system is running Juju version 3.4.
@@ -35,7 +35,7 @@ If the version is lower please refer to this `Juju Upgrade Documentation <https:
 Upgrade MLflow bundle
 --------------------
 
-To update MLflow bundle components from 2.11 to 2.15 please run these commands:
+To Upgrade MLflow bundle components from 2.11 to 2.15 please run these commands:
 
 .. code-block:: bash
 
