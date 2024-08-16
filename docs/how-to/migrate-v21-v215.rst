@@ -19,8 +19,8 @@ Upgrade dependencies
 
 Charmed MLflow 2.15 requires:
 
-1. `MicroK8s`_ version 1.29 or higher.
-2. Juju version 3.4.
+1. `MicroK8s <https://microk8s.io/>`_ version 1.29 or higher.
+2. `Juju <https://juju.is/>`_ version 3.4.
 
 If you do not meet these requirements, please upgrade these components. 
 See `MicroK8s Upgrade Documentation <https://microk8s.io/docs/upgrading>`_ 
@@ -29,7 +29,7 @@ and `Juju Upgrade Documentation <https://juju.is/docs/juju/upgrade-your-juju-dep
 Upgrade MLflow bundle
 ----------------------
 
-To upgrade the MLflow bundle components from 2.11 to 2.15, run the following commands:
+To upgrade the MLflow bundle charms from 2.11 to 2.15, run the following commands:
 
 .. code-block:: bash
 
@@ -39,7 +39,7 @@ To upgrade the MLflow bundle components from 2.11 to 2.15, run the following com
 Upgrade resource dispatcher
 --------------------------------------
 
-Only if you are running MLflow within Kubeflow, you must upgrade your resource dispatcher deployment. 
+Only if you are running MLflow within Kubeflow, you must upgrade your `resource dispatcher <https://github.com/canonical/resource-dispatcher>`_ deployment. 
 MLflow 2.15 works only with resource dispatcher version 2.0/stable.
 
 To upgrade your resource dispatcher, do the following:
