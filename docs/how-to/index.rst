@@ -38,6 +38,7 @@ Upgrading
    :maxdepth: 1
 
    migrate-v1-v2
+   migrate-v21-v215
 
 Managing
 --------
