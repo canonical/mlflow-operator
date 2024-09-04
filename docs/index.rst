@@ -2,7 +2,7 @@
 
 .. _home:
 
-Charmed MLflow Documentation
+Charmed MLflow documentation
 ============================
 
 Charmed MLflow is a platform for managing the end-to-end machine learning lifecycle.
@@ -31,10 +31,6 @@ In this documentation
 .. grid:: 1 1 2 2
    :reverse:
 
-   .. grid-item:: :doc:`Reference <reference/index>`
-
-      **Technical information** - specifications, APIs, architecture of Charmed MLflow
-
    .. grid-item:: :doc:`Explanation <explanation/index>`
 
       **Discussion and clarification** of key Charmed MLflow concepts and features
@@ -56,8 +52,8 @@ Charmed MLflow is an open-source project that values its community. We warmly we
    :hidden:
    :maxdepth: 2
 
+   Home <self>
    tutorial/index
-   how-to/index
-   reference/index
+   How to <how-to/index>
    explanation/index
-   contributing
+   Contribute <contributing>

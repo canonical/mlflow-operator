@@ -1,4 +1,4 @@
-Get Started with Charmed MLflow
+Get started with Charmed MLflow
 ==================================
 
 +-----------+---------+
