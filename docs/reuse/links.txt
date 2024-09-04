@@ -11,7 +11,7 @@
 .. _rclone: https://snapcraft.io/rclone
 .. _configured: https://rclone.org/s3/#configuration
 .. _yq binary: https://snapcraft.io/yq
-.. _Create a backup: https://charmhub.io/mysql-k8s/docs/h-create-and-list-backups
+.. _Create a backup: https://charmhub.io/mysql-k8s/docs/h-create-backup
 
 .. _MicroK8s: https://microk8s.io/
 
