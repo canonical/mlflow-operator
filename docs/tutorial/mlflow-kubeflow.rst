@@ -1,5 +1,5 @@
-Getting Started with Charmed MLflow and Kubeflow
-================================================
+Get started with Charmed MLflow and Kubeflow
+============================================
 
 +-----------+---------+
 | Component | Version |
