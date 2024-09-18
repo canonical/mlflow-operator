@@ -11,11 +11,11 @@ output "provides" {
 
 output "requires" {
   value = {
-    relational_db = "relational-db"
-    object_storage = "object-storage"
-    dashboard_links = "dashboard-links"
-    ingress = "ingress"
-    secrets = "secrets"
-    pod_defaults = "pod-defaults"
+    dashboard_links = "dashboard-links",
+    ingress = "ingress",
+    object_storage = "object-storage",
+    pod_defaults = "pod-defaults",
+    relational_db = "relational-db",
+    secrets = "secrets",
   }
 }
