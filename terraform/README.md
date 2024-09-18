@@ -1,4 +1,4 @@
-# Terraform module for training-operator
+# Terraform module for mlflow-server
 
 This is a Terraform module facilitating the deployment of the mlflow-server charm, using the [Terraform juju provider](https://github.com/juju/terraform-provider-juju/). For more information, refer to the provider [documentation](https://registry.terraform.io/providers/juju/juju/latest/docs). 
 
