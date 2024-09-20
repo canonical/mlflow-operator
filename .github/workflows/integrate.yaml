@@ -50,6 +50,18 @@ jobs:
     - name: Run unit tests
       run: tox -e unit
 
+  terraform-checks:
+    name: Terraform
+    uses: canonical/charmed-kubeflow-workflows/.github/workflows/terraform-checks.yaml@main
+    with:
+      charm-path: .
+      channel: latest/edge
+      # Skipping the Terraform apply check as the mlflow-server goes to Waiting status
+      # instead of the expected Blocked or Active. This is currently a limitation of the
+      # Terraform re-usable workflows in canonical/charmed-kubeflow-workflows
+      # See https://github.com/canonical/charmed-kubeflow-workflows/issues/65
+      apply: false
+
   integration:
     name: Integration tests (microk8s)
     runs-on: ubuntu-20.04
