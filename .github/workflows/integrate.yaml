@@ -55,7 +55,6 @@ jobs:
     uses: canonical/charmed-kubeflow-workflows/.github/workflows/terraform-checks.yaml@main
     with:
       charm-path: .
-      channel: latest/edge
       # Skipping the Terraform apply check as the mlflow-server goes to Waiting status
       # instead of the expected Blocked or Active. This is currently a limitation of the
       # Terraform re-usable workflows in canonical/charmed-kubeflow-workflows
