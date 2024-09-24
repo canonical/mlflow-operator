@@ -2,9 +2,6 @@
 
 This is a Terraform module facilitating the deployment of the mlflow-server charm, using the [Terraform juju provider](https://github.com/juju/terraform-provider-juju/). For more information, refer to the provider [documentation](https://registry.terraform.io/providers/juju/juju/latest/docs). 
 
-## Compatibility
-This terraform module is compatible with the mlflow-server charm 2.15/stable.
-
 ## Requirements
 This module requires a `juju` model to be available. Refer to the [usage section](#usage) below for more details.
 
