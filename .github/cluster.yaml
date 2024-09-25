@@ -1,7 +1,7 @@
 apiVersion: eksctl.io/v1alpha5
 availabilityZones:
-- {{ region }}a
-- {{ region }}b
+- eu-central-1a
+- eu-central-1b
 cloudWatch:
   clusterLogging: {}
 iam:
@@ -10,8 +10,6 @@ iam:
 addons:
 - name: aws-ebs-csi-driver
   serviceAccountRoleARN: "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-  wellKnownPolicies:
-   ebsCSIController: true
 kind: ClusterConfig
 kubernetesNetworkConfig:
   ipFamily: IPv4
@@ -35,6 +33,6 @@ managedNodeGroups:
     alpha.eksctl.io/nodegroup-type: managed
   volumeSize: 100
 metadata:
-  name: mlflow-bundle-test
-  region: {{ region }}
-  version: "1.24"
+  name: kubeflow-test
+  region: eu-central-1
+  version: "1.26"
