@@ -29,7 +29,7 @@ class TestCharm:
         subprocess.run(["juju", "deploy", bundle_path, "--trust"], check=True)
 
         # Step 3: Deploy resource-dispatcher with its channel
-        subprocess.run(["juju", "deploy", "resource-dispatcher", "--channel", RESOURCE_DISPATCHER_CHANNEL, "--trust"], check=True)
+        subprocess.run(["juju", "deploy", "resource-dispatcher", f"--channel={RESOURCE_DISPATCHER_CHANNEL}", "--trust"], check=True)
 
         # Step 4: Integrate mlflow-server with resource-dispatcher (secrets and pod-defaults)
         subprocess.run(["juju", "integrate", "mlflow-server:secrets", "resource-dispatcher:secrets"], check=True)
