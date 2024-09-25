@@ -33,6 +33,6 @@ managedNodeGroups:
     alpha.eksctl.io/nodegroup-type: managed
   volumeSize: 100
 metadata:
-  name: kubeflow-mlflow-test
+  name: kubeflow-test
   region: eu-central-1
   version: "1.26"

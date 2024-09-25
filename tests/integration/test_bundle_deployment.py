@@ -3,6 +3,7 @@ import os
 import aiohttp
 import lightkube
 import pytest
+import time
 from pytest_operator.plugin import OpsTest
 from lightkube.resources.core_v1 import Service
 
@@ -46,6 +47,10 @@ class TestCharm:
         subprocess.run(["juju", "integrate", "mlflow-server:ingress", "istio-pilot:ingress"], check=True)
         subprocess.run(["juju", "integrate", "mlflow-server:dashboard-links", "kubeflow-dashboard:links"], check=True)
 
+        time.sleep(60)
+
+    @pytest.mark.abort_on_fail
+    async def test_wait_for_bundle_deployment(self, ops_test: OpsTest, lightkube_client, bundle_path):
         # Step 8: Wait for the whole bundle to become active and idle
         await ops_test.model.wait_for_idle(
             status="active",
