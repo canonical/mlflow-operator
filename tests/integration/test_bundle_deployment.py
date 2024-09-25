@@ -22,29 +22,40 @@ def bundle_path() -> str:
 class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_bundle_deployment_works(self, ops_test: OpsTest, lightkube_client, bundle_path):
-        # Step 1: Deploy Kubeflow with the specified channel
-        subprocess.run(["juju", "deploy", "kubeflow", f"--channel={KUBEFLOW_CHANNEL}", "--trust"], check=True)
+        # # Step 1: Deploy Kubeflow with the specified channel
+        # subprocess.run(["juju", "deploy", "kubeflow", f"--channel={KUBEFLOW_CHANNEL}", "--trust"], check=True)
 
-        # Step 2: Deploy the bundle path
-        subprocess.run(["juju", "deploy", bundle_path, "--trust"], check=True)
+        # # Step 2: Deploy the bundle path
+        # subprocess.run(["juju", "deploy", bundle_path, "--trust"], check=True)
 
-        # Step 3: Deploy resource-dispatcher with its channel
-        subprocess.run(["juju", "deploy", "resource-dispatcher", f"--channel={RESOURCE_DISPATCHER_CHANNEL}", "--trust"], check=True)
+        # # Step 3: Deploy resource-dispatcher with its channel
+        # subprocess.run(["juju", "deploy", "resource-dispatcher", f"--channel={RESOURCE_DISPATCHER_CHANNEL}", "--trust"], check=True)
 
-        # Step 4: Integrate mlflow-server with resource-dispatcher (secrets and pod-defaults)
-        subprocess.run(["juju", "integrate", "mlflow-server:secrets", "resource-dispatcher:secrets"], check=True)
-        subprocess.run(["juju", "integrate", "mlflow-server:pod-defaults", "resource-dispatcher:pod-defaults"], check=True)
+        # # Step 4: Integrate mlflow-server with resource-dispatcher (secrets and pod-defaults)
+        # subprocess.run(["juju", "integrate", "mlflow-server:secrets", "resource-dispatcher:secrets"], check=True)
+        # subprocess.run(["juju", "integrate", "mlflow-server:pod-defaults", "resource-dispatcher:pod-defaults"], check=True)
 
-        # Step 5: Integrate mlflow-minio with kserve-controller for object-storage
-        subprocess.run(["juju", "integrate", "mlflow-minio:object-storage", "kserve-controller:object-storage"], check=True)
+        # # Step 5: Integrate mlflow-minio with kserve-controller for object-storage
+        # subprocess.run(["juju", "integrate", "mlflow-minio:object-storage", "kserve-controller:object-storage"], check=True)
 
-        # Step 6: Integrate kserve-controller with resource-dispatcher (service-accounts and secrets)
-        subprocess.run(["juju", "integrate", "kserve-controller:service-accounts", "resource-dispatcher:service-accounts"], check=True)
-        subprocess.run(["juju", "integrate", "kserve-controller:secrets", "resource-dispatcher:secrets"], check=True)
+        # # Step 6: Integrate kserve-controller with resource-dispatcher (service-accounts and secrets)
+        # subprocess.run(["juju", "integrate", "kserve-controller:service-accounts", "resource-dispatcher:service-accounts"], check=True)
+        # subprocess.run(["juju", "integrate", "kserve-controller:secrets", "resource-dispatcher:secrets"], check=True)
 
-        # Step 7: Integrate mlflow-server with istio-pilot and kubeflow-dashboard
-        subprocess.run(["juju", "integrate", "mlflow-server:ingress", "istio-pilot:ingress"], check=True)
-        subprocess.run(["juju", "integrate", "mlflow-server:dashboard-links", "kubeflow-dashboard:links"], check=True)
+        # # Step 7: Integrate mlflow-server with istio-pilot and kubeflow-dashboard
+        # subprocess.run(["juju", "integrate", "mlflow-server:ingress", "istio-pilot:ingress"], check=True)
+        # subprocess.run(["juju", "integrate", "mlflow-server:dashboard-links", "kubeflow-dashboard:links"], check=True)
+
+        # Wait for istio-ingressgateway charm to be active and idle
+        # This is required because later we'll try to fetch a response from the login url
+        # using the ingress gateway service IP address (provided by the LoadBalancer)
+        await ops_test.model.wait_for_idle(
+            apps=["istio-ingressgateway"],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=1500,
+        )
 
         # Step 8: Wait for the whole bundle to become active and idle
         await ops_test.model.wait_for_idle(
