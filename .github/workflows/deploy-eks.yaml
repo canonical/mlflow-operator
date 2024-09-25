@@ -107,7 +107,7 @@ jobs:
         run: |
           VERSION=${{ matrix.bundle_version }}
           VERSION_WITHOUT_DOT="${VERSION//.}"
-          yq e ".metadata.name |= \"kubeflow-test-$VERSION_WITHOUT_DOT\"" -i .github/cluster.yaml
+          yq e ".metadata.name |= \"kubeflow-mlflow-test-$VERSION_WITHOUT_DOT\"" -i .github/cluster.yaml
           yq e ".metadata.version |= \"${{ env.K8S_VERSION }}\"" -i .github/cluster.yaml
           eksctl create cluster -f .github/cluster.yaml
           kubectl get nodes
