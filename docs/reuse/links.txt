@@ -4,11 +4,13 @@
 .. _Example product documentation: https://canonical-example-product-documentation.readthedocs-hosted.com/
 
 .. _Code of conduct: https://ubuntu.com/community/ethos/code-of-conduct
-.. _Join our online chat: https://chat.charmhub.io/charmhub/channels/charmed-mlops
+.. _Talk to us: https://chat.charmhub.io/charmhub/channels/charmed-mlops
 .. _Contribute: https://github.com/canonical/mlflow-operator/blob/main/CONTRIBUTING.md
-.. _Upstream Project: https://mlflow.org/
-.. _Discourse Forum: https://discourse.charmhub.io/tag/mlflow
+.. _Upstream project: https://mlflow.org/
+.. _Discourse forum: https://discourse.charmhub.io/tag/mlflow
 .. _rclone: https://snapcraft.io/rclone
 .. _configured: https://rclone.org/s3/#configuration
 .. _yq binary: https://snapcraft.io/yq
-.. _Create a backup: https://charmhub.io/mysql-k8s/docs/h-create-and-list-backups
+.. _Create a backup: https://charmhub.io/mysql-k8s/docs/h-create-backup
+
+.. _MicroK8s: https://microk8s.io/
