@@ -6,7 +6,7 @@ import json
 def parse_versions(input_versions):
     # Default version string if the input is empty
     if not input_versions:
-        input_versions = "1.8,1.9,latest"
+        input_versions = "2.15,latest"
     else:
         # Remove whitespace between entries
         input_versions = input_versions.replace(" ", "")
