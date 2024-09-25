@@ -46,17 +46,6 @@ class TestCharm:
         subprocess.run(["juju", "integrate", "mlflow-server:ingress", "istio-pilot:ingress"], check=True)
         subprocess.run(["juju", "integrate", "mlflow-server:dashboard-links", "kubeflow-dashboard:links"], check=True)
 
-        # Wait for istio-ingressgateway charm to be active and idle
-        # This is required because later we'll try to fetch a response from the login url
-        # using the ingress gateway service IP address (provided by the LoadBalancer)
-        await ops_test.model.wait_for_idle(
-            apps=["istio-ingressgateway"],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=1500,
-        )
-
         # Step 8: Wait for the whole bundle to become active and idle
         await ops_test.model.wait_for_idle(
             status="active",
