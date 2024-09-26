@@ -20,30 +20,29 @@ def lightkube_client() -> lightkube.Client:
 def bundle_path() -> str:
     return os.environ.get("BUNDLE_PATH").replace("\"", "")
 
-def run_juju_commands(bundle_path: str, kubeflow_channel: str, resource_dispatcher_channel: str):
-    """Helper function to group and execute juju commands."""
-    commands = [
-        ["juju", "deploy", "kubeflow", f"--channel={kubeflow_channel}", "--trust"],
-        ["juju", "deploy", bundle_path, "--trust"],
-        ["juju", "deploy", "resource-dispatcher", f"--channel={resource_dispatcher_channel}", "--trust"],
-        ["juju", "integrate", "mlflow-server:secrets", "resource-dispatcher:secrets"],
-        ["juju", "integrate", "mlflow-server:pod-defaults", "resource-dispatcher:pod-defaults"],
-        ["juju", "integrate", "mlflow-minio:object-storage", "kserve-controller:object-storage"],
-        ["juju", "integrate", "kserve-controller:service-accounts", "resource-dispatcher:service-accounts"],
-        ["juju", "integrate", "kserve-controller:secrets", "resource-dispatcher:secrets"],
-        ["juju", "integrate", "mlflow-server:ingress", "istio-pilot:ingress"],
-        ["juju", "integrate", "mlflow-server:dashboard-links", "kubeflow-dashboard:links"]
-    ]
+def run_juju_commands_in_one(bundle_path: str, kubeflow_channel: str, resource_dispatcher_channel: str):
+    """Helper function to run all juju commands in one subprocess."""
+    commands = f"""
+    juju deploy kubeflow --channel={kubeflow_channel} --trust &&
+    juju deploy {bundle_path} --trust &&
+    juju deploy resource-dispatcher --channel={resource_dispatcher_channel} --trust &&
+    juju integrate mlflow-server:secrets resource-dispatcher:secrets &&
+    juju integrate mlflow-server:pod-defaults resource-dispatcher:pod-defaults &&
+    juju integrate mlflow-minio:object-storage kserve-controller:object-storage &&
+    juju integrate kserve-controller:service-accounts resource-dispatcher:service-accounts &&
+    juju integrate kserve-controller:secrets resource-dispatcher:secrets &&
+    juju integrate mlflow-server:ingress istio-pilot:ingress &&
+    juju integrate mlflow-server:dashboard-links kubeflow-dashboard:links
+    """
 
-    # Execute all commands
-    for command in commands:
-        subprocess.run(command, check=True)
+    # Execute all commands in one subprocess
+    subprocess.run(commands, shell=True, check=True)
 
 class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_bundle_deployment_works(self, ops_test: OpsTest, lightkube_client, bundle_path):
-        # Grouped juju commands
-        run_juju_commands(bundle_path, KUBEFLOW_CHANNEL, RESOURCE_DISPATCHER_CHANNEL)
+        # Run all Juju commands in a single subprocess call
+        run_juju_commands_in_one(bundle_path, KUBEFLOW_CHANNEL, RESOURCE_DISPATCHER_CHANNEL)
 
         # Wait for the model to become active and idle
         await ops_test.model.wait_for_idle(
