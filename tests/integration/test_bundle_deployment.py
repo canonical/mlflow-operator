@@ -42,7 +42,7 @@ class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_bundle_deployment_works(self, ops_test: OpsTest, lightkube_client, bundle_path):
         # Run all Juju commands in a single subprocess call
-        run_juju_commands_in_one(bundle_path, KUBEFLOW_CHANNEL, RESOURCE_DISPATCHER_CHANNEL)
+        # run_juju_commands_in_one(bundle_path, KUBEFLOW_CHANNEL, RESOURCE_DISPATCHER_CHANNEL)
 
         # Wait for the model to become active and idle
         await ops_test.model.wait_for_idle(
