@@ -1,22 +1,30 @@
 import os
+
 import aiohttp
 import lightkube
 import pytest
-from pytest_operator.plugin import OpsTest
 from lightkube.resources.core_v1 import Service
+from pytest_operator.plugin import OpsTest
 
 # Environment variables
-KUBEFLOW_CHANNEL = os.environ.get("KUBEFLOW_CHANNEL", "1.9/stable")  # Default to '1.9/stable' if not set
-RESOURCE_DISPATCHER_CHANNEL = os.environ.get("RESOURCE_DISPATCHER_CHANNEL", "2.0/stable")  # Default to '2.0/stable' if not set
+KUBEFLOW_CHANNEL = os.environ.get(
+    "KUBEFLOW_CHANNEL", "1.9/stable"
+)  # Default to '1.9/stable' if not set
+RESOURCE_DISPATCHER_CHANNEL = os.environ.get(
+    "RESOURCE_DISPATCHER_CHANNEL", "2.0/stable"
+)  # Default to '2.0/stable' if not set
+
 
 @pytest.fixture()
 def lightkube_client() -> lightkube.Client:
     client = lightkube.Client(field_manager="kubeflow")
     return client
 
+
 @pytest.fixture
 def bundle_path() -> str:
-    return os.environ.get("BUNDLE_PATH").replace("\"", "")
+    return os.environ.get("BUNDLE_PATH").replace('"', "")
+
 
 async def deploy_bundle(ops_test: OpsTest, bundle_path, trust: bool) -> None:
     """Deploy a bundle from file using juju CLI."""
@@ -26,6 +34,7 @@ async def deploy_bundle(ops_test: OpsTest, bundle_path, trust: bool) -> None:
     retcode, stdout, stderr = await ops_test.run(*run_args)
     print(stdout)
     assert retcode == 0, f"Deploy failed: {(stderr or stdout).strip()}"
+
 
 class TestCharm:
     @pytest.mark.abort_on_fail
@@ -49,9 +58,15 @@ class TestCharm:
 
         # Relate services as per Juju integrations
         await ops_test.model.relate("mlflow-server:secrets", "resource-dispatcher:secrets")
-        await ops_test.model.relate("mlflow-server:pod-defaults", "resource-dispatcher:pod-defaults")
-        await ops_test.model.relate("mlflow-minio:object-storage", "kserve-controller:object-storage")
-        await ops_test.model.relate("kserve-controller:service-accounts", "resource-dispatcher:service-accounts")
+        await ops_test.model.relate(
+            "mlflow-server:pod-defaults", "resource-dispatcher:pod-defaults"
+        )
+        await ops_test.model.relate(
+            "mlflow-minio:object-storage", "kserve-controller:object-storage"
+        )
+        await ops_test.model.relate(
+            "kserve-controller:service-accounts", "resource-dispatcher:service-accounts"
+        )
         await ops_test.model.relate("kserve-controller:secrets", "resource-dispatcher:secrets")
         await ops_test.model.relate("mlflow-server:ingress", "istio-pilot:ingress")
         await ops_test.model.relate("mlflow-server:dashboard-links", "kubeflow-dashboard:links")
@@ -72,14 +87,19 @@ class TestCharm:
         assert "Email Address" in result_text
         assert "Password" in result_text
 
+
 def get_public_url(lightkube_client: lightkube.Client, bundle_name: str):
     """Extracts public URL from service istio-ingressgateway-workload."""
     ingressgateway_svc = lightkube_client.get(
         Service, "istio-ingressgateway-workload", namespace=bundle_name
     )
-    address = ingressgateway_svc.status.loadBalancer.ingress[0].hostname or ingressgateway_svc.status.loadBalancer.ingress[0].ip
+    address = (
+        ingressgateway_svc.status.loadBalancer.ingress[0].hostname
+        or ingressgateway_svc.status.loadBalancer.ingress[0].ip
+    )
     public_url = f"http://{address}"
     return public_url
+
 
 async def fetch_response(url, headers=None):
     """Fetch provided URL and return (status, text)."""
