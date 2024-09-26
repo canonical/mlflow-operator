@@ -128,11 +128,6 @@ jobs:
           cd ~/charmed-kubeflow-uats
           git checkout ${{ env.UATS_BRANCH }}
           tox -e mlflow-remote
-      
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
-        timeout-minutes: 300
-        if: failure()
 
       # On failure, capture debugging resources
       - name: Save debug artifacts
