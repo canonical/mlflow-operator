@@ -1,4 +1,4 @@
-name: Create EKS cluster, deploy CKF and MLflow and run MLflow bundle tests
+name: Create EKS cluster, deploy CKF and MLflow and run MLflow bundle UATs
 on:
   workflow_dispatch: # This event allows manual triggering from the Github UI
     inputs:

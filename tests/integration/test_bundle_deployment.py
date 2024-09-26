@@ -1,9 +1,7 @@
-import subprocess
 import os
 import aiohttp
 import lightkube
 import pytest
-import time
 from pytest_operator.plugin import OpsTest
 from lightkube.resources.core_v1 import Service
 
