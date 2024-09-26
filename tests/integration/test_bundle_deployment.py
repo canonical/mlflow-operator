@@ -20,29 +20,43 @@ def lightkube_client() -> lightkube.Client:
 def bundle_path() -> str:
     return os.environ.get("BUNDLE_PATH").replace("\"", "")
 
-def run_juju_commands_in_one(bundle_path: str, kubeflow_channel: str, resource_dispatcher_channel: str):
-    """Helper function to run all juju commands in one subprocess."""
-    commands = f"""
-    juju deploy kubeflow --channel={kubeflow_channel} --trust &&
-    juju deploy {bundle_path} --trust &&
-    juju deploy resource-dispatcher --channel={resource_dispatcher_channel} --trust &&
-    juju integrate mlflow-server:secrets resource-dispatcher:secrets &&
-    juju integrate mlflow-server:pod-defaults resource-dispatcher:pod-defaults &&
-    juju integrate mlflow-minio:object-storage kserve-controller:object-storage &&
-    juju integrate kserve-controller:service-accounts resource-dispatcher:service-accounts &&
-    juju integrate kserve-controller:secrets resource-dispatcher:secrets &&
-    juju integrate mlflow-server:ingress istio-pilot:ingress &&
-    juju integrate mlflow-server:dashboard-links kubeflow-dashboard:links
-    """
-
-    # Execute all commands in one subprocess
-    subprocess.run(commands, shell=True, check=True)
+async def deploy_bundle(ops_test: OpsTest, bundle_path, trust: bool) -> None:
+    """Deploy a bundle from file using juju CLI."""
+    run_args = ["juju", "deploy", "-m", ops_test.model_full_name, f"{bundle_path}"]
+    if trust:
+        run_args.append("--trust")
+    retcode, stdout, stderr = await ops_test.run(*run_args)
+    print(stdout)
+    assert retcode == 0, f"Deploy failed: {(stderr or stdout).strip()}"
 
 class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_bundle_deployment_works(self, ops_test: OpsTest, lightkube_client, bundle_path):
-        # Run all Juju commands in a single subprocess call
-        # run_juju_commands_in_one(bundle_path, KUBEFLOW_CHANNEL, RESOURCE_DISPATCHER_CHANNEL)
+        # Deploy Kubeflow with channel and trust
+        await ops_test.model.deploy(
+            entity_url="kubeflow",
+            channel=KUBEFLOW_CHANNEL,
+            trust=True,
+        )
+
+        # Deploy the bundle path
+        await deploy_bundle(ops_test, bundle_path, trust=True)
+
+        # Deploy resource-dispatcher with its channel and trust
+        await ops_test.model.deploy(
+            entity_url="resource-dispatcher",
+            channel=RESOURCE_DISPATCHER_CHANNEL,
+            trust=True,
+        )
+
+        # Relate services as per Juju integrations
+        await ops_test.model.relate("mlflow-server:secrets", "resource-dispatcher:secrets")
+        await ops_test.model.relate("mlflow-server:pod-defaults", "resource-dispatcher:pod-defaults")
+        await ops_test.model.relate("mlflow-minio:object-storage", "kserve-controller:object-storage")
+        await ops_test.model.relate("kserve-controller:service-accounts", "resource-dispatcher:service-accounts")
+        await ops_test.model.relate("kserve-controller:secrets", "resource-dispatcher:secrets")
+        await ops_test.model.relate("mlflow-server:ingress", "istio-pilot:ingress")
+        await ops_test.model.relate("mlflow-server:dashboard-links", "kubeflow-dashboard:links")
 
         # Wait for the model to become active and idle
         await ops_test.model.wait_for_idle(
@@ -61,9 +75,7 @@ class TestCharm:
         assert "Password" in result_text
 
 def get_public_url(lightkube_client: lightkube.Client, bundle_name: str):
-    """Extracts public url from service istio-ingressgateway-workload for EKS deployment.
-    As a next step, this could be generalized in order for the above test to run in MicroK8s as well.
-    """
+    """Extracts public URL from service istio-ingressgateway-workload."""
     ingressgateway_svc = lightkube_client.get(
         Service, "istio-ingressgateway-workload", namespace=bundle_name
     )
@@ -72,7 +84,7 @@ def get_public_url(lightkube_client: lightkube.Client, bundle_name: str):
     return public_url
 
 async def fetch_response(url, headers=None):
-    """Fetch provided URL and return pair - status and text (int, string)."""
+    """Fetch provided URL and return (status, text)."""
     result_status = 0
     result_text = ""
     async with aiohttp.ClientSession() as session:

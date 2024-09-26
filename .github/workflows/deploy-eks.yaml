@@ -119,18 +119,7 @@ jobs:
           juju add-model kubeflow
       
       - name: Test bundle deployment
-        run: |
-          juju deploy kubeflow --channel=$KUBEFLOW_CHANNEL --trust &&
-          juju deploy ./releases/2.15/stable/mlflow/bundle.yaml --trust &&
-          juju deploy resource-dispatcher --channel=$RESOURCE_DISPATCHER_CHANNEL --trust &&
-          juju integrate mlflow-server:secrets resource-dispatcher:secrets &&
-          juju integrate mlflow-server:pod-defaults resource-dispatcher:pod-defaults &&
-          juju integrate mlflow-minio:object-storage kserve-controller:object-storage &&
-          juju integrate kserve-controller:service-accounts resource-dispatcher:service-accounts &&
-          juju integrate kserve-controller:secrets resource-dispatcher:secrets &&
-          juju integrate mlflow-server:ingress istio-pilot:ingress &&
-          juju integrate mlflow-server:dashboard-links kubeflow-dashboard:links
-          
+        run: |          
           tox -vve test_bundle_deployment-${{ matrix.bundle_version }} -- --model kubeflow --keep-models -vv -s
 
       - name: Run Kubeflow UATs
@@ -139,6 +128,11 @@ jobs:
           cd ~/charmed-kubeflow-uats
           git checkout ${{ env.UATS_BRANCH }}
           tox -e mlflow-remote
+      
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        timeout-minutes: 300
+        if: failure()
 
       # On failure, capture debugging resources
       - name: Save debug artifacts
