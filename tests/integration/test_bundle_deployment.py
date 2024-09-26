@@ -20,38 +20,32 @@ def lightkube_client() -> lightkube.Client:
 def bundle_path() -> str:
     return os.environ.get("BUNDLE_PATH").replace("\"", "")
 
+def run_juju_commands(bundle_path: str, kubeflow_channel: str, resource_dispatcher_channel: str):
+    """Helper function to group and execute juju commands."""
+    commands = [
+        ["juju", "deploy", "kubeflow", f"--channel={kubeflow_channel}", "--trust"],
+        ["juju", "deploy", bundle_path, "--trust"],
+        ["juju", "deploy", "resource-dispatcher", f"--channel={resource_dispatcher_channel}", "--trust"],
+        ["juju", "integrate", "mlflow-server:secrets", "resource-dispatcher:secrets"],
+        ["juju", "integrate", "mlflow-server:pod-defaults", "resource-dispatcher:pod-defaults"],
+        ["juju", "integrate", "mlflow-minio:object-storage", "kserve-controller:object-storage"],
+        ["juju", "integrate", "kserve-controller:service-accounts", "resource-dispatcher:service-accounts"],
+        ["juju", "integrate", "kserve-controller:secrets", "resource-dispatcher:secrets"],
+        ["juju", "integrate", "mlflow-server:ingress", "istio-pilot:ingress"],
+        ["juju", "integrate", "mlflow-server:dashboard-links", "kubeflow-dashboard:links"]
+    ]
+
+    # Execute all commands
+    for command in commands:
+        subprocess.run(command, check=True)
+
 class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_bundle_deployment_works(self, ops_test: OpsTest, lightkube_client, bundle_path):
-        # Step 1: Deploy Kubeflow with the specified channel
-        subprocess.run(["juju", "deploy", "kubeflow", f"--channel={KUBEFLOW_CHANNEL}", "--trust"], check=True)
+        # Grouped juju commands
+        run_juju_commands(bundle_path, KUBEFLOW_CHANNEL, RESOURCE_DISPATCHER_CHANNEL)
 
-        # Step 2: Deploy the bundle path
-        subprocess.run(["juju", "deploy", bundle_path, "--trust"], check=True)
-
-        # Step 3: Deploy resource-dispatcher with its channel
-        subprocess.run(["juju", "deploy", "resource-dispatcher", f"--channel={RESOURCE_DISPATCHER_CHANNEL}", "--trust"], check=True)
-
-        # Step 4: Integrate mlflow-server with resource-dispatcher (secrets and pod-defaults)
-        subprocess.run(["juju", "integrate", "mlflow-server:secrets", "resource-dispatcher:secrets"], check=True)
-        subprocess.run(["juju", "integrate", "mlflow-server:pod-defaults", "resource-dispatcher:pod-defaults"], check=True)
-
-        # Step 5: Integrate mlflow-minio with kserve-controller for object-storage
-        subprocess.run(["juju", "integrate", "mlflow-minio:object-storage", "kserve-controller:object-storage"], check=True)
-
-        # Step 6: Integrate kserve-controller with resource-dispatcher (service-accounts and secrets)
-        subprocess.run(["juju", "integrate", "kserve-controller:service-accounts", "resource-dispatcher:service-accounts"], check=True)
-        subprocess.run(["juju", "integrate", "kserve-controller:secrets", "resource-dispatcher:secrets"], check=True)
-
-        # Step 7: Integrate mlflow-server with istio-pilot and kubeflow-dashboard
-        subprocess.run(["juju", "integrate", "mlflow-server:ingress", "istio-pilot:ingress"], check=True)
-        subprocess.run(["juju", "integrate", "mlflow-server:dashboard-links", "kubeflow-dashboard:links"], check=True)
-
-        time.sleep(60)
-
-    @pytest.mark.abort_on_fail
-    async def test_wait_for_bundle_deployment(self, ops_test: OpsTest, lightkube_client, bundle_path):
-        # Step 8: Wait for the whole bundle to become active and idle
+        # Wait for the model to become active and idle
         await ops_test.model.wait_for_idle(
             status="active",
             raise_on_blocked=False,
@@ -59,7 +53,7 @@ class TestCharm:
             timeout=1500,
         )
 
-        # Step 9: Verify deployment by checking the public URL
+        # Verify deployment by checking the public URL
         url = get_public_url(lightkube_client, "kubeflow")
         result_status, result_text = await fetch_response(url)
         assert result_status == 200
