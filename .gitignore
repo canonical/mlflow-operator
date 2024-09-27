@@ -134,3 +134,7 @@ id_rsa
 kubeconfig
 *.charm
 .kube/
+
+venv/
+.terraform*
+*.tfstate*
