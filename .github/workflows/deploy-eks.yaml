@@ -1,32 +1,85 @@
-name: Create EKS cluster, deploy MLflow and run bundle test
+name: Create EKS cluster, deploy CKF and MLflow and run MLflow bundle UATs
 on:
   workflow_dispatch: # This event allows manual triggering from the Github UI
-    secrets:
-      BUNDLE_KUBEFLOW_EKS_AWS_ACCESS_KEY_ID:
-        required: true
-      BUNDLE_KUBEFLOW_EKS_AWS_SECRET_ACCESS_KEY:
-        required: true
     inputs:
-      region:
-        description: 'Insert the AWS Region name in which the script will deploy the EKS cluster.'
+      bundle_version:
+        description: 'Comma-separated list of bundle versions e.g. 2.15, latest. Make sure that the corresponding K8s version is supported by the cloud.'
+        default: '2.15, latest'
+        required: true
+      k8s_version:
+        description: 'Kubernetes version to be used for the EKS cluster'
         required: false
-        default: 'eu-central-1'
-        type: string
+      uats_branch:
+        description: 'Branch to run the UATs from e.g. main or track/1.9. By default, this is defined by the dependencies.yaml file.'
+        required: false
   schedule:
-    - cron: "23 0 * * 2"
+    - cron: "23 0 * * 4"
 jobs:
-  deploy-mlflow-to-eks:
+  preprocess-input:
     runs-on: ubuntu-22.04
+    outputs:
+      processed_bundle_versions: ${{ steps.process_bundle_versions.outputs.bundle_versions }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          
+      - name: Process bundle versions
+        id: process_bundle_versions
+        run: python scripts/gh-actions/parse_versions.py
+          
+  deploy-ckf-to-eks:
+    needs: preprocess-input
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        bundle_version: ${{ fromJSON(needs.preprocess-input.outputs.processed_bundle_versions) }}
+      fail-fast: false
+    env:
+      PYTHON_VERSION: "3.8"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Install tox
+      - name: Run YAML to Github Output Action
+        id: yaml-output
+        uses: christian-ci/action-yaml-github-output@v2
+        with:
+          file_path: ".github/dependencies.yaml"
+          main_key: ${{ matrix.bundle_version }}
+
+      - name: Update ENV variables from inputs if available
         run: |
-          python -m pip install --upgrade pip
-          pip install tox
-      
+          K8S_VERSION=${{ inputs.k8s_version || env.K8S_VERSION }}
+          echo "K8S_VERSION=${K8S_VERSION}" >> $GITHUB_ENV
+          UATS_BRANCH=${{ inputs.uats_branch || env.UATS_BRANCH }}
+          echo "UATS_BRANCH=${UATS_BRANCH}" >> $GITHUB_ENV
+
+      # Remove once https://github.com/canonical/bundle-kubeflow/issues/761
+      # is resolved and applied to uats repository.
+      - name: Install python ${{ env.PYTHON_VERSION }}
+        run: |
+          sudo add-apt-repository ppa:deadsnakes/ppa -y
+          sudo apt update -y
+          sudo apt install python${{ env.PYTHON_VERSION }} python${{ env.PYTHON_VERSION }}-distutils python${{ env.PYTHON_VERSION }}-venv -y
+
+      - name: Install CLI tools
+        run: |
+          wget https://bootstrap.pypa.io/get-pip.py
+          python${{ env.PYTHON_VERSION }} get-pip.py
+          python${{ env.PYTHON_VERSION }} -m pip install tox
+          sudo snap install charmcraft --classic
+          # We need to install from binary because of this https://bugs.launchpad.net/juju/+bug/2007575
+          curl -LO https://launchpad.net/juju/${{ env.JUJU_VERSION }}/${{ env.JUJU_VERSION_WITH_PATCH }}/+download/juju-${{ env.JUJU_VERSION_WITH_PATCH }}-linux-amd64.tar.xz
+          tar xf juju-${{ env.JUJU_VERSION_WITH_PATCH }}-linux-amd64.tar.xz
+          sudo install -o root -g root -m 0755 juju /usr/local/bin/juju
+          juju version
+
       - name: Configure AWS Credentials
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BUNDLE_KUBEFLOW_EKS_AWS_ACCESS_KEY_ID }}
@@ -34,11 +87,11 @@ jobs:
         run: |
           aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
           aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-          aws configure set default.region ${{ inputs.region }}
+          aws configure set default.region eu-central-1
       
       - name: Install kubectl
         run: |
-          sudo snap install kubectl --classic --channel=1.24/stable
+          sudo snap install kubectl --classic --channel=${{ env.K8S_VERSION }}/stable
           mkdir ~/.kube
           kubectl version --client
       
@@ -50,54 +103,73 @@ jobs:
           sudo mv /tmp/eksctl /usr/local/bin
           eksctl version
       
-      - name: Install juju
-        run: |
-          sudo snap install juju --classic --channel=2.9/stable
-          sudo snap install charmcraft --classic
-          juju version
-      
       - name: Create cluster
         run: |
-          sed -i "s/{{ region }}/${{ inputs.region }}/" .github/cluster.yaml
+          VERSION=${{ matrix.bundle_version }}
+          VERSION_WITHOUT_DOT="${VERSION//.}"
+          yq e ".metadata.name |= \"mlflow-test-$VERSION_WITHOUT_DOT\"" -i .github/cluster.yaml
+          yq e ".metadata.version |= \"${{ env.K8S_VERSION }}\"" -i .github/cluster.yaml
           eksctl create cluster -f .github/cluster.yaml
           kubectl get nodes
       
       - name: Setup juju
         run: |
-          juju add-k8s kubeflow --client
-          juju bootstrap --no-gui kubeflow kubeflow-controller
+          juju add-k8s eks --client
+          juju bootstrap eks kubeflow-controller
           juju add-model kubeflow
       
       - name: Test bundle deployment
-        run: |
-          tox -vve bundle-test -- --model kubeflow --keep-models -vv -s
-      
-      # On failure, capture debugging resources
-      - name: Get all kubernetes resources
-        run: kubectl get all -A
-        if: failure()
+        run: |          
+          tox -vve test_bundle_deployment-${{ matrix.bundle_version }} -- --model kubeflow --keep-models -vv -s
 
+      - name: Run Kubeflow UATs
+        run: |
+          git clone https://github.com/canonical/charmed-kubeflow-uats.git ~/charmed-kubeflow-uats
+          cd ~/charmed-kubeflow-uats
+          git checkout ${{ env.UATS_BRANCH }}
+          tox -e mlflow-remote
+
+      # On failure, capture debugging resources
+      - name: Save debug artifacts
+        uses: canonical/kubeflow-ci/actions/dump-charm-debug-artifacts@main
+        if: failure() || cancelled()
+
+      # On failure, capture debugging resources
       - name: Get juju status
         run: juju status
-        if: failure()
+        if: failure() || cancelled()
 
-      - name: Get workload logs
-        run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server
-        if: failure()
+      - name: Get juju debug logs
+        run: juju debug-log --replay --no-tail
+        if: failure() || cancelled()
 
-      - name: Get operator logs
-        run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server
-        if: failure()
+      - name: Get all kubernetes resources
+        run: kubectl get all -A
+        if: failure() || cancelled()
 
-      - name: Remove eks 
+      - name: Get logs from pods with status = Pending
+        run: kubectl -n kubeflow get pods | tail -n +2 | grep Pending | awk '{print $1}' | xargs -n1 kubectl -n kubeflow logs --all-containers=true --tail 100
+        if: failure() || cancelled()
+
+      - name: Get logs from pods with status = Failed
+        run: kubectl -n kubeflow get pods | tail -n +2 | grep Failed | awk '{print $1}' | xargs -n1 kubectl -n kubeflow logs --all-containers=true --tail 100
+        if: failure() || cancelled()
+
+      - name: Get logs from pods with status = CrashLoopBackOff
+        run: kubectl -n kubeflow get pods | tail -n +2 | grep CrashLoopBackOff | awk '{print $1}' | xargs -n1 kubectl -n kubeflow logs --all-containers=true --tail 100
+        if: failure() || cancelled()
+
+      - name: Delete EKS cluster
         if: always()
         run: |
-          eksctl delete cluster --name=mlflow-bundle-test
+          VERSION=${{ matrix.bundle_version }}
+          VERSION_WITHOUT_DOT="${VERSION//.}"
+          eksctl delete cluster --region eu-central-1 --name=mlflow-test-$VERSION_WITHOUT_DOT
 
   delete-unattached-volumes:
     if: always()
     uses: ./.github/workflows/delete-aws-volumes.yaml
     secrets: inherit
     with:
-      region: ${{ inputs.region }}
-    needs: [deploy-mlflow-to-eks]
+      region: eu-central-1
+    needs: [deploy-ckf-to-eks]
