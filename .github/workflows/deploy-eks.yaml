@@ -7,7 +7,7 @@ on:
         default: '2.15, latest'
         required: true
       k8s_version:
-        description: 'Kubernetes version to be used for the AKS cluster'
+        description: 'Kubernetes version to be used for the EKS cluster'
         required: false
       uats_branch:
         description: 'Branch to run the UATs from e.g. main or track/1.9. By default, this is defined by the dependencies.yaml file.'
@@ -107,7 +107,7 @@ jobs:
         run: |
           VERSION=${{ matrix.bundle_version }}
           VERSION_WITHOUT_DOT="${VERSION//.}"
-          yq e ".metadata.name |= \"kubeflow-test-$VERSION_WITHOUT_DOT\"" -i .github/cluster.yaml
+          yq e ".metadata.name |= \"mlflow-test-$VERSION_WITHOUT_DOT\"" -i .github/cluster.yaml
           yq e ".metadata.version |= \"${{ env.K8S_VERSION }}\"" -i .github/cluster.yaml
           eksctl create cluster -f .github/cluster.yaml
           kubectl get nodes
@@ -169,7 +169,7 @@ jobs:
         run: |
           VERSION=${{ matrix.bundle_version }}
           VERSION_WITHOUT_DOT="${VERSION//.}"
-          eksctl delete cluster --region eu-central-1 --name=kubeflow-test-$VERSION_WITHOUT_DOT
+          eksctl delete cluster --region eu-central-1 --name=mlflow-test-$VERSION_WITHOUT_DOT
 
   delete-unattached-volumes:
     if: always()
