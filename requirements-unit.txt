@@ -4,6 +4,10 @@
 #
 #    pip-compile requirements-unit.in
 #
+annotated-types==0.7.0
+    # via
+    #   -r requirements.txt
+    #   pydantic
 anyio==3.7.1
     # via
     #   -r requirements.txt
@@ -31,6 +35,8 @@ charset-normalizer==3.2.0
     # via
     #   -r requirements.txt
     #   requests
+cosl==0.0.24
+    # via -r requirements.txt
 coverage==7.3.0
     # via -r requirements-unit.in
 deepdiff==6.2.1
@@ -97,6 +103,7 @@ ops==2.14.0
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
+    #   cosl
     #   serialized-data-interface
 ordered-set==4.1.0
     # via
@@ -110,6 +117,14 @@ pkgutil-resolve-name==1.3.10
     #   jsonschema
 pluggy==1.2.0
     # via pytest
+pydantic==2.9.2
+    # via
+    #   -r requirements.txt
+    #   cosl
+pydantic-core==2.23.4
+    # via
+    #   -r requirements.txt
+    #   pydantic
 pyrsistent==0.19.3
     # via
     #   -r requirements.txt
@@ -130,6 +145,7 @@ python-dateutil==2.8.2
 pyyaml==6.0.1
     # via
     #   -r requirements.txt
+    #   cosl
     #   lightkube
     #   ops
     #   serialized-data-interface
@@ -141,7 +157,7 @@ ruamel-yaml==0.17.32
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
-ruamel-yaml-clib==0.2.7
+ruamel-yaml-clib==0.2.8
     # via
     #   -r requirements.txt
     #   ruamel-yaml
@@ -167,8 +183,16 @@ tenacity==8.2.2
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
+    #   cosl
 tomli==2.0.1
     # via pytest
+typing-extensions==4.12.2
+    # via
+    #   -r requirements.txt
+    #   annotated-types
+    #   cosl
+    #   pydantic
+    #   pydantic-core
 urllib3==1.26.16
     # via
     #   -r requirements.txt

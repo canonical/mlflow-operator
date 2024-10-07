@@ -36,5 +36,5 @@ class TestDeployRunners:
 
         # Deploying grafana-agent-k8s and add all relations
         await deploy_and_assert_grafana_agent(
-            ops_test.model, CHARM_NAME, metrics=True, dashboard=True, logging=False
+            ops_test.model, CHARM_NAME, metrics=True, dashboard=True, logging=True
         )
