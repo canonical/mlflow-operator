@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from charmed_kubeflow_chisme.testing import deploy_and_assert_grafana_agent
 from pytest_operator.plugin import OpsTest
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
@@ -31,4 +32,9 @@ class TestDeployRunners:
         assert (
             ops_test.model.applications[CHARM_NAME].units[0].workload_status_message
             == "Waiting for object-storage relation data"
+        )
+
+        # Deploying grafana-agent-k8s and add all relations
+        await deploy_and_assert_grafana_agent(
+            ops_test.model, CHARM_NAME, metrics=True, dashboard=True, logging=False
         )
