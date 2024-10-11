@@ -1,0 +1,24 @@
+groups:
+- name: KubeflowMlflowServerServices
+  rules:
+  - alert: KubeflowServiceDown
+    expr: up{} < 1
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "{{ $labels.juju_charm }} service is Down ({{ $labels.juju_model }}/{{ $labels.juju_unit }})"
+      description: |
+       One or more targets of {{ $labels.juju_charm }} charm are down on unit {{ $labels.juju_model }}/{{ $labels.juju_unit }}.
+       LABELS = {{ $labels }}
+
+  - alert: KubeflowServiceIsNotStable
+    expr: avg_over_time(up{}[10m]) < 0.5
+    for: 0m
+    labels:
+      severity: warning
+    annotations:
+      summary: "{{ $labels.juju_charm }} service is not stable ({{ $labels.juju_model }}/{{ $labels.juju_unit }})"
+      description: |
+        {{ $labels.juju_charm }} unit {{ $labels.juju_model }}/{{ $labels.juju_unit }} has been unreachable at least 50% of the time over the last 10 minutes.
+        LABELS = {{ $labels }}

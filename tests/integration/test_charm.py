@@ -18,6 +18,13 @@ import pytest
 import requests
 import yaml
 from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
+from charmed_kubeflow_chisme.testing import (
+    assert_alert_rules,
+    assert_grafana_dashboards,
+    assert_metrics_endpoint,
+    get_alert_rules,
+    get_grafana_dashboards,
+)
 from lightkube import codecs
 from lightkube.generic_resource import (
     create_namespaced_resource,
@@ -36,8 +43,6 @@ CHARM_NAME = METADATA["name"]
 RELATIONAL_DB_CHARM_NAME = "mysql-k8s"
 RELATIONAL_DB_CHANNEL = "8.0/stable"
 OBJECT_STORAGE_CHARM_NAME = "minio"
-PROMETHEUS_CHARM_NAME = "prometheus-k8s"
-GRAFANA_CHARM_NAME = "grafana-k8s"
 RESOURCE_DISPATCHER_CHARM_NAME = "resource-dispatcher"
 ISTIO_GATEWAY_CHARM_NAME = "istio-ingressgateway"
 ISTIO_PILOT_CHARM_NAME = "istio-pilot"
@@ -136,7 +141,7 @@ async def setup_istio(ops_test: OpsTest, istio_gateway: str, istio_pilot: str):
         config={"default-gateway": "test-gateway"},
         trust=True,
     )
-    await ops_test.model.add_relation(istio_pilot, istio_gateway)
+    await ops_test.model.integrate(istio_pilot, istio_gateway)
 
     await ops_test.model.wait_for_idle(
         apps=[istio_pilot, istio_gateway],
@@ -197,8 +202,8 @@ class TestCharm:
             raise_on_error=False,
             timeout=600,
         )
-        await ops_test.model.relate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
-        await ops_test.model.relate(RELATIONAL_DB_CHARM_NAME, CHARM_NAME)
+        await ops_test.model.integrate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
+        await ops_test.model.integrate(RELATIONAL_DB_CHARM_NAME, CHARM_NAME)
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
@@ -206,8 +211,34 @@ class TestCharm:
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
+            idle_period=60,
         )
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+
+    async def test_alert_rules(self, ops_test: OpsTest):
+        """Test check charm alert rules and rules defined in relation data bag."""
+        app = ops_test.model.applications[CHARM_NAME]
+        alert_rules = get_alert_rules()
+        logger.info("found alert_rules: %s", alert_rules)
+        await assert_alert_rules(app, alert_rules)
+
+    async def test_grafana_dashboards(self, ops_test: OpsTest):
+        """Test Grafana dashboards are defined in relation data bag."""
+        app = ops_test.model.applications[CHARM_NAME]
+        dashboards = get_grafana_dashboards()
+        logger.info("found dashboards: %s", dashboards)
+        await assert_grafana_dashboards(app, dashboards)
+
+    async def test_metrics_enpoint(self, ops_test: OpsTest):
+        """Test metrics_endpoints are defined in relation data bag and their accessibility.
+
+        This function gets all the metrics_endpoints from the relation data bag, checks if
+        they are available from the grafana-agent-k8s charm and finally compares them with the
+        ones provided to the function.
+        """
+        app = ops_test.model.applications[CHARM_NAME]
+        await assert_metrics_endpoint(app, metrics_port=5000, metrics_path="/metrics")
+        await assert_metrics_endpoint(app, metrics_port=8000, metrics_path="/metrics")
 
     @retry(stop=stop_after_delay(300), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
@@ -376,69 +407,3 @@ class TestCharm:
         for name in poddefaults_names:
             pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)
             assert pod_default is not None
-
-    @pytest.mark.abort_on_fail
-    async def test_mlflow_alert_rules(self, ops_test: OpsTest):
-        await ops_test.model.deploy(PROMETHEUS_CHARM_NAME, channel="latest/stable", trust=True)
-        await ops_test.model.relate(PROMETHEUS_CHARM_NAME, CHARM_NAME)
-        await ops_test.model.wait_for_idle(
-            apps=[PROMETHEUS_CHARM_NAME], status="active", raise_on_blocked=True, timeout=60 * 10
-        )
-
-        prometheus_subprocess = subprocess.Popen(
-            [
-                "kubectl",
-                "-n",
-                f"{ops_test.model_name}",
-                "port-forward",
-                f"svc/{PROMETHEUS_CHARM_NAME}",
-                "9090:9090",
-            ]
-        )
-        time.sleep(10)  # Must wait for port-forward
-
-        prometheus_url = "localhost"
-
-        # obtain scrape targets from Prometheus
-        targets_result = await fetch_url(f"http://{prometheus_url}:9090/api/v1/targets")
-
-        # verify that mlflow-server is in the target list
-        assert targets_result is not None
-        assert targets_result["status"] == "success"
-        discovered_labels = targets_result["data"]["activeTargets"][0]["discoveredLabels"]
-        assert discovered_labels["juju_application"] == CHARM_NAME
-
-        # obtain alert rules from Prometheus
-        rules_url = f"http://{prometheus_url}:9090/api/v1/rules"
-        alert_rules_result = await fetch_url(rules_url)
-
-        # verify alerts are available in Prometheus
-        assert alert_rules_result is not None
-        assert alert_rules_result["status"] == "success"
-        rules = alert_rules_result["data"]["groups"][0]["rules"]
-
-        # load alert rules from the rules file
-        rules_file_alert_names = []
-        with open("src/prometheus_alert_rules/mlflow-server.rule") as f:
-            mlflow_server = yaml.safe_load(f.read())
-            alerts_list = mlflow_server["groups"][0]["rules"]
-            for alert in alerts_list:
-                rules_file_alert_names.append(alert["alert"])
-
-        # verify number of alerts is the same in Prometheus and in the rules file
-        assert len(rules) == len(rules_file_alert_names)
-
-        # verify that all Mlflow alert rules are in the list and that alerts obtained
-        # from Prometheus match alerts in the rules file
-        for rule in rules:
-            assert rule["name"] in rules_file_alert_names
-
-        prometheus_subprocess.terminate()
-
-    @pytest.mark.abort_on_fail
-    async def test_grafana_integration(self, ops_test: OpsTest):
-        await ops_test.model.deploy(GRAFANA_CHARM_NAME, channel="latest/stable", trust=True)
-        await ops_test.model.relate(GRAFANA_CHARM_NAME, CHARM_NAME)
-        await ops_test.model.wait_for_idle(
-            apps=[GRAFANA_CHARM_NAME], status="active", raise_on_blocked=True, timeout=60 * 20
-        )
