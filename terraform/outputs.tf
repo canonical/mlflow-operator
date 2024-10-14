@@ -17,5 +17,6 @@ output "requires" {
     pod_defaults    = "pod-defaults",
     relational_db   = "relational-db",
     secrets         = "secrets",
+    logging         = "logging",
   }
 }
