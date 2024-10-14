@@ -142,7 +142,7 @@ python-dateutil==2.8.2
     # via
     #   -r requirements.txt
     #   botocore
-pyyaml==6.0.1
+pyyaml==6.0.2
     # via
     #   -r requirements.txt
     #   cosl
@@ -157,7 +157,7 @@ ruamel-yaml==0.17.32
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
-ruamel-yaml-clib==0.2.8
+ruamel-yaml-clib==0.2.7
     # via
     #   -r requirements.txt
     #   ruamel-yaml
