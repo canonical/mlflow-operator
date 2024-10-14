@@ -98,6 +98,9 @@ requires:
     interface: kubernetes_manifest
   pod-defaults:
     interface: kubernetes_manifest
+  logging:
+    interface: loki_push_api
+    optional: true
 provides:
   metrics-endpoint:
     interface: prometheus_scrape

@@ -14,6 +14,7 @@ from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
     DashboardLink,
     KubeflowDashboardLinksRequirer,
 )
+from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.resource_dispatcher.v0.kubernetes_manifests import (
@@ -80,6 +81,8 @@ class MlflowCharm(CharmBase):
         self.framework.observe(
             self.on.get_minio_credentials_action, self._on_get_minio_credentials
         )
+        # Log forwarding to Loki
+        self._logging = LogForwarder(charm=self)
 
         # Prometheus related config
         self.prometheus_provider = MetricsEndpointProvider(

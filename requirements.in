@@ -7,3 +7,5 @@ oci-image
 pyyaml==6.0.1
 serialized-data-interface
 tenacity
+# from loki_k8s.v1.loki_push_api.py
+cosl
