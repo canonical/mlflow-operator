@@ -21,6 +21,7 @@ from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
 from charmed_kubeflow_chisme.testing import (
     assert_alert_rules,
     assert_grafana_dashboards,
+    assert_logging,
     assert_metrics_endpoint,
     get_alert_rules,
     get_grafana_dashboards,
@@ -239,6 +240,11 @@ class TestCharm:
         app = ops_test.model.applications[CHARM_NAME]
         await assert_metrics_endpoint(app, metrics_port=5000, metrics_path="/metrics")
         await assert_metrics_endpoint(app, metrics_port=8000, metrics_path="/metrics")
+
+    async def test_logging(self, ops_test: OpsTest):
+        """Test logging is defined in relation data bag."""
+        app = ops_test.model.applications[CHARM_NAME]
+        await assert_logging(app)
 
     @retry(stop=stop_after_delay(300), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail

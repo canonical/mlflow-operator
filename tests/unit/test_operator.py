@@ -111,6 +111,15 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    def test_log_forwarding(self, harness: Harness):
+        with patch("charm.LogForwarder") as mock_logging:
+            harness.begin()
+            mock_logging.assert_called_once_with(charm=harness.charm)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
     def test_check_leader_failure(self, harness: Harness):
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == WaitingStatus("Waiting for leadership")
