@@ -21,7 +21,7 @@ EXPECTED_SERVICE = {
             "summary": "Entrypoint of mlflow-server image",
             "startup": "enabled",
             "override": "replace",
-            "command": "mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri test --default-artifact-root s3:/// --expose-prometheus /metrics",  # noqa: E501
+            "command": "mlflow server --host 0.0.0.0 --port 5000  --backend-store-uri test --default-artifact-root s3:/// --expose-prometheus /metrics",  # noqa: E501
             "environment": {"MLFLOW_TRACKING_URI": "test"},
         },
     )
