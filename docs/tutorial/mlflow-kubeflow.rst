@@ -21,7 +21,7 @@ This guide assumes you are deploying Kubeflow and MLflow on a public cloud Virtu
 
 Also, your machine should meet the following requirements:
 
-- Has an SSH tunnel open to the VM with port forwarding and a SOCKS proxy. To see how to set this up, see `How to setup SSH VM Access <https://charmed-kubeflow.io/docs/how-tosetup-ssh-vm-access-with-port-forwarding>`_.
+- Has an SSH tunnel open to the VM with port forwarding and a SOCKS proxy. To see how to set this up, see `How to setup SSH VM Access <https://discourse.charmhub.io/t/how-to-setup-ssh-vm-access-with-port-forwarding/10872>`_.
 - Runs Ubuntu 20.04 (focal) or later.
 - Has a web browser installed e.g. Chrome / Firefox / Edge.
 
