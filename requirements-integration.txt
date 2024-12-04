@@ -4,117 +4,138 @@
 #
 #    pip-compile requirements-integration.in
 #
-aiohttp==3.8.5
+aiohappyeyeballs==2.4.4
+    # via aiohttp
+aiohttp==3.10.11
     # via -r requirements-integration.in
 aiosignal==1.3.1
     # via aiohttp
-alembic==1.12.0
+alembic==1.14.0
     # via mlflow
-anyio==3.7.1
-    # via httpcore
-asttokens==2.4.0
+anyio==4.5.2
+    # via httpx
+argon2-cffi==23.1.0
+    # via minio
+argon2-cffi-bindings==21.2.0
+    # via argon2-cffi
+asttokens==3.0.0
     # via stack-data
-async-timeout==4.0.3
+async-timeout==5.0.1
     # via aiohttp
-attrs==23.1.0
+attrs==24.2.0
     # via
     #   aiohttp
     #   jsonschema
 backcall==0.2.0
     # via ipython
-bcrypt==4.0.1
+backports-strenum==1.3.1
+    # via juju
+bcrypt==4.2.1
     # via paramiko
-blinker==1.6.2
+blinker==1.8.2
     # via flask
-cachetools==5.3.1
-    # via google-auth
-certifi==2023.7.22
+cachetools==5.5.0
+    # via
+    #   google-auth
+    #   mlflow-skinny
+certifi==2024.8.30
     # via
     #   httpcore
     #   httpx
     #   kubernetes
     #   minio
     #   requests
-cffi==1.15.1
+cffi==1.17.1
     # via
+    #   argon2-cffi-bindings
     #   cryptography
     #   pynacl
 charmed-kubeflow-chisme==0.4.3
     # via -r requirements-integration.in
-charset-normalizer==3.2.0
-    # via
-    #   aiohttp
-    #   requests
+charset-normalizer==3.4.0
+    # via requests
 click==8.1.7
     # via
-    #   databricks-cli
     #   flask
-    #   mlflow
-cloudpickle==2.2.1
-    # via mlflow
-contourpy==1.1.0
+    #   mlflow-skinny
+cloudpickle==3.1.0
+    # via mlflow-skinny
+contourpy==1.1.1
     # via matplotlib
-cryptography==41.0.3
+cryptography==44.0.0
     # via paramiko
-cycler==0.11.0
+cycler==0.12.1
     # via matplotlib
-databricks-cli==0.17.7
-    # via mlflow
+databricks-sdk==0.38.0
+    # via mlflow-skinny
 decorator==5.1.1
     # via
     #   ipdb
     #   ipython
 deepdiff==6.2.1
     # via charmed-kubeflow-chisme
-docker==6.1.3
+deprecated==1.2.15
+    # via
+    #   opentelemetry-api
+    #   opentelemetry-semantic-conventions
+docker==7.1.0
     # via mlflow
-entrypoints==0.4
-    # via mlflow
-exceptiongroup==1.1.2
+exceptiongroup==1.2.2
     # via
     #   anyio
     #   pytest
-executing==1.2.0
+executing==2.1.0
     # via stack-data
-flask==2.3.3
+flask==3.0.3
     # via mlflow
-fonttools==4.42.1
+fonttools==4.55.1
     # via matplotlib
-frozenlist==1.4.0
+frozenlist==1.5.0
     # via
     #   aiohttp
     #   aiosignal
-gitdb==4.0.10
+gitdb==4.0.11
     # via gitpython
-gitpython==3.1.35
+gitpython==3.1.43
+    # via mlflow-skinny
+google-auth==2.36.0
+    # via
+    #   databricks-sdk
+    #   kubernetes
+graphene==3.4.3
     # via mlflow
-google-auth==2.22.0
-    # via kubernetes
-greenlet==3.0.3
+graphql-core==3.2.5
+    # via
+    #   graphene
+    #   graphql-relay
+graphql-relay==3.2.0
+    # via graphene
+greenlet==3.1.1
     # via sqlalchemy
-gunicorn==21.2.0
+gunicorn==23.0.0
     # via mlflow
 h11==0.14.0
     # via httpcore
-httpcore==0.17.3
+httpcore==1.0.7
     # via httpx
-httpx==0.24.1
+httpx==0.28.0
     # via lightkube
-hvac==1.2.0
+hvac==2.3.0
     # via juju
-idna==3.4
+idna==3.10
     # via
     #   anyio
     #   httpx
     #   requests
     #   yarl
-importlib-metadata==6.8.0
+importlib-metadata==8.5.0
     # via
     #   alembic
     #   flask
     #   markdown
-    #   mlflow
-importlib-resources==6.0.1
+    #   mlflow-skinny
+    #   opentelemetry-api
+importlib-resources==6.4.5
     # via
     #   alembic
     #   jsonschema
@@ -123,60 +144,62 @@ iniconfig==2.0.0
     # via pytest
 ipdb==0.13.13
     # via pytest-operator
-ipython==8.12.2
+ipython==8.12.3
     # via ipdb
-itsdangerous==2.1.2
+itsdangerous==2.2.0
     # via flask
-jedi==0.19.0
+jedi==0.19.2
     # via ipython
-jinja2==3.1.2
+jinja2==3.1.4
     # via
     #   -r requirements-integration.in
     #   charmed-kubeflow-chisme
     #   flask
     #   mlflow
     #   pytest-operator
-joblib==1.3.2
+joblib==1.4.2
     # via scikit-learn
 jsonschema==4.17.3
     # via serialized-data-interface
-juju==3.2.2
+juju==3.6.0.0
     # via
     #   -r requirements-integration.in
     #   charmed-kubeflow-chisme
     #   pytest-operator
-kiwisolver==1.4.5
+kiwisolver==1.4.7
     # via matplotlib
-kubernetes==27.2.0
+kubernetes==30.1.0
     # via juju
-lightkube==0.15.3
+lightkube==0.15.5
     # via
     #   -r requirements-integration.in
     #   charmed-kubeflow-chisme
-lightkube-models==1.30.0.8
+lightkube-models==1.31.1.8
     # via
     #   -r requirements-integration.in
     #   lightkube
-macaroonbakery==1.3.1
+macaroonbakery==1.3.4
     # via juju
-mako==1.2.4
+mako==1.3.7
     # via alembic
-markdown==3.4.4
+markdown==3.7
     # via mlflow
-markupsafe==2.1.3
+markupsafe==2.1.5
     # via
     #   jinja2
     #   mako
     #   werkzeug
-matplotlib==3.7.2
+matplotlib==3.7.5
     # via mlflow
-matplotlib-inline==0.1.6
+matplotlib-inline==0.1.7
     # via ipython
-minio==7.1.16
+minio==7.2.10
     # via -r requirements-integration.in
-mlflow==2.6.0
+mlflow==2.17.2
     # via -r requirements-integration.in
-multidict==6.0.4
+mlflow-skinny==2.17.2
+    # via mlflow
+multidict==6.1.0
     # via
     #   aiohttp
     #   yarl
@@ -193,65 +216,73 @@ numpy==1.24.4
     #   scipy
 oauthlib==3.2.2
     # via
-    #   databricks-cli
     #   kubernetes
     #   requests-oauthlib
-ops==2.14.0
+opentelemetry-api==1.28.2
+    # via
+    #   mlflow-skinny
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-sdk==1.28.2
+    # via mlflow-skinny
+opentelemetry-semantic-conventions==0.49b2
+    # via opentelemetry-sdk
+ops==2.17.1
     # via
     #   charmed-kubeflow-chisme
     #   serialized-data-interface
 ordered-set==4.1.0
     # via deepdiff
-packaging==23.1
+packaging==24.2
     # via
-    #   docker
     #   gunicorn
+    #   juju
     #   matplotlib
-    #   mlflow
+    #   mlflow-skinny
     #   pytest
 pandas==2.0.3
     # via mlflow
-paramiko==2.12.0
+paramiko==3.5.0
     # via juju
-parso==0.8.3
+parso==0.8.4
     # via jedi
-pexpect==4.8.0
+pexpect==4.9.0
     # via ipython
 pickleshare==0.7.5
     # via ipython
-pillow==10.0.0
+pillow==10.4.0
     # via matplotlib
 pkgutil-resolve-name==1.3.10
     # via jsonschema
-pluggy==1.3.0
+pluggy==1.5.0
     # via pytest
-prompt-toolkit==3.0.39
+prompt-toolkit==3.0.48
     # via ipython
-protobuf==3.20.3
+propcache==0.2.0
+    # via yarl
+protobuf==5.29.0
     # via
     #   macaroonbakery
-    #   mlflow
+    #   mlflow-skinny
 ptyprocess==0.7.0
     # via pexpect
-pure-eval==0.2.2
+pure-eval==0.2.3
     # via stack-data
-pyarrow==12.0.1
+pyarrow==17.0.0
     # via mlflow
-pyasn1==0.5.0
+pyasn1==0.6.1
     # via
     #   juju
     #   pyasn1-modules
     #   rsa
-pyasn1-modules==0.3.0
+pyasn1-modules==0.4.1
     # via google-auth
-pycparser==2.21
+pycparser==2.22
     # via cffi
-pygments==2.16.1
+pycryptodome==3.21.0
+    # via minio
+pygments==2.18.0
     # via ipython
-pyhcl==0.4.5
-    # via hvac
-pyjwt==2.8.0
-    # via databricks-cli
 pymacaroons==0.13.0
     # via macaroonbakery
 pynacl==1.5.0
@@ -259,63 +290,61 @@ pynacl==1.5.0
     #   macaroonbakery
     #   paramiko
     #   pymacaroons
-pyparsing==3.0.9
+pyparsing==3.1.4
     # via matplotlib
 pyrfc3339==1.1
     # via
     #   juju
     #   macaroonbakery
-pyrsistent==0.19.3
+pyrsistent==0.20.0
     # via jsonschema
-pytest==7.4.2
+pytest==8.3.4
     # via
     #   pytest-asyncio
     #   pytest-operator
-pytest-asyncio==0.21.1
+pytest-asyncio==0.21.2
     # via pytest-operator
-pytest-operator==0.29.0
+pytest-operator==0.38.0
     # via -r requirements-integration.in
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
     # via
+    #   graphene
     #   kubernetes
     #   matplotlib
     #   pandas
-pytz==2023.3.post1
+pytz==2024.2
     # via
-    #   mlflow
     #   pandas
     #   pyrfc3339
-pyyaml==6.0.1
+pyyaml==6.0.2
     # via
     #   juju
     #   kubernetes
     #   lightkube
-    #   mlflow
+    #   mlflow-skinny
     #   ops
     #   pytest-operator
     #   serialized-data-interface
-querystring-parser==1.2.4
-    # via mlflow
-requests==2.31.0
+requests==2.32.3
     # via
     #   -r requirements-integration.in
-    #   databricks-cli
+    #   databricks-sdk
     #   docker
     #   hvac
     #   kubernetes
     #   macaroonbakery
-    #   mlflow
+    #   mlflow-skinny
     #   requests-oauthlib
     #   serialized-data-interface
-requests-oauthlib==1.3.1
+requests-oauthlib==2.0.0
     # via kubernetes
 rsa==4.9
     # via google-auth
-ruamel-yaml==0.17.32
+ruamel-yaml==0.18.6
     # via charmed-kubeflow-chisme
-ruamel-yaml-clib==0.2.7
+ruamel-yaml-clib==0.2.8
     # via ruamel-yaml
-scikit-learn==1.3.0
+scikit-learn==1.3.2
     # via mlflow
 scipy==1.10.1
     # via
@@ -325,78 +354,74 @@ serialized-data-interface==0.7.0
     # via charmed-kubeflow-chisme
 six==1.16.0
     # via
-    #   asttokens
-    #   databricks-cli
-    #   google-auth
     #   kubernetes
     #   macaroonbakery
-    #   paramiko
     #   pymacaroons
     #   python-dateutil
-    #   querystring-parser
-smmap==5.0.0
+smmap==5.0.1
     # via gitdb
-sniffio==1.3.0
-    # via
-    #   anyio
-    #   httpcore
-    #   httpx
-sqlalchemy==2.0.20
+sniffio==1.3.1
+    # via anyio
+sqlalchemy==2.0.36
     # via
     #   alembic
     #   mlflow
-sqlparse==0.4.4
-    # via mlflow
-stack-data==0.6.2
+sqlparse==0.5.2
+    # via mlflow-skinny
+stack-data==0.6.3
     # via ipython
-tabulate==0.9.0
-    # via databricks-cli
-tenacity==8.2.2
+tenacity==9.0.0
     # via charmed-kubeflow-chisme
-threadpoolctl==3.2.0
+threadpoolctl==3.5.0
     # via scikit-learn
-tomli==2.0.1
+tomli==2.2.1
     # via
     #   ipdb
     #   pytest
 toposort==1.10
     # via juju
-traitlets==5.9.0
+traitlets==5.14.3
     # via
     #   ipython
     #   matplotlib-inline
-typing-extensions==4.7.1
+typing-extensions==4.12.2
     # via
     #   alembic
+    #   anyio
+    #   graphene
+    #   graphql-core
     #   ipython
+    #   juju
+    #   minio
+    #   multidict
+    #   opentelemetry-sdk
     #   sqlalchemy
     #   typing-inspect
 typing-inspect==0.9.0
     # via juju
-tzdata==2023.3
+tzdata==2024.2
     # via pandas
-urllib3==1.26.16
+urllib3==2.2.3
     # via
-    #   databricks-cli
     #   docker
-    #   google-auth
     #   kubernetes
     #   minio
     #   requests
-wcwidth==0.2.6
+wcwidth==0.2.13
     # via prompt-toolkit
-websocket-client==1.6.1
+websocket-client==1.8.0
     # via
-    #   docker
     #   kubernetes
     #   ops
-websockets==8.1
+websockets==13.1
     # via juju
-werkzeug==2.3.7
+werkzeug==3.0.6
     # via flask
-yarl==1.9.2
+wrapt==1.17.0
+    # via deprecated
+yarl==1.15.2
     # via aiohttp
-zipp==3.16.2
+zipp==3.20.2
     # via
     #   importlib-metadata
     #   importlib-resources
