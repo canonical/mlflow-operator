@@ -8,65 +8,95 @@ annotated-types==0.7.0
     # via
     #   -r requirements.txt
     #   pydantic
-anyio==3.7.1
+anyio==4.5.2
     # via
     #   -r requirements.txt
-    #   httpcore
-attrs==23.1.0
+    #   httpx
+attrs==24.2.0
     # via
     #   -r requirements.txt
     #   jsonschema
-boto3==1.28.25
+backports-strenum==1.3.1
+    # via
+    #   -r requirements.txt
+    #   juju
+bcrypt==4.2.1
+    # via
+    #   -r requirements.txt
+    #   paramiko
+boto3==1.35.76
     # via -r requirements.txt
-botocore==1.31.25
+botocore==1.35.76
     # via
     #   -r requirements.txt
     #   boto3
     #   s3transfer
-certifi==2023.7.22
+cachetools==5.5.0
+    # via
+    #   -r requirements.txt
+    #   google-auth
+certifi==2024.8.30
     # via
     #   -r requirements.txt
     #   httpcore
     #   httpx
+    #   kubernetes
     #   requests
-charmed-kubeflow-chisme==0.2.0
+cffi==1.17.1
+    # via
+    #   -r requirements.txt
+    #   cryptography
+    #   pynacl
+charmed-kubeflow-chisme==0.4.3
     # via -r requirements.txt
-charset-normalizer==3.2.0
+charset-normalizer==3.4.0
     # via
     #   -r requirements.txt
     #   requests
-cosl==0.0.24
+cosl==0.0.45
     # via -r requirements.txt
-coverage==7.3.0
+coverage==7.6.1
     # via -r requirements-unit.in
+cryptography==44.0.0
+    # via
+    #   -r requirements.txt
+    #   paramiko
 deepdiff==6.2.1
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
-exceptiongroup==1.1.2
+exceptiongroup==1.2.2
     # via
     #   -r requirements.txt
     #   anyio
     #   pytest
+google-auth==2.36.0
+    # via
+    #   -r requirements.txt
+    #   kubernetes
 h11==0.14.0
     # via
     #   -r requirements.txt
     #   httpcore
-httpcore==0.17.3
+httpcore==1.0.7
     # via
     #   -r requirements.txt
     #   httpx
-httpx==0.24.1
+httpx==0.27.2
     # via
     #   -r requirements.txt
     #   lightkube
-idna==3.4
+hvac==2.3.0
+    # via
+    #   -r requirements.txt
+    #   juju
+idna==3.10
     # via
     #   -r requirements.txt
     #   anyio
     #   httpx
     #   requests
-importlib-resources==6.0.1
+importlib-resources==6.4.5
     # via
     #   -r requirements.txt
     #   jsonschema
@@ -85,21 +115,43 @@ jsonschema==4.17.3
     # via
     #   -r requirements.txt
     #   serialized-data-interface
-lightkube==0.14.0
+juju==3.6.0.0
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
-lightkube-models==1.27.1.4
+kubernetes==30.1.0
+    # via
+    #   -r requirements.txt
+    #   juju
+lightkube==0.15.6
+    # via
+    #   -r requirements.txt
+    #   charmed-kubeflow-chisme
+    #   cosl
+lightkube-models==1.31.1.8
     # via
     #   -r requirements.txt
     #   lightkube
-markupsafe==2.1.3
+macaroonbakery==1.3.4
+    # via
+    #   -r requirements.txt
+    #   juju
+markupsafe==2.1.5
     # via
     #   -r requirements.txt
     #   jinja2
+mypy-extensions==1.0.0
+    # via
+    #   -r requirements.txt
+    #   typing-inspect
+oauthlib==3.2.2
+    # via
+    #   -r requirements.txt
+    #   kubernetes
+    #   requests-oauthlib
 oci-image==1.0.0
     # via -r requirements.txt
-ops==2.14.0
+ops==2.17.1
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
@@ -109,51 +161,110 @@ ordered-set==4.1.0
     # via
     #   -r requirements.txt
     #   deepdiff
-packaging==23.1
-    # via pytest
+packaging==24.2
+    # via
+    #   -r requirements.txt
+    #   juju
+    #   pytest
+paramiko==3.5.0
+    # via
+    #   -r requirements.txt
+    #   juju
 pkgutil-resolve-name==1.3.10
     # via
     #   -r requirements.txt
     #   jsonschema
-pluggy==1.2.0
+pluggy==1.5.0
     # via pytest
-pydantic==2.9.2
+protobuf==5.29.1
+    # via
+    #   -r requirements.txt
+    #   macaroonbakery
+pyasn1==0.6.1
+    # via
+    #   -r requirements.txt
+    #   juju
+    #   pyasn1-modules
+    #   rsa
+pyasn1-modules==0.4.1
+    # via
+    #   -r requirements.txt
+    #   google-auth
+pycparser==2.22
+    # via
+    #   -r requirements.txt
+    #   cffi
+pydantic==2.10.3
     # via
     #   -r requirements.txt
     #   cosl
-pydantic-core==2.23.4
+pydantic-core==2.27.1
     # via
     #   -r requirements.txt
     #   pydantic
-pyrsistent==0.19.3
+pymacaroons==0.13.0
+    # via
+    #   -r requirements.txt
+    #   macaroonbakery
+pynacl==1.5.0
+    # via
+    #   -r requirements.txt
+    #   macaroonbakery
+    #   paramiko
+    #   pymacaroons
+pyrfc3339==1.1
+    # via
+    #   -r requirements.txt
+    #   juju
+    #   macaroonbakery
+pyrsistent==0.20.0
     # via
     #   -r requirements.txt
     #   jsonschema
-pytest==7.4.0
+pytest==8.3.4
     # via
     #   -r requirements-unit.in
     #   pytest-lazy-fixture
     #   pytest-mock
 pytest-lazy-fixture==0.6.3
     # via -r requirements-unit.in
-pytest-mock==3.11.1
+pytest-mock==3.14.0
     # via -r requirements-unit.in
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
     # via
     #   -r requirements.txt
     #   botocore
+    #   kubernetes
+pytz==2024.2
+    # via
+    #   -r requirements.txt
+    #   pyrfc3339
 pyyaml==6.0.1
     # via
     #   -r requirements.txt
     #   cosl
+    #   juju
+    #   kubernetes
     #   lightkube
     #   ops
     #   serialized-data-interface
-requests==2.31.0
+requests==2.32.3
     # via
     #   -r requirements.txt
+    #   hvac
+    #   kubernetes
+    #   macaroonbakery
+    #   requests-oauthlib
     #   serialized-data-interface
-ruamel-yaml==0.17.32
+requests-oauthlib==2.0.0
+    # via
+    #   -r requirements.txt
+    #   kubernetes
+rsa==4.9
+    # via
+    #   -r requirements.txt
+    #   google-auth
+ruamel-yaml==0.18.6
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
@@ -161,7 +272,7 @@ ruamel-yaml-clib==0.2.8
     # via
     #   -r requirements.txt
     #   ruamel-yaml
-s3transfer==0.6.1
+s3transfer==0.10.4
     # via
     #   -r requirements.txt
     #   boto3
@@ -169,40 +280,59 @@ serialized-data-interface==0.7.0
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
-six==1.16.0
+six==1.17.0
     # via
     #   -r requirements.txt
+    #   kubernetes
+    #   macaroonbakery
+    #   pymacaroons
     #   python-dateutil
-sniffio==1.3.0
+sniffio==1.3.1
     # via
     #   -r requirements.txt
     #   anyio
-    #   httpcore
     #   httpx
-tenacity==8.2.2
+tenacity==9.0.0
     # via
     #   -r requirements.txt
     #   charmed-kubeflow-chisme
     #   cosl
-tomli==2.0.1
+tomli==2.2.1
     # via pytest
+toposort==1.10
+    # via
+    #   -r requirements.txt
+    #   juju
 typing-extensions==4.12.2
     # via
     #   -r requirements.txt
     #   annotated-types
+    #   anyio
     #   cosl
+    #   juju
     #   pydantic
     #   pydantic-core
-urllib3==1.26.16
+    #   typing-inspect
+typing-inspect==0.9.0
+    # via
+    #   -r requirements.txt
+    #   juju
+urllib3==1.26.20
     # via
     #   -r requirements.txt
     #   botocore
+    #   kubernetes
     #   requests
-websocket-client==1.6.1
+websocket-client==1.8.0
     # via
     #   -r requirements.txt
+    #   kubernetes
     #   ops
-zipp==3.16.2
+websockets==13.1
+    # via
+    #   -r requirements.txt
+    #   juju
+zipp==3.20.2
     # via
     #   -r requirements.txt
     #   importlib-resources
