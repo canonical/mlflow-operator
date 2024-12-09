@@ -4,25 +4,25 @@
 #
 #    pip-compile requirements-lint.in
 #
-black==23.7.0
+black==24.8.0
     # via -r requirements-fmt.txt
-click==8.1.6
+click==8.1.7
     # via
     #   -r requirements-fmt.txt
     #   black
-codespell==2.2.5
+codespell==2.3.0
     # via -r requirements-lint.in
-flake8==6.0.0
+flake8==7.0.0
     # via
     #   -r requirements-lint.in
     #   flake8-builtins
     #   pep8-naming
     #   pyproject-flake8
-flake8-builtins==2.1.0
+flake8-builtins==2.5.0
     # via -r requirements-lint.in
 flake8-copyright==0.2.4
     # via -r requirements-lint.in
-isort==5.12.0
+isort==5.13.2
     # via -r requirements-fmt.txt
 mccabe==0.7.0
     # via flake8
@@ -30,32 +30,32 @@ mypy-extensions==1.0.0
     # via
     #   -r requirements-fmt.txt
     #   black
-packaging==23.1
+packaging==24.2
     # via
     #   -r requirements-fmt.txt
     #   black
-pathspec==0.11.2
+pathspec==0.12.1
     # via
     #   -r requirements-fmt.txt
     #   black
-pep8-naming==0.13.3
+pep8-naming==0.14.1
     # via -r requirements-lint.in
-platformdirs==3.10.0
+platformdirs==4.3.6
     # via
     #   -r requirements-fmt.txt
     #   black
-pycodestyle==2.10.0
+pycodestyle==2.11.1
     # via flake8
-pyflakes==3.0.1
+pyflakes==3.2.0
     # via flake8
-pyproject-flake8==6.0.0.post1
+pyproject-flake8==7.0.0
     # via -r requirements-lint.in
-tomli==2.0.1
+tomli==2.2.1
     # via
     #   -r requirements-fmt.txt
     #   black
     #   pyproject-flake8
-typing-extensions==4.7.1
+typing-extensions==4.12.2
     # via
     #   -r requirements-fmt.txt
     #   black
