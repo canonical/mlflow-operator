@@ -20,7 +20,7 @@ We assume the following:
 Deploy EKS cluster
 -------------------
 
-See our `EKS creation guide <https://charmed-kubeflow.io/docs/create-eks-cluster-for-mlops>`_ for a complete guide on how to do this. **Do not forget** to edit the ``instanceType`` field under ``managedNodeGroups[0].instanceType`` from ``t2.2xlarge`` to ``t3.2xlarge``, as instructed in the guide, since worker nodes of type ``t3.2xlarge`` are required for deploying both MLflow and Kubeflow.
+See our `EKS creation guide <https://discourse.charmhub.io/t/create-an-eks-cluster-for-use-with-an-mlops-platform/10983>`_ for a complete guide on how to do this. **Do not forget** to edit the ``instanceType`` field under ``managedNodeGroups[0].instanceType`` from ``t2.2xlarge`` to ``t3.2xlarge``, as instructed in the guide, since worker nodes of type ``t3.2xlarge`` are required for deploying both MLflow and Kubeflow.
 
 Setup Juju
 ----------
