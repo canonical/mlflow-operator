@@ -18,7 +18,7 @@ We assume the following:
 
 Create EKS cluster
 -------------------
-See the `EKS creation guide <https://charmed-kubeflow.io/docs/create-eks-cluster-for-mlops>`_ for how to do that.
+See the `EKS creation guide <https://discourse.charmhub.io/t/create-an-eks-cluster-for-use-with-an-mlops-platform/10983>`_ for how to do that.
 
 Setup Juju
 ----------
