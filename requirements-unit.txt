@@ -6,128 +6,128 @@
 #
 annotated-types==0.7.0
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   pydantic
 anyio==3.7.1
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   httpcore
 attrs==23.1.0
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   jsonschema
 boto3==1.28.25
-    # via -r requirements.txt
+    # via -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
 botocore==1.31.25
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   boto3
     #   s3transfer
 certifi==2023.7.22
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   httpcore
     #   httpx
     #   requests
 charmed-kubeflow-chisme==0.2.0
-    # via -r requirements.txt
+    # via -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
 charset-normalizer==3.2.0
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   requests
 cosl==0.0.24
-    # via -r requirements.txt
+    # via -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
 coverage==7.3.0
     # via -r requirements-unit.in
 deepdiff==6.2.1
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   charmed-kubeflow-chisme
 exceptiongroup==1.1.2
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   anyio
     #   pytest
 h11==0.14.0
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   httpcore
 httpcore==0.17.3
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   httpx
 httpx==0.24.1
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   lightkube
 idna==3.4
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   anyio
     #   httpx
     #   requests
 importlib-resources==6.0.1
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   jsonschema
 iniconfig==2.0.0
     # via pytest
 jinja2==3.1.4
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   charmed-kubeflow-chisme
 jmespath==1.0.1
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   boto3
     #   botocore
 jsonschema==4.17.3
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   serialized-data-interface
 lightkube==0.14.0
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   charmed-kubeflow-chisme
 lightkube-models==1.27.1.4
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   lightkube
 markupsafe==2.1.3
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   jinja2
 oci-image==1.0.0
-    # via -r requirements.txt
+    # via -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
 ops==2.14.0
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   charmed-kubeflow-chisme
     #   cosl
     #   serialized-data-interface
 ordered-set==4.1.0
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   deepdiff
 packaging==23.1
     # via pytest
 pkgutil-resolve-name==1.3.10
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   jsonschema
 pluggy==1.2.0
     # via pytest
 pydantic==2.9.2
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   cosl
 pydantic-core==2.23.4
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   pydantic
 pyrsistent==0.19.3
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   jsonschema
 pytest==7.4.0
     # via
@@ -140,69 +140,69 @@ pytest-mock==3.11.1
     # via -r requirements-unit.in
 python-dateutil==2.8.2
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   botocore
-pyyaml==6.0.1
+pyyaml==6.0.2
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   cosl
     #   lightkube
     #   ops
     #   serialized-data-interface
 requests==2.31.0
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   serialized-data-interface
 ruamel-yaml==0.17.32
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   charmed-kubeflow-chisme
-ruamel-yaml-clib==0.2.8
+ruamel-yaml-clib==0.2.7
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   ruamel-yaml
 s3transfer==0.6.1
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   boto3
 serialized-data-interface==0.7.0
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   charmed-kubeflow-chisme
 six==1.16.0
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   python-dateutil
 sniffio==1.3.0
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   anyio
     #   httpcore
     #   httpx
 tenacity==8.2.2
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   charmed-kubeflow-chisme
     #   cosl
 tomli==2.0.1
     # via pytest
 typing-extensions==4.12.2
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   annotated-types
     #   cosl
     #   pydantic
     #   pydantic-core
 urllib3==1.26.16
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   botocore
     #   requests
 websocket-client==1.6.1
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   ops
 zipp==3.16.2
     # via
-    #   -r requirements.txt
+    #   -r /tmp/renovate/repos/github/canonical/mlflow-operator/requirements.txt
     #   importlib-resources
