@@ -2,7 +2,7 @@ from contextlib import nullcontext as does_not_raise
 
 import botocore.exceptions
 import pytest
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf
 
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
@@ -65,15 +65,15 @@ def s3_wrapper_empty():
 @pytest.mark.parametrize(
     "expected_returned,mocked_client,context_raised",
     [
-        (True, lazy_fixture("client_bucket_accessible"), does_not_raise()),
+        (True, lf("client_bucket_accessible"), does_not_raise()),
         (
             False,
-            lazy_fixture("client_accessible_emitting_ClientError"),
+            lf("client_accessible_emitting_ClientError"),
             does_not_raise(),
         ),  # A handled error, returning False
         (
             None,
-            lazy_fixture("client_accessible_emitting_unknown_exception"),
+            lf("client_accessible_emitting_unknown_exception"),
             pytest.raises(Exception),
         ),
     ],
