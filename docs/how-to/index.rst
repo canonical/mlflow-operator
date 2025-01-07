@@ -1,7 +1,7 @@
 How-to guides
 =============
 
-These guides provide practical instructions for specific tasks related to deploying, managing and using MLflow.
+The following guides cover key processes and common tasks for managing and using Charmed MLflow.
 
 Preparation
 -----------
