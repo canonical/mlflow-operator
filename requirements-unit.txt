@@ -53,7 +53,7 @@ charset-normalizer==3.4.0
     # via
     #   -r requirements.txt
     #   requests
-cosl==0.0.45
+cosl==0.0.50
     # via -r requirements.txt
 coverage==7.6.1
     # via -r requirements-unit.in
