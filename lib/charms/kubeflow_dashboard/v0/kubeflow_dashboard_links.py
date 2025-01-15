@@ -75,7 +75,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 2
+LIBPATCH = 3
 
 
 DASHBOARD_LINK_LOCATIONS = ['menu', 'external', 'quick', 'documentation']
@@ -90,12 +90,12 @@ class DashboardLink:
 
     Args:
         text: The text shown for the link
-        link: The link (a relative link for `location=sidebar` or `location=quick`, eg: `/mlflow`,
+        link: The link (a relative link for `location=menu` or `location=quick`, eg: `/mlflow`,
               or a full URL for other locations, eg: http://my-website.com)
-        type: A type of sidebar entry (typically, "item")
+        type: A type of link entry (typically, "item")
         icon: An icon for the link, from
               https://kevingleason.me/Polymer-Todo/bower_components/iron-icons/demo/index.html
-        location: Link's location on the dashboard.  One of `sidebar`, `sidebar_external`, `quick`,
+        location: Link's location on the dashboard.  One of `menu`, `external`, `quick`,
                   and `documentation`.
     """
 
@@ -105,6 +105,11 @@ class DashboardLink:
     icon: str = "icons:link"
     type: str = "item"  # noqa: A003
     desc: str = ""
+
+    def __post_init__(self):
+        """Validate that location is one of the accepted values."""
+        if self.location not in DASHBOARD_LINK_LOCATIONS:
+            raise ValueError(f"location must be one of {DASHBOARD_LINK_LOCATIONS} - got '{self.location}'.")
 
 
 class KubeflowDashboardLinksUpdatedEvent(RelationEvent):
@@ -286,6 +291,8 @@ class KubeflowDashboardLinksRequirer(Object):
         self.framework.observe(
             self._charm.on[self._relation_name].relation_created, self._on_send_data
         )
+
+        self.framework.observe(self._charm.on.upgrade_charm, self._on_send_data)
 
         # apply user defined events
         if refresh_event:
