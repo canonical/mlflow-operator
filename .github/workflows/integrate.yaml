@@ -76,7 +76,7 @@ jobs:
         remove-docker-images: 'true'
     - uses: actions/checkout@v2
     - name: Setup operator environment
-      uses: charmed-kubernetes/actions-operator@1.1.0
+      uses: charmed-kubernetes/actions-operator@main
       with:
         juju-channel: 3.6/stable
         provider: microk8s
