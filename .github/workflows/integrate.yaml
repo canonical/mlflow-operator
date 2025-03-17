@@ -10,7 +10,7 @@ on:
 jobs:
   lib-check:
     name: Check libraries
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -24,28 +24,38 @@ jobs:
 
   lint:
     name: Lint Check
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Check out code
       uses: actions/checkout@v2
 
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v5.3.0
+      with:
+        python-version: 3.8
+
     - name: Install dependencies
-      run: sudo apt-get install python3-pip tox
+      run: pip install tox
 
     - name: Lint code
       run: tox -e lint
 
   unit:
     name: Unit Test
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Check out code
       uses: actions/checkout@v2
 
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v5.3.0
+      with:
+        python-version: 3.8
+
     - name: Install dependencies
-      run: sudo apt-get install python3-pip tox
+      run: pip install tox
 
     - name: Run unit tests
       run: tox -e unit
@@ -63,7 +73,7 @@ jobs:
 
   integration:
     name: Integration tests (microk8s)
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
     - name: Maximise GH runner space
       uses: easimon/maximize-build-space@v8
@@ -74,7 +84,14 @@ jobs:
         remove-android: 'true'
         remove-codeql: 'true'
         remove-docker-images: 'true'
+
     - uses: actions/checkout@v2
+
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v5.3.0
+      with:
+        python-version: 3.8
+
     - name: Setup operator environment
       uses: charmed-kubernetes/actions-operator@1.1.0
       with:
@@ -84,7 +101,7 @@ jobs:
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
 
     - name: Run integration tests
-      run: sg snap_microk8s -c "tox -vve integration -- --model testing"
+      run: tox -vve integration -- --model testing
 
     # On failure, capture debugging resources      
     - name: Get all
