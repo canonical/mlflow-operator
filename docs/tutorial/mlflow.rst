@@ -124,7 +124,7 @@ Let's now use Juju to deploy Charmed MLflow. Run the following command:
 
    juju deploy mlflow --channel=2.15/stable --trust
 
-This deploys the stable version of MLflow with `MinIO <https://min.io/>`_ as the object storage and `MySQL <https://www.mysql.com/>`_ as the metadata store.
+This deploys the stable version of MLflow with `MinIO <https://min.io/>`_ as the object storage and `MySQL` as the metadata store.
 
 Once the deployment is completed, you get a message such as:
 
