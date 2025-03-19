@@ -9,7 +9,7 @@ Get started with Charmed MLflow
 
 Welcome to the tutorial on Charmed MLflow! `MLflow <https://mlflow.org/>`_ is an open-source platform, used for managing machine learning workflows. It has four primary functions that include experiment tracking, model registry, model management and code reproducibility.
 
-So wait, what does "Charmed MLflow" mean? Is it the same thing as MLflow? Yes and no. MLflow is a complex application, consisting of many components running together and communicating with each other. Charmed MLflow is a `charm bundle <https://juju.is/docs/sdk/charm-bundles>`_ that allows us to deploy MLflow quickly and easily. Don't worry too much about what a "charm bundle" is right now. The key thing is that it's going to make deploying MLflow very convenient for us: we'll get MLflow up and running with just a few command line commands!
+So wait, what does "Charmed MLflow" mean? Is it the same thing as MLflow? Yes and no. MLflow is a complex application, consisting of many components running together and communicating with each other. Charmed MLflow is a `charm bundle <https://canonical-juju.readthedocs-hosted.com/en/latest/user/reference/bundle/>`_ that allows us to deploy MLflow quickly and easily. Don't worry too much about what a "charm bundle" is right now. The key thing is that it's going to make deploying MLflow very convenient for us: we'll get MLflow up and running with just a few command line commands!
 
 In this tutorial, we're going to explore Charmed MLflow in a practical way. Using the `Juju <https://juju.is/>`_ CLI tool, we'll deploy MLflow to a local `MicroK8s <https://microk8s.io/>`_ cloud.
 
@@ -124,7 +124,7 @@ Let's now use Juju to deploy Charmed MLflow. Run the following command:
 
    juju deploy mlflow --channel=2.15/stable --trust
 
-This deploys the stable version of MLflow with `MinIO <https://min.io/product/multicloud-google-kubernetes-service?utm_term=&utm_campaign=MinIO+for+Google+Kubernetes+Engine+1.0&utm_source=adwords&utm_medium=ppc&hsa_acc=8976569894&hsa_cam=15844157882&hsa_grp=135899807670&hsa_ad=608661225284&hsa_src=g&hsa_tgt=dsa-1425788495958&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gclid=Cj0KCQjwyLGjBhDKARIsAFRNgW-yGkAWWWjl0Nm7d0xJDiDqrExgaBQ8R-VnJGsPpzoACKsGaYqliycaAlOiEALw_wcB>`_ as the object storage and `MySQL <https://www.mysql.com/>`_ as the metadata store.
+This deploys the stable version of MLflow with `MinIO <https://min.io/>`_ as the object storage and `MySQL` as the metadata store.
 
 Once the deployment is completed, you get a message such as:
 
