@@ -97,7 +97,7 @@ jobs:
       with:
         juju-channel: 3.6/stable
         provider: microk8s
-        channel: 1.31-strict/stable
+        channel: 1.32-strict/stable
         microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
 
     - name: Run integration tests
