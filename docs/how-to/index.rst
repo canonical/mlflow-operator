@@ -3,7 +3,7 @@ How-to guides
 
 The following guides cover key processes and common tasks for managing and using Charmed MLflow.
 
-Preparation
+Prepare
 -----------
 
 .. toctree::
@@ -11,7 +11,7 @@ Preparation
 
    create-ck8s-aws
 
-Deployment
+Deploy
 ----------
 
 .. toctree::
@@ -21,7 +21,7 @@ Deployment
    deploy-eks
    deploy-mlflow-kubeflow-eks
 
-Integration
+Integrate
 -----------
 
 .. toctree::
@@ -31,7 +31,7 @@ Integration
    integrate-ml-ckf-ck8s
    integrate-notebook
 
-Upgrading
+Upgrade
 ---------
 
 .. toctree::
@@ -40,7 +40,7 @@ Upgrading
    migrate-v1-v2
    migrate-v21-v215
 
-Managing
+Manage
 --------
 
 .. toctree::
