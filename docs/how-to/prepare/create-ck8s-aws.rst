@@ -1,7 +1,7 @@
 Create an MLOps-ready Charmed Kubernetes cluster
 ================================================
 
-This how-to guide will show you how to create a Charmed Kubernetes (CK8s) cluster with an appropriate configuration for deploying an MLOps platforms such as Kubeflow or MLflow.
+This how-to guide explains how to create and configure a Charmed Kubernetes (CK8s) cluster for deploying an MLOps platform such as Charmed Kubeflow or MLflow.
 
 **Prerequisites**
 

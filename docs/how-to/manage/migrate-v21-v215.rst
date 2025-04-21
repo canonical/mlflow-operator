@@ -1,7 +1,7 @@
-Upgrade Charmed MLflow 2.1 to 2.15
-==================================================
+Upgrade from 2.1 to 2.15
+=========================
 
-This guide describes how to upgrade Charmed MLflow version 2.1 to 2.15. 
+This guide describes how to upgrade Charmed MLflow from version 2.1 to 2.15. 
 
 Prerequisites
 -------------

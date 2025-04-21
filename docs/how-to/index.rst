@@ -1,50 +1,34 @@
 How-to guides
 =============
 
-The following guides cover key processes and common tasks for managing and using Charmed MLflow.
+The following guides cover key processes for managing and using Charmed MLflow.
 
-Prepare
------------
-
-.. toctree::
-   :maxdepth: 1
-
-   create-ck8s-aws
-
-Deploy
-----------
+Learn about best practices to set up Charmed Mlflow:
 
 .. toctree::
    :maxdepth: 1
 
-   deploy-ck8s-aws
-   deploy-eks
-   deploy-mlflow-kubeflow-eks
+   prepare/index
 
-Integrate
------------
+Understand all available options to deploy Charmed MLflow:
 
 .. toctree::
    :maxdepth: 1
 
-   integrate-cos
-   integrate-ml-ckf-ck8s
-   integrate-notebook
+   deploy/index
 
-Upgrade
----------
+Learn common tasks to manage Charmed MLflow:
 
 .. toctree::
    :maxdepth: 1
 
-   migrate-v1-v2
-   migrate-v21-v215
+   manage/index
 
-Manage
---------
+Find out how to integrate Charmed MLflow with other tools and services:
 
 .. toctree::
    :maxdepth: 1
 
-   backup
-   restore
+   integrate/index
+
+

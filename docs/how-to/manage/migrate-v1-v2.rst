@@ -1,7 +1,8 @@
-Migrate Charmed MLflow Version 1 to Version 2
-=====================================================
+Upgrade from 1.0 to 2.0
+========================
 
-This guide shows how to migrate Charmed MLflow version 1 to version 2. This guide assumes you are running the old Charmed MLflow stack version 1, which runs with MariaDB. With MLflow version 2, we only support the MySQL integration. This guide outlines how to move data from MariaDB to MySQL and how to migrate data from version 1 to version 2.1.1. Data from the object store doesn't need to be migrated.
+This guide shows how to migrate Charmed MLflow from version 1.0 to version 2.0. 
+This guide assumes you are running the old Charmed MLflow stack version 1, which runs with MariaDB. With MLflow version 2, we only support the MySQL integration. This guide outlines how to move data from MariaDB to MySQL and how to migrate data from version 1 to version 2.1.1. Data from the object store doesn't need to be migrated.
 
 Prerequisites
 -------------
