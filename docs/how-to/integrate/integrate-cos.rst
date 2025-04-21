@@ -1,7 +1,7 @@
-Integrate MLflow with the Canonical Observability Stack (COS)
-=============================================================
+Integrate with COS
+===================
 
-This guide shows how to integrate MLflow with the Canonical Observability Stack (COS).
+This guide shows how to integrate Charmed MLflow with the `Canonical Observability Stack (COS) <https://charmhub.io/topics/canonical-observability-stack>`_.
 
 Prerequisites
 -------------

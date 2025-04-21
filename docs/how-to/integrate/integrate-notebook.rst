@@ -1,5 +1,5 @@
-Integrate MLflow with Jupyter Notebooks
-=======================================
+Integrate with Jupyter Notebooks
+==================================
 
 To run Jupyter Notebooks in Charmed MLflow, JupyterLab must be deployed and a number of configurations made.
 

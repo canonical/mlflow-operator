@@ -1,5 +1,5 @@
-Integrate Charmed MLflow with Charmed Kubeflow on Charmed Kubernetes
-=========================================================================
+Integrate with Charmed Kubeflow on Charmed Kubernetes
+======================================================
 
 +-----------+---------+
 | Component | Version |

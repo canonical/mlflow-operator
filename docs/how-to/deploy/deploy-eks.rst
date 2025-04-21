@@ -1,5 +1,5 @@
-Deploy Charmed MLflow to EKS
-============================
+Deploy to EKS
+==============
 
 +-----------+---------+
 | Component | Version |

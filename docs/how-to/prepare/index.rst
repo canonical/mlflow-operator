@@ -1,7 +1,7 @@
 Prepare
 =========
 
-The following guides cover key processes and common tasks for preparing your setup to use Charmed MLflow.
+The following guides present best practices for preparing your setup to use Charmed MLflow.
 
 Learn how to configure a Charmed Kubernetes cluster for deploying an MLOps platform:
 

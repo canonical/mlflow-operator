@@ -1,10 +1,7 @@
 Integrate
 =========
 
-The following guides cover key processes and common tasks for integrating Charmed MLflow with external tools and services.
-
-Prepare
------------
+The following guides cover processes to integrate Charmed MLflow with external tools and services.
 
 .. toctree::
    :maxdepth: 1
