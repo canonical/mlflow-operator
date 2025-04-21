@@ -2,10 +2,7 @@
 
 <!-- Include start contributing -->
 
-## Overview
-
-This document outlines the processes and practices recommended for contributing enhancements to
-this operator.
+This guide outlines the processes and practices recommended for contributing enhancements to this operator.
 
 ## Talk to us First
 
