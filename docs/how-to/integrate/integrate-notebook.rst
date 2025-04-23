@@ -13,7 +13,8 @@ Prerequisites
 Deploy MLflow
 -------------
 
-Follow the steps in this tutorial to deploy MLflow on your VM: :doc:`../tutorial/mlflow`. Confirm that you can now access the MLflow UI on ``http://localhost:31380.``
+Follow the steps in this tutorial to deploy MLflow on your VM: :ref:`tutorial_get_started`. 
+Confirm that you can now access the MLflow UI on ``http://localhost:31380.``
 
 Deploy JupyterLab
 -----------------

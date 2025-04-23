@@ -1,3 +1,5 @@
+.. _tutorial_get_started:
+
 Get started with Charmed MLflow
 ==================================
 
