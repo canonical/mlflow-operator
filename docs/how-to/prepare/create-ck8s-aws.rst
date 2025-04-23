@@ -5,7 +5,8 @@ Create an MLOps-ready Charmed Kubernetes cluster
 
 This how-to guide explains how to create and configure a Charmed Kubernetes (CK8s) cluster for deploying an MLOps platform such as Charmed Kubeflow or MLflow.
 
-**Prerequisites**
+Requirements
+------------
 
 - A local machine with Ubuntu 22.04 or later.
 - An AWS account (`How to create an AWS account <https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-creating.html>`_).

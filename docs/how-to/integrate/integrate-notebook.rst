@@ -3,7 +3,7 @@ Integrate with Jupyter Notebooks
 
 To run Jupyter Notebooks in Charmed MLflow, JupyterLab must be deployed and a number of configurations made.
 
-Prerequisites
+Requirements
 -------------
 
 - You are deploying Jupyter Notebook and MLflow on a workstation running Ubuntu 20.04 (focal) or later.

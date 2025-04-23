@@ -6,20 +6,20 @@ Restore MLflow data
 The following instructions will allow you to restore the Charmed MLflow
 control plane data from a compatible S3 storage.
 
-Pre-requisites
+Requirements
 --------------
 
-1. Access to a S3 storage - only AWS S3 and S3 RadosGW are supported
-2. Admin access to the Kubernetes cluster where Charmed MLflow is deployed
-3. Juju admin access to the `mlflow` model
-4. `rclone`_ installed and `configured`_ to connect to the S3 storage from 1
-5. `s3-integrator` deployed and configured
+1. Access to a S3 storage - only AWS S3 and S3 RadosGW are supported.
+2. Admin access to the Kubernetes cluster where Charmed MLflow is deployed.
+3. Juju admin access to the `mlflow` model.
+4. `rclone`_ installed and `configured`_ to connect to the S3 storage from 1.
+5. `s3-integrator` deployed and configured:
 
    1. https://charmhub.io/mysql-k8s/docs/h-configure-s3-aws
 
-   2.   https://charmhub.io/mysql-k8s/docs/h-configure-s3-radosgw
+   2. https://charmhub.io/mysql-k8s/docs/h-configure-s3-radosgw
 
-6. `yq binary`_
+6. `yq binary`_.
 
 .. note:: This S3 storage will be used for storing all backup data from MLflow.
 

@@ -3,10 +3,8 @@ Upgrade from 2.1 to 2.15
 
 This guide describes how to upgrade Charmed MLflow from version 2.1 to 2.15. 
 
-Prerequisites
+Requirements
 -------------
-
-This guide assumes:
 
 * You have deployed MLflow version 2.11.
 * You have Command Line Interface (CLI) access to the machine where the Juju controller is deployed. All commands in this guide are executed from it.
