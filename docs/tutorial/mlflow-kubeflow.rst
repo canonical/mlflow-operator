@@ -1,3 +1,5 @@
+.. _tutorial_get_started_ckf:
+
 Get started with Charmed MLflow and Kubeflow
 ============================================
 

@@ -1,3 +1,5 @@
+.. _deploy-ck8s-aws:
+
 Deploy to Charmed Kubernetes on AWS
 ====================================
 
@@ -9,10 +11,10 @@ Deploy to Charmed Kubernetes on AWS
 
 This guide shows how to connect Juju to an existing `Charmed Kubernetes <https://ubuntu.com/kubernetes/charmed-k8s/docs>`_ (CK8s) cluster and deploy the MLflow bundle on top of it.
 
-Prerequisites
+Requirements
 -------------
 
-We assume that you have access to a CK8s cluster using ``kubectl``. If you don't have a cluster set up, you can follow this guide: :doc:`Create CK8s on AWS <create-ck8s-aws>`.
+Access to a CK8s cluster using ``kubectl``. If you don't have a cluster set up, you can follow this guide: :ref:`Create CK8s on AWS <create-ck8s-aws>`.
 
 Install Juju
 ------------

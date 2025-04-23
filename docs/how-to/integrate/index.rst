@@ -1,7 +1,7 @@
 Integrate
 =========
 
-The following guides cover processes to integrate Charmed MLflow with external tools and services.
+The following guides cover processes to integrate Charmed MLflow with external tools and services:
 
 .. toctree::
    :maxdepth: 1

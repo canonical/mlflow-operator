@@ -1,3 +1,5 @@
+.. _create-ck8s-aws:
+
 Create an MLOps-ready Charmed Kubernetes cluster
 ================================================
 
