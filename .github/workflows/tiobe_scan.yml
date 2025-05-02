@@ -1,7 +1,6 @@
 name: TICS run self-hosted test (github-action)
 
 on:
-  pull_request:
   workflow_dispatch: # Allows manual triggering
   schedule:
     - cron: "0 2 * * 6" # Every Saturday 2:00 AM UTC
