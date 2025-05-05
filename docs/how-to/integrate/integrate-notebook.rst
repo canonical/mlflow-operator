@@ -1,9 +1,9 @@
-Integrate MLflow with Jupyter Notebooks
-=======================================
+Integrate with Jupyter Notebooks
+==================================
 
 To run Jupyter Notebooks in Charmed MLflow, JupyterLab must be deployed and a number of configurations made.
 
-Prerequisites
+Requirements
 -------------
 
 - You are deploying Jupyter Notebook and MLflow on a workstation running Ubuntu 20.04 (focal) or later.
@@ -13,7 +13,8 @@ Prerequisites
 Deploy MLflow
 -------------
 
-Follow the steps in this tutorial to deploy MLflow on your VM: :doc:`../tutorial/mlflow`. Confirm that you can now access the MLflow UI on ``http://localhost:31380.``
+Follow the steps in this tutorial to deploy MLflow on your VM: :ref:`tutorial_get_started`. 
+Confirm that you can now access the MLflow UI on ``http://localhost:31380.``
 
 Deploy JupyterLab
 -----------------

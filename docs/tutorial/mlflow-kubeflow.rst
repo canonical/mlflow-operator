@@ -1,3 +1,5 @@
+.. _tutorial_get_started_ckf:
+
 Get started with Charmed MLflow and Kubeflow
 ============================================
 
@@ -11,7 +13,7 @@ Get started with Charmed MLflow and Kubeflow
 
 This tutorial gets you started with Charmed MLflow integrated with `Charmed Kubeflow (CKF) <https://charmed-kubeflow.io/docs>`_.
 
-Prerequisites
+Requirements
 -------------
 
 This guide assumes you are deploying Kubeflow and MLflow on a public cloud Virtual Machine (VM) with the following specifications:

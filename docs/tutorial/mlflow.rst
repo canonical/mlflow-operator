@@ -1,3 +1,5 @@
+.. _tutorial_get_started:
+
 Get started with Charmed MLflow
 ==================================
 
@@ -13,10 +15,10 @@ So wait, what does "Charmed MLflow" mean? Is it the same thing as MLflow? Yes an
 
 In this tutorial, we're going to explore Charmed MLflow in a practical way. Using the `Juju <https://juju.is/>`_ CLI tool, we'll deploy MLflow to a local `MicroK8s <https://microk8s.io/>`_ cloud.
 
-Prerequisites
+Requirements
 -------------
 
-We are assuming that you are running this tutorial on a local machine with the following specs:
+This tutorial assumes you are running it on a local machine with the following specs:
 
 * Runs Ubuntu 22.04 or later
 * Has at least 50GB free disk space

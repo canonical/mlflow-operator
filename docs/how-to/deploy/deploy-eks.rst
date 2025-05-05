@@ -1,5 +1,5 @@
-Deploy Charmed MLflow to EKS
-============================
+Deploy to EKS
+==============
 
 +-----------+---------+
 | Component | Version |
@@ -9,12 +9,11 @@ Deploy Charmed MLflow to EKS
 
 This guide shows how to deploy Charmed MLflow on `AWS Elastic Kubernetes Service <https://aws.amazon.com/eks/>`_ (EKS). In this guide, we will create an AWS EKS cluster, connect Juju to it, and deploy the MLflow bundle.
 
-Prerequisites:
---------------
-We assume the following:
+Requirements
+-------------
 
-- Your machine runs Ubuntu 22.04 or later
-- You have an AWS account (`How to create an AWS account <https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-creating.html>`_)
+- Your machine runs Ubuntu 22.04 or later.
+- You have an AWS account (`How to create an AWS account <https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-creating.html>`_).
 
 Create EKS cluster
 -------------------

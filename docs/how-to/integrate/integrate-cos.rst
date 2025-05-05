@@ -1,15 +1,13 @@
-Integrate MLflow with the Canonical Observability Stack (COS)
-=============================================================
+Integrate with COS
+===================
 
-This guide shows how to integrate MLflow with the Canonical Observability Stack (COS).
+This guide shows how to integrate Charmed MLflow with the `Canonical Observability Stack (COS) <https://charmhub.io/topics/canonical-observability-stack>`_.
 
-Prerequisites
+Requirements
 -------------
 
-This guide assumes:
-
 #. You have deployed the COS stack in the ``cos`` model. For steps on how to do this, see the `MicroK8s tutorial <https://charmhub.io/topics/canonical-observability-stack/tutorials/install-microk8s>`_.
-#. You have deployed the MLflow bundle in the ``kubeflow`` model. For steps on how to do this, see :doc:`../tutorial/mlflow`.
+#. You have deployed the MLflow bundle in the ``kubeflow`` model. For steps on how to do this, see :ref:`tutorial_get_started`.
 
 Deploy Grafana Agent
 --------------------
