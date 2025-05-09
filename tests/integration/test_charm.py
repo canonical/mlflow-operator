@@ -19,12 +19,21 @@ import requests
 import yaml
 from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
 from charmed_kubeflow_chisme.testing import (
+    CharmSpec,
     assert_alert_rules,
     assert_grafana_dashboards,
     assert_logging,
     assert_metrics_endpoint,
     get_alert_rules,
     get_grafana_dashboards,
+)
+from charms_dependencies import (
+    ISTIO_GATEWAY,
+    ISTIO_PILOT,
+    METACONTROLLER_OPERATOR,
+    MINIO,
+    MYSQL_K8S,
+    RESOURCE_DISPATCHER,
 )
 from lightkube import codecs
 from lightkube.generic_resource import (
@@ -41,22 +50,10 @@ logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 CHARM_NAME = METADATA["name"]
-RELATIONAL_DB_CHARM_NAME = "mysql-k8s"
-RELATIONAL_DB_CHANNEL = "8.0/stable"
-OBJECT_STORAGE_CHARM_NAME = "minio"
-RESOURCE_DISPATCHER_CHARM_NAME = "resource-dispatcher"
-ISTIO_GATEWAY_CHARM_NAME = "istio-ingressgateway"
-ISTIO_PILOT_CHARM_NAME = "istio-pilot"
-METACONTROLLER_CHARM_NAME = "metacontroller-operator"
 NAMESPACE_FILE = "./tests/integration/namespace.yaml"
 PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
 PODDEFAULTS_SUFFIXES = ["-access-minio", "-minio"]
 TESTING_LABELS = ["user.kubeflow.org/enabled"]  # Might be more than one in the future
-OBJECT_STORAGE_CONFIG = {
-    "access-key": "minio",
-    "secret-key": "minio123",
-    "port": "9000",
-}
 SECRET_SUFFIX = "-minio-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
 
@@ -127,25 +124,24 @@ def namespace(lightkube_client: lightkube.Client):
     delete_all_from_yaml(yaml_text, lightkube_client)
 
 
-async def setup_istio(ops_test: OpsTest, istio_gateway: str, istio_pilot: str):
+async def setup_istio(ops_test: OpsTest, istio_gateway: CharmSpec, istio_pilot: CharmSpec):
     """Deploy Istio Ingress Gateway and Istio Pilot."""
     await ops_test.model.deploy(
-        entity_url="istio-gateway",
-        application_name=istio_gateway,
-        channel="1.16/stable",
-        config={"kind": "ingress"},
-        trust=True,
+        entity_url=istio_gateway.charm,
+        channel=istio_gateway.channel,
+        config=istio_gateway.config,
+        trust=istio_gateway.trust,
     )
     await ops_test.model.deploy(
-        istio_pilot,
-        channel="1.16/stable",
-        config={"default-gateway": "test-gateway"},
-        trust=True,
+        istio_pilot.charm,
+        channel=istio_pilot.channel,
+        config=istio_pilot.config,
+        trust=istio_pilot.trust,
     )
-    await ops_test.model.integrate(istio_pilot, istio_gateway)
+    await ops_test.model.integrate(istio_pilot.charm, istio_gateway.charm)
 
     await ops_test.model.wait_for_idle(
-        apps=[istio_pilot, istio_gateway],
+        apps=[istio_pilot.charm, istio_gateway.charm],
         status="active",
         timeout=60 * 5,
         raise_on_blocked=False,
@@ -185,26 +181,23 @@ class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_add_relational_db_with_relation_expect_active(self, ops_test: OpsTest):
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
+        await ops_test.model.deploy(MINIO.charm, channel=MINIO.channel, config=MINIO.config)
         await ops_test.model.deploy(
-            OBJECT_STORAGE_CHARM_NAME, channel="ckf-1.9/stable", config=OBJECT_STORAGE_CONFIG
-        )
-        await ops_test.model.deploy(
-            RELATIONAL_DB_CHARM_NAME,
-            # We should use `8.0/stable` once changes for
-            # https://github.com/canonical/mysql-k8s-operator/issues/337 are published there.
-            channel=RELATIONAL_DB_CHANNEL,
+            MYSQL_K8S.charm,
+            channel=MYSQL_K8S.channel,
             series="jammy",
-            trust=True,
+            config=MYSQL_K8S.config,
+            trust=MYSQL_K8S.trust,
         )
         await ops_test.model.wait_for_idle(
-            apps=[OBJECT_STORAGE_CHARM_NAME, RELATIONAL_DB_CHARM_NAME],
+            apps=[MINIO.charm, MYSQL_K8S.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
         )
-        await ops_test.model.integrate(OBJECT_STORAGE_CHARM_NAME, CHARM_NAME)
-        await ops_test.model.integrate(RELATIONAL_DB_CHARM_NAME, CHARM_NAME)
+        await ops_test.model.integrate(MINIO.charm, CHARM_NAME)
+        await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
@@ -278,9 +271,9 @@ class TestCharm:
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         default_bucket_name = config["default_artifact_root"]["value"]
 
-        access_key = OBJECT_STORAGE_CONFIG["access-key"]
-        secret_key = OBJECT_STORAGE_CONFIG["secret-key"]
-        port = OBJECT_STORAGE_CONFIG["port"]
+        access_key = MINIO.config["access-key"]
+        secret_key = MINIO.config["secret-key"]
+        port = MINIO.config["port"]
 
         minio_subproces = subprocess.Popen(
             [
@@ -288,7 +281,7 @@ class TestCharm:
                 "-n",
                 f"{ops_test.model_name}",
                 "port-forward",
-                f"svc/{OBJECT_STORAGE_CHARM_NAME}",
+                f"svc/{MINIO.charm}",
                 f"{port}:{port}",
             ]
         )
@@ -336,19 +329,21 @@ class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_deploy_resource_dispatcher(self, ops_test: OpsTest):
         await ops_test.model.deploy(
-            entity_url=METACONTROLLER_CHARM_NAME,
-            channel="latest/edge",
-            trust=True,
+            entity_url=METACONTROLLER_OPERATOR.charm,
+            channel=METACONTROLLER_OPERATOR.channel,
+            trust=METACONTROLLER_OPERATOR.trust,
         )
         await ops_test.model.wait_for_idle(
-            apps=[METACONTROLLER_CHARM_NAME],
+            apps=[METACONTROLLER_OPERATOR.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=120,
         )
         await ops_test.model.deploy(
-            RESOURCE_DISPATCHER_CHARM_NAME, channel="latest/edge", trust=True
+            RESOURCE_DISPATCHER.charm,
+            channel=RESOURCE_DISPATCHER.channel,
+            trust=RESOURCE_DISPATCHER.trust,
         )
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
@@ -360,14 +355,14 @@ class TestCharm:
         )
 
         await ops_test.model.relate(
-            f"{CHARM_NAME}:pod-defaults", f"{RESOURCE_DISPATCHER_CHARM_NAME}:pod-defaults"
+            f"{CHARM_NAME}:pod-defaults", f"{RESOURCE_DISPATCHER.charm}:pod-defaults"
         )
         await ops_test.model.relate(
-            f"{CHARM_NAME}:secrets", f"{RESOURCE_DISPATCHER_CHARM_NAME}:secrets"
+            f"{CHARM_NAME}:secrets", f"{RESOURCE_DISPATCHER.charm}:secrets"
         )
 
         await ops_test.model.wait_for_idle(
-            apps=[RESOURCE_DISPATCHER_CHARM_NAME],
+            apps=[RESOURCE_DISPATCHER.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
@@ -376,11 +371,9 @@ class TestCharm:
 
     async def test_ingress_relation(self, ops_test: OpsTest):
         """Setup Istio and relate it to the MLflow."""
-        await setup_istio(ops_test, ISTIO_GATEWAY_CHARM_NAME, ISTIO_PILOT_CHARM_NAME)
+        await setup_istio(ops_test, ISTIO_GATEWAY, ISTIO_PILOT)
 
-        await ops_test.model.add_relation(
-            f"{ISTIO_PILOT_CHARM_NAME}:ingress", f"{CHARM_NAME}:ingress"
-        )
+        await ops_test.model.add_relation(f"{ISTIO_PILOT.charm}:ingress", f"{CHARM_NAME}:ingress")
 
         await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
 
@@ -403,10 +396,10 @@ class TestCharm:
         secret = lightkube_client.get(Secret, secret_name, namespace=namespace)
         assert secret.data == {
             "AWS_ACCESS_KEY_ID": base64.b64encode(
-                OBJECT_STORAGE_CONFIG["access-key"].encode("utf-8")
+                MINIO.config["access-key"].encode("utf-8")
             ).decode("utf-8"),
             "AWS_SECRET_ACCESS_KEY": base64.b64encode(
-                OBJECT_STORAGE_CONFIG["secret-key"].encode("utf-8")
+                MINIO.config["secret-key"].encode("utf-8")
             ).decode("utf-8"),
         }
         poddefaults_names = [f"{CHARM_NAME}{suffix}" for suffix in PODDEFAULTS_SUFFIXES]

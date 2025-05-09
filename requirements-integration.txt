@@ -50,7 +50,7 @@ cffi==1.17.1
     #   argon2-cffi-bindings
     #   cryptography
     #   pynacl
-charmed-kubeflow-chisme==0.4.3
+charmed-kubeflow-chisme==0.4.9
     # via -r requirements-integration.in
 charset-normalizer==3.4.0
     # via requests
@@ -119,7 +119,9 @@ h11==0.14.0
 httpcore==1.0.7
     # via httpx
 httpx==0.27.2
-    # via lightkube
+    # via
+    #   charmed-kubeflow-chisme
+    #   lightkube
 hvac==2.3.0
     # via juju
 idna==3.10
