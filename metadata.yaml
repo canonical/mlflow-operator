@@ -15,7 +15,7 @@ resources:
   oci-image:
     type: oci-image
     description: Backing OCI image
-    upstream-source: docker.io/mvlassis/mlflow:2.22.0
+    upstream-source: docker.io/charmedkubeflow/mlflow:2.22.0-2db94f5
   exporter-oci-image:
     type: oci-image
     description: Image for Prometheus exporter
