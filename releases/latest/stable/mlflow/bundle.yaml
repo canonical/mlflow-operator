@@ -4,7 +4,7 @@ docs: https://discourse.charmhub.io/t/mlflow-docs-index/10836
 applications:
   mlflow-minio:
     charm: minio
-    channel: ckf-1.9/stable
+    channel: latest/stable
     scale: 1
     trust: true
     _github_repo_name: minio-operator
