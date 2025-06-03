@@ -4,7 +4,6 @@
 .. _Example product documentation: https://canonical-example-product-documentation.readthedocs-hosted.com/
 
 .. _Code of conduct: https://ubuntu.com/community/ethos/code-of-conduct
-.. _Talk to us: https://chat.charmhub.io/charmhub/channels/charmed-mlops
 .. _Contribute: https://github.com/canonical/mlflow-operator/blob/main/CONTRIBUTING.md
 .. _Upstream project: https://mlflow.org/
 .. _Discourse forum: https://discourse.charmhub.io/tag/mlflow
