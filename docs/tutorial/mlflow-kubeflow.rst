@@ -139,7 +139,7 @@ At this point, name the notebook as you prefer, and choose the desired image and
 For example, you can use the following details:
 
 1. ``Name``: ``test-notebook``.
-2. Expand the *Custom Notebook* section and for ``image``, select ``kubeflownotebookswg/jupyter-tensorflow-full:v1.10.0``.
+2. Expand the *Custom Notebook* section and select the ``jupyter-tensorflow-full`` image.
 
 Now, to allow your notebook server access to MLflow, you need to enable some configuration options. Scroll down to ``Data Volumes -> Advanced options`` and from the ``Configurations`` dropdown, choose the following options:
 
