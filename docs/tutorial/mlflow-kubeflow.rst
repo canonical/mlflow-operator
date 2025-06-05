@@ -44,25 +44,25 @@ To deploy Kubeflow along MLflow, run:
 Once the deployment is completed, you will see this message:
 
 .. code-block:: bash
-				
-	Deploy of bundle completed.
+                
+    Deploy of bundle completed.
 
 .. note:: After the deployment, the bundle components need some time to initialise and establish communication with each other. This process may take up to 20 minutes.
 
 Check the status of the components with:
 
 .. code-block:: bash
-				
-	juju status
+                
+    juju status
 
 Use the ``watch`` option to continuously track their status:
 
 .. code-block:: bash
-				
-	juju status --watch 5s
+                
+    juju status --watch 5s
 
 CKF is ready when all the applications and units are in active status. During the configuration process, some of the components may momentarily change to a blocked or error state. This is an expected behaviour that should resolve as the bundle configures itself.
-	
+    
 Set credentials for your Kubeflow deployment:
 
 .. code-block:: bash
