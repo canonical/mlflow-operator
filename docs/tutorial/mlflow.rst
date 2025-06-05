@@ -33,14 +33,14 @@ For MicroK8s to work without having to use ``sudo`` for every command, it create
 For deploying Charmed MLflow, additional features from the default ones that come with MicroK8s are needed. These can be installed as MicroK8s add-ons. Run the following command to enable them:
 
 .. code-block:: bash
-	sudo microk8s enable dns hostpath-storage metallb:10.64.140.43-10.64.140.49 rbac
+    sudo microk8s enable dns hostpath-storage metallb:10.64.140.43-10.64.140.49 rbac
 
 > See More : `MicroK8s | How to use addons <https://microk8s.io/docs/addons>`_
 
 To confirm that all add-ons are successfully enabled, check the MicroK8s status as follows:
 
 .. code-block:: bash
-	microk8s status
+    microk8s status
 
 .. note:: The add-ons configuration may take a few minutes to complete before they are listed as enabled.
 
@@ -98,9 +98,9 @@ MicroK8s uses inotify to interact with the file system. Large Microk8s deploymen
 If you want these commands to persist across machine restarts, add these lines to ``/etc/sysctl.conf``:
 
 .. code-block:: bash
-				
-	fs.inotify.max_user_instances=1280
-	fs.inotify.max_user_watches=655360
+                
+    fs.inotify.max_user_instances=1280
+    fs.inotify.max_user_watches=655360
    
 
 To deploy the MLflow bundle, run the following command:
