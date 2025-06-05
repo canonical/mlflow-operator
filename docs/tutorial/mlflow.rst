@@ -88,7 +88,7 @@ Next, we'll need to add a model for Kubeflow to the controller. Run the followin
 
 Deploy MLflow bundle
 --------------------
-MicroK8s uses inotify to interact with the file system. Large Microk8s deployment sometimes exceed the default ``inotify`` limits. To increase the limits, run the following commands:
+MicroK8s uses ``inotify`` to interact with the file system. Large MicroK8s deployment sometimes exceed the default ``inotify`` limits. To increase the limits, run the following commands:
 
 .. code-block:: bash
 
