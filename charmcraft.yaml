@@ -2,14 +2,65 @@
 # See LICENSE file for licensing details.
 
 type: "charm"
-bases:
-  - build-on:
-    - name: "ubuntu"
-      channel: "20.04"
-    run-on:
-    - name: "ubuntu"
-      channel: "20.04"
+platforms:
+  ubuntu@20.04:amd64:
 parts:
-  charm:
-    charm-python-packages: [setuptools, pip]
-    build-packages: [cargo, rustc, pkg-config, libffi-dev, libssl-dev]
+  # "python-deps" part name is arbitrary; use for consistency
+  # (but could become a magic constant in the future, similar to "poetry-deps"
+  # https://github.com/canonical/craft-parts/pull/901)
+  python-deps:
+    plugin: nil
+    override-build: |
+      # Use environment variable instead of `--break-system-packages` to avoid failing on older
+      # versions of pip that do not recognize `--break-system-packages`
+      # `--user` needed (in addition to `--break-system-packages`) for Ubuntu >=24.04
+      PIP_BREAK_SYSTEM_PACKAGES=true python3 -m pip install --user --upgrade pip==24.3.1  # renovate: charmcraft-pip-latest
+  # "charm-python" part name is arbitrary; use for consistency
+  # Avoid using "charm" part name since that has special meaning to charmcraft
+  charm-python:
+    # By default, the `python` plugin creates/stages these directories:
+    # - lib, src
+    #   (https://github.com/canonical/charmcraft/blob/9ff19c328e23b50cc06f04e8a5ad4835740badf4/charmcraft/parts/plugins/_python.py#L79-L81)
+    # - venv
+    #   (https://github.com/canonical/charmcraft/blob/9ff19c328e23b50cc06f04e8a5ad4835740badf4/charmcraft/parts/plugins/_python.py#L100
+    #   https://github.com/canonical/craft-parts/blob/afb0d652eb330b6aaad4f40fbd6e5357d358de47/craft_parts/plugins/base.py#L270)
+    plugin: python
+    source: .
+    after:
+      - python-deps
+    python-requirements: [requirements.txt]
+    build-environment:
+      - PIP_CONSTRAINT: constraints.txt
+    build-packages:
+      - libffi-dev  # Needed to build Python dependencies with Rust from source
+      - libssl-dev  # Needed to build Python dependencies with Rust from source
+      - pkg-config  # Needed to build Python dependencies with Rust from source
+    override-build: |
+      # Workaround for https://github.com/canonical/charmcraft/issues/2068
+      # rustup used to install rustc and cargo, which are needed to build Python dependencies with Rust from source
+      if [[ "$CRAFT_PLATFORM" == ubuntu@20.04:* || "$CRAFT_PLATFORM" == ubuntu@22.04:* ]]
+      then
+        snap install rustup --classic
+      else
+        apt-get install rustup -y
+      fi
+
+      # If Ubuntu version < 24.04, rustup was installed from snap instead of from the Ubuntu
+      # archive—which means the rustup version could be updated at any time. Print rustup version
+      # to build log to make changes to the snap's rustup version easier to track
+      rustup --version
+
+      # rpds-py (Python package) >=0.19.0 requires rustc >=1.76, which is not available in the
+      # Ubuntu 22.04 archive. Install rustc and cargo using rustup instead of the Ubuntu archive
+      rustup set profile minimal
+      rustup default 1.83.0  # renovate: charmcraft-rust-latest
+
+      craftctl default
+      # Include requirements.txt in *.charm artifact for easier debugging
+      cp requirements.txt "$CRAFT_PART_INSTALL/requirements.txt"
+  # "files" part name is arbitrary; use for consistency
+  files:
+    plugin: dump
+    source: .
+    stage:
+      - LICENSE

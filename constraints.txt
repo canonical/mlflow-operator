@@ -1,0 +1,4 @@
+setuptools_scm < 8.2.0; python_version <= "3.8"
+# Pinned due to https://github.com/canonical/bundle-kubeflow/issues/1267
+maturin < 1.8.4; python_version <= "3.8"
+setuptools-rust < 1.11; python_version <= "3.8"

@@ -6,7 +6,7 @@ This guide outlines the processes and practices recommended for contributing enh
 
 ## Talk to us First
 
-Before developing enhancements to this charm, you should [open an issue](https://github.com/canonical/mlflow-operator/issues) explaining your use case. If you would like to chat with us about your use-cases or proposed implementation, you can reach us at [MLOps Mattermost public channel](https://chat.charmhub.io/charmhub/channels/mlops-documentation) or on [Discourse](https://discourse.charmhub.io/).
+Before developing enhancements to this charm, you should [open an issue](https://github.com/canonical/mlflow-operator/issues) explaining your use case. If you would like to chat with us about your use-cases or proposed implementation, you can reach us on [Discourse](https://discourse.charmhub.io/).
 
 ## Pull Requests
 

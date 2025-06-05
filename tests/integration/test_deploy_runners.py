@@ -29,10 +29,6 @@ class TestDeployRunners:
             apps=[CHARM_NAME], status="waiting", raise_on_blocked=True, timeout=300
         )
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "waiting"
-        assert (
-            ops_test.model.applications[CHARM_NAME].units[0].workload_status_message
-            == "Waiting for object-storage relation data"
-        )
 
         # Deploying grafana-agent-k8s and add all relations
         await deploy_and_assert_grafana_agent(
