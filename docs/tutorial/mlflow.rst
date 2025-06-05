@@ -3,67 +3,47 @@
 Get started with Charmed MLflow
 ==================================
 
-+-----------+---------+
-| Component | Version |
-+-----------+---------+
-|   MLflow  |    2    |
-+-----------+---------+
+`MLflow <https://mlflow.org/>`_ is an open-source platform, used for managing machine learning workflows. It has four primary functions that include experiment tracking, model registry, model management and code reproducibility.
 
-Welcome to the tutorial on Charmed MLflow! `MLflow <https://mlflow.org/>`_ is an open-source platform, used for managing machine learning workflows. It has four primary functions that include experiment tracking, model registry, model management and code reproducibility.
+Charmed MLflow is a `charm bundle <https://canonical-juju.readthedocs-hosted.com/en/latest/user/reference/bundle/>`_ that enables the deployment of MLflow quickly and easily with just a few commands.
 
-So wait, what does "Charmed MLflow" mean? Is it the same thing as MLflow? Yes and no. MLflow is a complex application, consisting of many components running together and communicating with each other. Charmed MLflow is a `charm bundle <https://canonical-juju.readthedocs-hosted.com/en/latest/user/reference/bundle/>`_ that allows us to deploy MLflow quickly and easily. Don't worry too much about what a "charm bundle" is right now. The key thing is that it's going to make deploying MLflow very convenient for us: we'll get MLflow up and running with just a few command line commands!
-
-In this tutorial, we're going to explore Charmed MLflow in a practical way. Using the `Juju <https://juju.is/>`_ CLI tool, we'll deploy MLflow to a local `MicroK8s <https://microk8s.io/>`_ cloud.
+This tutorial describes how to deploy Charmed MLflow using the `Juju <https://juju.is/>`_ CLI tool and a local `MicroK8s <https://microk8s.io/>`_ cloud.
 
 Requirements
 -------------
 
-This tutorial assumes you are running it on a local machine with the following specs:
-
-* Runs Ubuntu 22.04 or later
-* Has at least 50GB free disk space
+* Ubuntu 22.04 or later.
+* A host machine with at least 50GB of disk space available.
 
 Install and prepare MicroK8s
 ----------------------------
-Let's install MicroK8s. MicroK8s is installed from a snap package. The published snap maintains different ``channels`` for different releases of Kubernetes.
+MicroK8s can be installed from a snap package. The published snap maintains different ``channels`` for different releases of Kubernetes.
 
 .. code-block:: bash
 
-   sudo snap install microk8s --channel=1.29-strict/stable
+   sudo snap install microk8s --channel=1.32/stable --classic
 
-For MicroK8s to work without having to use ``sudo`` for every command, it creates a group called ``microk8s``. To make it more convenient to run commands, you will add the current user to this group:
-
-.. code-block:: bash
-
-   sudo usermod -a -G snap_microk8s ubuntu
-   newgrp snap_microk8s
-
-Enable the following MicroK8s addons to configure your Kubernetes cluster with extra services needed to run Charmed Kubeflow.
+For MicroK8s to work without having to use ``sudo`` for every command, it creates a group called ``microk8s``. To make it more convenient to run commands, add the current user to this group:
 
 .. code-block:: bash
 
-   sudo microk8s enable dns hostpath-storage metallb:10.64.140.43-10.64.140.49 rbac
+   sudo usermod -a -G microk8s $USER
+   newgrp microk8s
 
-Here, we added a ``dns`` service, so the applications can find each other, storage, an ingress controller so we can access Kubeflow components and the ``MetalLB`` load-balancer application.
-You can see that we added some detail when enabling ``MetalLB``, in this case the address pool to use.
+For deploying Charmed MLflow, additional features from the default ones that come with MicroK8s are needed. These can be installed as MicroK8s add-ons. Run the following command to enable them:
+
+.. code-block:: bash
+	sudo microk8s enable dns hostpath-storage metallb:10.64.140.43-10.64.140.49 rbac
 
 > See More : `MicroK8s | How to use addons <https://microk8s.io/docs/addons>`_
 
-We've now installed and configured MicroK8s. It will start running automatically, but can take 5 minutes or so before it's ready for action. Run the following command to tell MicroK8s to report its status to us when it's ready:
+To confirm that all add-ons are successfully enabled, check the MicroK8s status as follows:
 
 .. code-block:: bash
+	microk8s status
 
-   microk8s status --wait-ready
+.. note:: The add-ons configuration may take a few minutes to complete before they are listed as enabled.
 
-Be patient - this command may not return straight away. The ``--wait-ready`` flag tells MicroK8s to wait for the Kubernetes services to initialise before returning. Once MicroK8s is ready, you will see something like the following output:
-
-.. code-block:: bash
-
-   microk8s is running
-
-Below this there will be a bunch of other information about the cluster.
-
-Great, we have now installed and configured MicroK8s, and it's running and ready!
 
 Install Juju
 ------------
@@ -73,7 +53,7 @@ To install Juju from snap, run this command:
 
 .. code-block:: bash
 
-   sudo snap install juju --channel=3.4/stable
+   sudo snap install juju --channel=3.6/stable
 
 On some machines there might be a missing folder which is required for Juju to run correctly. To ensure that this folder exists, run:
 
@@ -93,9 +73,9 @@ Now, run the following command to deploy a Juju controller to the Kubernetes we 
 
    juju bootstrap microk8s
 
-Sit tight while the command completes! The controller may take a minute or two to deploy.
+.. note:: The controller may take a few minutes to deploy.
 
-The controller is the agent of Juju, running on Kubernetes, which can be used to deploy and control the components of Kubeflow.
+The controller is the agent of Juju, running on Kubernetes, which can be used to deploy and control the MLflow components.
 
 Next, we'll need to add a model for Kubeflow to the controller. Run the following command to add a model called ``kubeflow``:
 
@@ -103,32 +83,35 @@ Next, we'll need to add a model for Kubeflow to the controller. Run the followin
 
    juju add-model kubeflow
 
-.. note:: The model name here can be anything. We're just using ``kubeflow`` because often you may want to deploy MLflow along with Kubeflow, and in that case, the model name must be ``kubeflow``. So it's not a bad habit to have.
+.. note:: The model name here can be anything. In this tutorial, ``kubeflow`` is being used because you may want to deploy MLflow along with Kubeflow, and in that case, the model name must be ``kubeflow``.
 
-The controller can work with different ``models``, which map 1:1 to namespaces in Kubernetes. In this case, the model name must be ``kubeflow``, due to an assumption made in the upstream Kubeflow Dashboard code.
-
-Great job: Juju has now been installed and configured for Kubeflow!
 
 Deploy MLflow bundle
 --------------------
-Before deploying, run these commands:
+MicroK8s uses inotify to interact with the file system. Large Microk8s deployment sometimes exceed the default ``inotify`` limits. To increase the limits, run the following commands:
 
 .. code-block:: bash
 
    sudo sysctl fs.inotify.max_user_instances=1280
    sudo sysctl fs.inotify.max_user_watches=655360
 
-We need to run the above because under the hood, MicroK8s uses ``inotify`` to interact with the filesystem, and in large MicroK8s deployments sometimes the default ``inotify`` limits are exceeded.
+If you want these commands to persist across machine restarts, add these lines to ``/etc/sysctl.conf``:
 
-Let's now use Juju to deploy Charmed MLflow. Run the following command:
+.. code-block:: bash
+				
+	fs.inotify.max_user_instances=1280
+	fs.inotify.max_user_watches=655360
+   
+
+To deploy the MLflow bundle, run the following command:
 
 .. code-block:: bash
 
-   juju deploy mlflow --channel=2.15/stable --trust
+   juju deploy mlflow --channel=2.22/stable --trust
 
 This deploys the stable version of MLflow with `MinIO <https://min.io/>`_ as the object storage and `MySQL` as the metadata store.
 
-Once the deployment is completed, you get a message such as:
+Once the deployment is completed, you will see a message such as the following:
 
 .. code-block:: bash
    
@@ -140,7 +123,7 @@ You can use the following command to check the status of all the model component
 
    juju status
 
-The deployment is ready when the statuses of all the applications and the units in the bundle have an active status. You can also use this option to continuously watch the status of the model:
+The deployment is ready when the statuses of all the applications and the units in the bundle have an active status. You can also use the ``watch`` option to continuously watch the status of the model:
 
 .. code-block:: bash
 
@@ -160,7 +143,6 @@ This will take you to the MLflow UI.
 
 .. note:: by default Charmed MLflow creates a `NodePort <https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport>`_ on port 31380 where you can access the MLflow UI.
 
-That's it! Charmed MLflow has been deployed locally with MicroK8s and Juju. You can now start using MLflow.
 
 Reference: Object storage credentials
 -------------------------------------
