@@ -45,7 +45,7 @@ Charmed MLflow is an open-source project that values its community. We warmly we
 * Read our `Code of conduct`_.
 * `Contribute`_ and `report bugs <https://github.com/canonical/mlflow-operator/issues/new/choose>`_.
 * Join the `Discourse forum`_.
-* `Talk to us`_.
+* `Talk to us on Matrix <https://matrix.to/#/#charmhub-mlops-kubeflow:ubuntu.com>`_.
 * Learn more about the `upstream project`_.
 
 .. toctree::
