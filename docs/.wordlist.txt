@@ -49,6 +49,7 @@ reproducibility
 reST
 reStructuredText
 RTD
+snapcraft
 subdirectories
 subtree
 UI

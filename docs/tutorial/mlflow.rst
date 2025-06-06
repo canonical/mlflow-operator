@@ -89,7 +89,7 @@ Now, run the following command to deploy a Juju controller to MicroK8s:
 
 .. note:: The controller may take a few minutes to deploy.
 
-The controller is the Juju's agent, running on K8s, which can be used to deploy and control MLflow's components.
+The controller is the Juju agent, running on K8s, which can be used to deploy and control MLflow's components.
 
 Next, you need to add a model for Kubeflow to the controller. 
 Run the following command to add a model named ``kubeflow``:
