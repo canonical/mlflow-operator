@@ -100,8 +100,9 @@ Run the following command to add a model named ``kubeflow``:
 
 .. note:: The model name here can be anything. In this tutorial, ``kubeflow`` is being used because you may want to deploy MLflow along with Kubeflow, and in that case, the model name must be ``kubeflow``.
 
-Deploy MLflow bundle
---------------------
+Deploy MLflow
+--------------
+
 MicroK8s uses ``inotify`` to interact with the file system. 
 This may lead to situations where large MicroK8s deployments exceed the default ``inotify`` limits. 
 To increase the limits, run the following commands:
@@ -149,6 +150,18 @@ You can also use the ``watch`` option to continuously monitor the statuses:
 During the deployment process, some of the components statuses may momentarily change to blocked or error state. 
 This is an expected behaviour, and these statuses should resolve by themselves as the bundle configures.
 
+Object storage
+~~~~~~~~~~~~~~~
+
+Charmed MLflow uses MinIO as the object storage. 
+Get your credentials by running the following command:
+
+.. code-block:: bash
+
+   juju run mlflow-server/0 get-minio-credentials
+
+This action returns ``secret-key`` and ``secret-access-key``.
+
 Access your deployment
 -----------------------
 
@@ -160,17 +173,8 @@ To access your Charmed MLflow deployment, navigate to the following URL:
 
 This will take you to the MLflow User Interface (UI).
 
-.. note:: by default Charmed MLflow creates a `NodePort <https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport>`_ on port 31380 where you can access the MLflow UI.
+.. note:: 
+   by default Charmed MLflow creates a `NodePort <https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport>`_ on port 31380 where you can access the MLflow UI.
 
 
-Reference: Object storage credentials
--------------------------------------
 
-Charmed MLflow uses `MinIO <https://charmhub.io/minio>`_ as the object storage. 
-Get your credentials by running the following command:
-
-.. code-block:: bash
-
-   juju run mlflow-server/0 get-minio-credentials
-
-This action returns ``secret-key`` and ``secret-access-key``.
