@@ -86,7 +86,8 @@ redirects = {}
 # Links to ignore when checking links
 
 linkcheck_ignore = [
-    'http://127.0.0.1:8000'
+    'http://127.0.0.1:8000',
+    'https://matrix.to/#/#charmhub-mlops-kubeflow:ubuntu.com'
     ]
 
 ############################################################
