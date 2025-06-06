@@ -7,7 +7,7 @@ This guide describes how you can get started with Charmed MLflow, from deploying
 
 Charmed MLflow is a `charm bundle <https://canonical-juju.readthedocs-hosted.com/en/latest/user/reference/bundle/>`_ that facilitates a quick deployment of 
 `MLflow <https://mlflow.org/>`_, an open-source platform, used for managing machine learning workflows,
-including experiment tracking, model registry, model management and code reproducibility..
+including experiment tracking, model registry, model management and code reproducibility.
 
 Requirements
 -------------
@@ -174,7 +174,7 @@ To access your Charmed MLflow deployment, navigate to the following URL:
 This will take you to the MLflow User Interface (UI).
 
 .. note:: 
-   by default Charmed MLflow creates a `NodePort <https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport>`_ on port 31380 where you can access the MLflow UI.
+   By default, Charmed MLflow creates a `NodePort <https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport>`_ on port 31380, which you can use to access the MLflow UI.
 
 
 
