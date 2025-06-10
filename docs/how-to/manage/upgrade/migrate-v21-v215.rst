@@ -24,18 +24,18 @@ If you do not meet these requirements, please upgrade these dependencies.
 See `MicroK8s upgrade <https://microk8s.io/docs/upgrading>`_ 
 and `Juju upgrade <https://documentation.ubuntu.com/juju/3.6/tutorial/#upgrade>`_ respectively for more details.
 
-Upgrade MLflow bundle
-----------------------
+Upgrade MLflow
+---------------
 
-To upgrade the MLflow bundle charms from 2.11 to 2.15, run the following commands:
+To upgrade MLflow from 2.11 to 2.15, run the following commands:
 
 .. code-block:: bash
 
     juju refresh mlflow-minio --channel=ckf-1.9/stable
     juju refresh mlflow-server --channel=2.15/stable
 
-Upgrade resource dispatcher
---------------------------------------
+Upgrade Resource dispatcher
+----------------------------
 
 Only if you are running MLflow within Kubeflow, you must upgrade your `resource dispatcher <https://github.com/canonical/resource-dispatcher>`_ deployment. 
 
