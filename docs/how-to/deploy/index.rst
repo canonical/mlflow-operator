@@ -1,10 +1,9 @@
 Deploy
 =========
 
-The following guides describe the available options to deploy Charmed MLflow.
+The following guides describe how to deploy Charmed MLflow.
 
-
-Find out the deployment options for `AWS Elastic Kubernetes Service (EKS) <https://aws.amazon.com/eks/>`_:
+Explore the available deployment options for `AWS Elastic Kubernetes Service (EKS) <https://aws.amazon.com/eks/>`_:
 
 .. toctree::
    :maxdepth: 1

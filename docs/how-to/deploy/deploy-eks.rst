@@ -1,28 +1,30 @@
 Deploy to EKS
 ==============
 
-This guide shows how to deploy Charmed MLflow on `AWS Elastic Kubernetes Service <https://aws.amazon.com/eks/>`_ (EKS). In this guide, you will create an AWS EKS cluster, connect Juju to it, and deploy the MLflow bundle.
+This guide shows how to deploy Charmed MLflow on `AWS Elastic Kubernetes Service <https://aws.amazon.com/eks/>`_ (EKS). 
+In this guide, you will create an AWS EKS cluster, connect `Juju <https://juju.is/>`_ to it, and deploy Charmed MLflow.
 
 Requirements
 -------------
 
 - An AWS account (`How to create an AWS account <https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-creating.html>`_).
-- A machine that runs Ubuntu 22.04 or a newer version.
+- Ubuntu 22.04 or later.
 
-Create EKS cluster
--------------------
-See the `EKS creation guide <https://discourse.charmhub.io/t/create-an-eks-cluster-for-use-with-an-mlops-platform/10983>`_ for how to create an EKS cluster where Charmed MLflow will be deployed.
+Create an EKS cluster
+----------------------
 
-Setup Juju
-----------
+See the `EKS creation guide <https://discourse.charmhub.io/t/create-an-eks-cluster-for-use-with-an-mlops-platform/10983>`_ to learn how to create an EKS cluster where Charmed MLflow will be deployed.
 
-Set up your local ``juju`` to talk to the remote Kubernetes (K8s) cloud. First, install ``juju``:
+Set up Juju
+------------
+
+First, install Juju:
 
 .. code-block:: bash
 
    sudo snap install juju --channel=3.6/stable
 
-Connect Juju to Kubernetes:
+Connect Juju to Kubernetes (K8s):
 
 .. code-block:: bash
 
@@ -34,27 +36,28 @@ Create a controller:
 
    juju bootstrap --no-gui kubeflow kubeflow-controller
 
-.. note:: You can use whatever controller name you like here, we chose ``kubeflow-controller``.
+.. note:: You can use any name for the controller.
 
-Add a Juju model:
+Add the ``kubeflow`` model to your Juju controller:
 
 .. code-block:: bash
 
    juju add-model kubeflow
 
-.. note:: You must choose the name ``kubeflow`` if you plan to connect MLflow to Kubeflow. Otherwise you can choose any name.
+.. note:: You must choose ``kubeflow`` as the model name to connect MLflow to Kubeflow.
 
-Deploy MLflow bundle
----------------------
-Deploy the MLflow bundle with the following command:
+Deploy MLflow 
+--------------
+
+Deploy the `MLflow bundle <https://charmhub.io/mlflow>`_ as follows:
 
 .. code-block:: bash
 
     juju deploy mlflow --channel=2.22/stable --trust
 
-This deploys the stable version of MLflow with `MinIO <https://min.io/>`_ as the object storage and `MySQL` as the metadata store.
+This deploys the stable version of Charmed MLflow with `MinIO <https://min.io/>`_ as the object storage and `MySQL` as the metadata store.
 
-Once the deployment is completed, you will see a message such as the following:
+Once the deployment is completed, you will see the following message:
 
 .. code-block:: bash
    
@@ -66,7 +69,7 @@ You can use the following command to check the status of all model components:
 
    juju status
 
-The deployment is ready when all the applications and units in the bundle are in active status. 
+The deployment is ready when all the applications and units in the bundle are in ``active`` status. 
 You can also use the ``watch`` option to continuously monitor the statuses:
 
 .. code-block:: bash
