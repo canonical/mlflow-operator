@@ -13,6 +13,7 @@
 .. _Create a backup: https://charmhub.io/mysql-k8s/docs/h-create-backup
 
 .. _MicroK8s: https://microk8s.io/
+.. _Charmed Kubeflow: https://charmed-kubeflow.io/
 
 
 
