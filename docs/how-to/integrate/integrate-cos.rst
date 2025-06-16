@@ -9,7 +9,10 @@ Requirements
 #. You have deployed the COS stack in the ``cos`` model. For steps on how to do this, see the `MicroK8s tutorial <https://charmhub.io/topics/canonical-observability-stack/tutorials/install-microk8s>`_.
 #. You have deployed the MLflow bundle in the ``kubeflow`` model. For steps on how to do this, see :ref:`tutorial_get_started`.
 
-As per COS best practices, this guide assumes that COS and MLflow are deployed each using their own controllers. This means that after the deployment, there is a ``kubeflow`` and a ``cos`` model. These have associated the ``kf-controller`` and ``cos-controller`` controllers, respectively. These are the default names for the controllers. Users can set any other name during the controller bootstrapping.
+.. note::
+    As per COS best practices, this guide assumes that COS and MLflow are deployed each using their own controllers. 
+    This means that after the deployment, there is a ``kubeflow`` and a ``cos`` model associated with ``kf-controller`` and ``cos-controller`` controllers, respectively. 
+    These are the default names for the controllers. Users can set any other name during the controller bootstrapping.
 
 Deploy Grafana Agent
 --------------------
@@ -36,7 +39,7 @@ You can make offers for Prometheus, Grafana and Loki from COS as follows:
 Consume Offers in Kubeflow
 --------------------------
 
-Within the ```kubeflow``` model, you can consume the COS offers for Prometheus, Grafana and Loki as follows:
+Within the ```kubeflow``` model, you can consume COS offers for Prometheus, Grafana and Loki as follows:
 
 .. code-block:: bash
 
@@ -47,7 +50,7 @@ Within the ```kubeflow``` model, you can consume the COS offers for Prometheus, 
 Connect Grafana agent to endpoints
 ----------------------------------
 
-The Grafana agent can provide metrics, alerts, dashboards and logs to the COS via these three relation endpoints:
+The Grafana agent can provide metrics, alerts, dashboards and logs to COS via these three relation endpoints:
 
 * `send-remote-write <https://charmhub.io/grafana-agent-k8s/integrations#send-remote-write>`_
 * `grafana-dashboards-provider <https://charmhub.io/grafana-agent-k8s/integrations#grafana-dashboards-provider>`_
@@ -105,7 +108,7 @@ Switch the model to ``cos`` and retrieve the Grafana dashboard admin password. E
 Obtain the Grafana Dashboard URL
 --------------------------------
 
-To access the Grafana dashboard, you need the URL. Run the following command to get the URLs for the COS endpoints:
+To access the Grafana dashboard, you need the URL. Run the following command to get the URLs for COS endpoints:
 
 .. code-block:: bash
 
