@@ -88,7 +88,10 @@ redirects = {}
 
 linkcheck_ignore = [
     'http://127.0.0.1:8000',
-    'https://matrix.to/#/#charmhub-mlops-kubeflow:ubuntu.com'
+    'https://matrix.to/#/#charmhub-mlops-kubeflow:ubuntu.com',
+    'https://charmhub.io/grafana-agent-k8s/integrations#grafana-dashboards-provider',
+    'https://charmhub.io/grafana-agent-k8s/integrations#send-remote-write',
+    'https://charmhub.io/grafana-agent-k8s/integrations#logging-provider'
     ]
 
 ############################################################
