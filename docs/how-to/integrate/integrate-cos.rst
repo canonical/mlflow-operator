@@ -26,7 +26,7 @@ Deploy the `Grafana Agent <https://charmhub.io/grafana-agent-k8s>`_ to your ``ku
 Make offers from COS
 --------------------
 
-You can make offers for Prometheus, Grafana and Loki from COS as follows:
+You can make `offers <https://documentation.ubuntu.com/juju/3.6/reference/offer/>`_ for Prometheus, Grafana and Loki from COS as follows:
 
 .. code-block:: bash
 
