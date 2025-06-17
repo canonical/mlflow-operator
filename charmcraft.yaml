@@ -46,7 +46,7 @@ parts:
     override-build: |
       # Workaround for https://github.com/canonical/charmcraft/issues/2068
       # rustup used to install rustc and cargo, which are needed to build Python dependencies with Rust from source
-      if [[ "$CRAFT_PLATFORM" == ubuntu@24.04:* || "$CRAFT_PLATFORM" == ubuntu@22.04:* ]]
+      if [[ "$CRAFT_PLATFORM" == ubuntu@20.04:* || "$CRAFT_PLATFORM" == ubuntu@22.04:* ]]
       then
         snap install rustup --classic
       else
