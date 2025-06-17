@@ -76,3 +76,4 @@ artifact
 juju
 Pre
 radosgw
+grafana
