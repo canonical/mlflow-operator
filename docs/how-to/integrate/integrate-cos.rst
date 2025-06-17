@@ -73,26 +73,31 @@ Verify the relations for all offers are in place:
 Integrate with Prometheus
 -------------------------
 
-You can provide charms metrics to Prometheus in COS by linking the MLflow Server charm to the `metrics-endpoint` as follows:
+You can provide charms metrics to Prometheus in COS by linking the MLflow charms to the `metrics-endpoint` as follows:
 
 .. code-block:: bash
 
+    juju integrate minio:metrics-endpoint grafana-agent-k8s:metrics-endpoint
+    juju integrate mlflow-mysql:metrics-endpoint grafana-agent-k8s:metrics-endpoint
     juju integrate mlflow-server:metrics-endpoint grafana-agent-k8s:metrics-endpoint
 
 Integrate with Grafana
 ------------------------
-You can link the MLflow Server charm to the Grafana agent via the ``grafana-dashboards-consumer`` endpoint in COS as follows:
+You can link MLflow charms to the Grafana agent via the ``grafana-dashboards-consumer`` endpoint in COS as follows:
 
 .. code-block:: bash
 
+    juju integrate minio:grafana-dashboard grafana-agent-k8s:grafana-dashboards-consumer
+    juju integrate mlflow-mysql:grafana-dashboard grafana-agent-k8s:grafana-dashboards-consumer
     juju integrate mlflow-server:grafana-dashboard grafana-agent-k8s:grafana-dashboards-consumer
 
 Integrate with Loki
 -------------------
-You can provide charm logs to Loki in COS by integrating the MLflow Server charm with ``loki-logging`` endpoint and Grafana agent as follows:
+You can provide charm logs to Loki in COS by integrating the MLflow charms with ``loki-logging`` endpoint and Grafana agent as follows:
 
 .. code-block:: bash
 
+    juju integrate mlflow-mysql:logging grafana-agent-k8s:logging-provider
     juju integrate mlflow-server:logging grafana-agent-k8s:logging-provider
 
 Obtain the Grafana Dashboard Admin Password
@@ -133,4 +138,4 @@ Login to Grafana with the password obtained from the previous section. The usern
 Access the dashboard in the UI
 ------------------------------
 
-Go to the left sidebar and choose the MLflow Dashboards from the list. From the General dashboards folder choose the ``MLflow metrics Dashboard``. When accessing the dashboard for the first time, choose some reasonable time range from the top right dropdown.
+See the available dashboards by clicking on Dashboards in the sidebar menu. When accessing the dashboard for the first time, choose some reasonable time range from the top right dropdown.
