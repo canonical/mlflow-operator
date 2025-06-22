@@ -3,7 +3,7 @@ jinja2
 # Pinning to <4.0 due to compatibility with the 3.1 controller version
 juju<4.0
 minio
-mlflow==2.22.0
+mlflow==2.22.1
 pytest-operator
 requests
 lightkube
