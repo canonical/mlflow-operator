@@ -14,10 +14,10 @@ Requirements
     This means that after the deployment, there is a ``kubeflow`` and a ``cos`` model associated with ``kf-controller`` and ``cos-controller`` controllers, respectively. 
     These are the default names for the controllers. Users can set any other name during the controller bootstrapping.
 
-Deploy Grafana Agent
+Deploy Grafana agent
 --------------------
 
-Deploy the `Grafana Agent <https://charmhub.io/grafana-agent-k8s>`_ to your ``kubeflow`` model alongside the MLflow bundle. Run the following command:
+Deploy the `Grafana agent <https://charmhub.io/grafana-agent-k8s>`_ to your ``kubeflow`` model alongside the MLflow bundle. Run the following command:
 
 .. code-block:: bash
 
@@ -36,7 +36,7 @@ You can make `offers <https://documentation.ubuntu.com/juju/3.6/reference/offer/
 
 .. note:: If you've deployed COS with `offers` overlay, making offers is not necessary, since they already exist.
 
-Consume Offers in Kubeflow
+Consume offers in Kubeflow
 --------------------------
 
 Within the ```kubeflow``` model, you can consume COS offers for Prometheus, Grafana and Loki as follows:
@@ -100,20 +100,22 @@ You can provide charm logs to Loki in COS by integrating the MLflow charms with 
     juju integrate mlflow-mysql:logging grafana-agent-k8s:logging-provider
     juju integrate mlflow-server:logging grafana-agent-k8s:logging-provider
 
-Obtain the Grafana Dashboard Admin Password
+Obtain the Grafana dashboard admin password
 -------------------------------------------
 
-Switch the model to ``cos`` and retrieve the Grafana dashboard admin password. Execute the following commands:
+Switch the model to ``cos`` and retrieve the Grafana dashboard admin password. 
+Execute the following commands:
 
 .. code-block:: bash
 
     juju switch cos
     juju run-action grafana/0 get-admin-password --wait
 
-Obtain the Grafana Dashboard URL
+Obtain the Grafana dashboard URL
 --------------------------------
 
-To access the Grafana dashboard, you need the URL. Run the following command to get the URLs for COS endpoints:
+To access the Grafana dashboard, you need the URL. 
+Run the following command to get the URLs for COS endpoints:
 
 .. code-block:: bash
 
