@@ -69,7 +69,7 @@ juju==3.6.0.0
     # via charmed-kubeflow-chisme
 kubernetes==30.1.0
     # via juju
-lightkube==0.15.6
+lightkube==0.17.1
     # via
     #   -r requirements.in
     #   charmed-kubeflow-chisme
