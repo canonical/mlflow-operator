@@ -1,12 +1,10 @@
-# "charmed-kubeflow-chisme" pinned to avoid closed "latest" tracks with COS charms, see:
-# https://github.com/canonical/charmed-kubeflow-chisme/issues/155
-charmed-kubeflow-chisme>=0.4.11
 boto3
+charmed-kubeflow-chisme
 lightkube
 lightkube-models>=1.25.4.4
 ops>=2.3.0
 oci-image
-pyyaml
+pyyaml==6.0.1
 serialized-data-interface
 tenacity
 # from loki_k8s.v1.loki_push_api.py

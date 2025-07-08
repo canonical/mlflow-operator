@@ -50,7 +50,7 @@ cffi==1.17.1
     #   argon2-cffi-bindings
     #   cryptography
     #   pynacl
-charmed-kubeflow-chisme==0.4.11
+charmed-kubeflow-chisme==0.4.10
     # via -r requirements-integration.in
 charset-normalizer==3.4.2
     # via requests
