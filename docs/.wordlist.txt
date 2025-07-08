@@ -40,7 +40,6 @@ NodePort
 observability
 OIDC
 OLM
-ons
 Permalink
 ReadMe
 readthedocs
@@ -49,7 +48,6 @@ reproducibility
 reST
 reStructuredText
 RTD
-snapcraft
 subdirectories
 subtree
 UI
