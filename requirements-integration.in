@@ -3,10 +3,10 @@ jinja2
 # Pinning to <4.0 due to compatibility with the 3.1 controller version
 juju<4.0
 minio
-mlflow==2.22.0
+mlflow
 pytest-operator
 requests
 lightkube
 lightkube-models>=1.25.4.4
 # This is required due to the abstraction of cos integration
-charmed-kubeflow-chisme>=0.4.9
+charmed-kubeflow-chisme>=0.4.0
