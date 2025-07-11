@@ -1,5 +1,0 @@
-coverage
-pytest
-pytest-mock
-pytest-lazy-fixtures
--r requirements.txt
