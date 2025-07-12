@@ -115,7 +115,7 @@ In the future the MinIO Charm will be extended so that it can send it's data dir
     $RCLONE_MINIO_MLFLOW_REMOTE:mlflow \
     $RCLONE_S3_REMOTE:$S3_BUCKET/mlflow
 
-Next Steps
+Next steps
 ----------
 
 * Want to restore your Charmed MLflow from a backup? See :ref:`restore`
