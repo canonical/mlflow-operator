@@ -9,10 +9,15 @@ Requirements
 #. You have deployed the COS stack in the ``cos`` model. For steps on how to do this, see the `MicroK8s tutorial <https://charmhub.io/topics/canonical-observability-stack/tutorials/install-microk8s>`_.
 #. You have deployed the MLflow bundle in the ``kubeflow`` model. For steps on how to do this, see :ref:`tutorial_get_started`.
 
-Deploy Grafana Agent
+.. note::
+    As per COS best practices, this guide assumes that COS and MLflow are deployed each using their own controllers. 
+    This means that after the deployment, there is a ``kubeflow`` and a ``cos`` model associated with ``kf-controller`` and ``cos-controller`` controllers, respectively. 
+    These are the default names for the controllers. Users can set any other name during the controller bootstrapping.
+
+Deploy Grafana agent
 --------------------
 
-Deploy the `Grafana Agent <https://charmhub.io/grafana-agent-k8s>`_ to your ``kubeflow`` model alongside the MLflow bundle. Run the following command:
+Deploy the `Grafana agent <https://charmhub.io/grafana-agent-k8s>`_ to your ``kubeflow`` model alongside the MLflow bundle. Run the following command:
 
 .. code-block:: bash
 
@@ -30,7 +35,10 @@ Establish the relationship between the MLflow Server Prometheus metrics and the 
 Relate Grafana Agent to Prometheus in the COS Model
 ---------------------------------------------------
 
-Next, relate the Grafana Agent to Prometheus in the ``cos`` model. Execute the following command:
+Consume offers in Kubeflow
+--------------------------
+
+Within the ```kubeflow``` model, you can consume COS offers for Prometheus, Grafana and Loki as follows:
 
 .. code-block:: bash
 
@@ -45,20 +53,22 @@ Establish the relationship between the MLflow Server in the ``kubeflow`` model a
 
     juju add-relation mlflow-server admin/cos.grafana-dashboards
 
-Obtain the Grafana Dashboard Admin Password
+Obtain the Grafana dashboard admin password
 -------------------------------------------
 
-Switch the model to ``cos`` and retrieve the Grafana dashboard admin password. Execute the following commands:
+Switch the model to ``cos`` and retrieve the Grafana dashboard admin password. 
+Execute the following commands:
 
 .. code-block:: bash
 
     juju switch cos
     juju run-action grafana/0 get-admin-password --wait
 
-Obtain the Grafana Dashboard URL
+Obtain the Grafana dashboard URL
 --------------------------------
 
-To access the Grafana dashboard, you need the URL. Run the following command to get the URLs for the COS endpoints:
+To access the Grafana dashboard, you need the URL. 
+Run the following command to get the URLs for COS endpoints:
 
 .. code-block:: bash
 
