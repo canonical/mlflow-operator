@@ -1,15 +1,19 @@
-import sys
+import datetime
+import os
+import yaml
 
-sys.path.append('./')
-from custom_conf import *
-
-# Configuration file for the Sphinx documentation builder.
-# You should not do any modifications to this file. Put your custom
-# configuration into the custom_conf.py file.
-# If you need to change this file, contribute the changes upstream.
+# Configuration for the Sphinx documentation builder.
+# All configuration specific to your project should be done in this file.
 #
-# For the full list of built-in configuration values, see the documentation:
+# If you're new to Sphinx and don't want any advanced or custom features,
+# just go through the items marked 'TODO'.
+#
+# A complete list of built-in Sphinx configuration values:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
+#
+# Our starter pack uses the custom Canonical Sphinx extension
+# to keep all documentation based on it consistent and on brand:
+# https://github.com/canonical/canonical-sphinx
 
 
 #######################
@@ -165,7 +169,7 @@ html_theme_options = {
 # TODO: If your documentation is hosted on https://docs.ubuntu.com/,
 #       uncomment and update as needed.
 
-slug = 'charmed-mlflow'
+# slug = ''
 
 #######################
 # Sitemap configuration: https://sphinx-sitemap.readthedocs.io/
@@ -219,17 +223,11 @@ redirects = {}
 # A regex list of URLs that are ignored by 'make linkcheck'
 #
 # TODO: Remove or adjust the ACME entry after you update the contributing guide
-# TODO: Remove entries after https://github.com/canonical/mlflow-operator/issues/370
-# is no longer an issue
 
 linkcheck_ignore = [
     "http://127.0.0.1:8000",
     "https://github.com/canonical/ACME/*",
-    "https://matrix.to/#/#charmhub-mlops-kubeflow:ubuntu.com",
-    "https://snapcraft.io/yq",
-    "https://snapcraft.io/rclone",
-    "https://ubuntu.com/kubernetes/charmed-k8s/docs",
-    "https://microk8s.io/docs/addons"
+    "https://matrix.to/#/#charmhub-mlops-kubeflow:ubuntu.com"
     ]
 
 
@@ -276,167 +274,86 @@ linkcheck_retries = 3
 #       - youtube-links
 
 extensions = [
-    'sphinx_design',
-    'sphinx_tabs.tabs',
-    'sphinx_reredirects',
-    'youtube-links',
-    'related-links',
-    'custom-rst-roles',
-    'terminal-output',
-    'sphinx_copybutton',
-    'sphinxext.opengraph',
-    'myst_parser',
-    'sphinxcontrib.jquery',
-    'notfound.extension'
-]
-extensions.extend(custom_extensions)
-
-### Configuration for extensions
-
-# Additional MyST syntax
-myst_enable_extensions = [
-    'substitution',
-    'deflist'
+    "canonical_sphinx",
+    "sphinxcontrib.cairosvgconverter",
+    "sphinx_last_updated_by_git",
+    "sphinx.ext.intersphinx",
+    "sphinx_sitemap",
 ]
 
-# Used for related links
-if 'discourse' in html_context:
-    html_context['discourse_prefix'] = html_context['discourse'] + '/t/'
-
-# The default for notfound_urls_prefix usually works, but not for
-# documentation on documentation.ubuntu.com
-if slug:
-    notfound_urls_prefix = '/' + slug + '/en/latest/'
-
-notfound_context = {
-    'title': 'Page not found',
-    'body': '<h1>Page not found</h1>\n\n<p>Sorry, but the documentation page that you are looking for was not found.</p>\n<p>Documentation changes over time, and pages are moved around. We try to redirect you to the updated content where possible, but unfortunately, that didn\'t work this time (maybe because the content you were looking for does not exist in this version of the documentation).</p>\n<p>You can try to use the navigation to locate the content you\'re looking for, or search for a similar page.</p>\n',
-}
-
-# Default image for OGP (to prevent font errors, see
-# https://github.com/canonical/sphinx-docs-starter-pack/pull/54 )
-if not 'ogp_image' in locals():
-    ogp_image = 'https://assets.ubuntu.com/v1/253da317-image-document-ubuntudocs.svg'
-
-############################################################
-### General configuration
-############################################################
+# Excludes files or directories from processing
 
 exclude_patterns = [
-    '_build',
-    'Thumbs.db',
-    '.DS_Store',
-    '.sphinx',
-    'doc-cheat-sheet*',
-]
-exclude_patterns.extend(custom_excludes)
-
-rst_epilog = '''
-.. include:: /reuse/links.txt
-'''
-if 'custom_rst_epilog' in locals():
-    rst_epilog = custom_rst_epilog
-
-source_suffix = {
-    '.rst': 'restructuredtext',
-    '.md': 'markdown',
-}
-
-if not 'conf_py_path' in html_context and 'github_folder' in html_context:
-    html_context['conf_py_path'] = html_context['github_folder']
-
-# For ignoring specific links
-linkcheck_anchors_ignore_for_url = [
-    r'https://github\.com/.*'
+    "doc-cheat-sheet*",
 ]
 
-############################################################
-### Styling
-############################################################
-
-# Find the current builder
-builder = 'dirhtml'
-if '-b' in sys.argv:
-    builder = sys.argv[sys.argv.index('-b')+1]
-
-# Setting templates_path for epub makes the build fail
-if builder == 'dirhtml' or builder == 'html':
-    templates_path = ['.sphinx/_templates']
-
-# Theme configuration
-html_theme = 'furo'
-html_last_updated_fmt = ''
-html_permalinks_icon = '¶'
-html_theme_options = {
-    'light_css_variables': {
-        'font-stack': 'Ubuntu, -apple-system, Segoe UI, Roboto, Oxygen, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif',
-        'font-stack--monospace': 'Ubuntu Mono, Consolas, Monaco, Courier, monospace',
-        'color-foreground-primary': '#111',
-        'color-foreground-secondary': 'var(--color-foreground-primary)',
-        'color-foreground-muted': '#333',
-        'color-background-secondary': '#FFF',
-        'color-background-hover': '#f2f2f2',
-        'color-brand-primary': '#111',
-        'color-brand-content': '#06C',
-        'color-api-background': '#cdcdcd',
-        'color-inline-code-background': 'rgba(0,0,0,.03)',
-        'color-sidebar-link-text': '#111',
-        'color-sidebar-item-background--current': '#ebebeb',
-        'color-sidebar-item-background--hover': '#f2f2f2',
-        'toc-font-size': 'var(--font-size--small)',
-        'color-admonition-title-background--note': 'var(--color-background-primary)',
-        'color-admonition-title-background--tip': 'var(--color-background-primary)',
-        'color-admonition-title-background--important': 'var(--color-background-primary)',
-        'color-admonition-title-background--caution': 'var(--color-background-primary)',
-        'color-admonition-title--note': '#24598F',
-        'color-admonition-title--tip': '#24598F',
-        'color-admonition-title--important': '#C7162B',
-        'color-admonition-title--caution': '#F99B11',
-        'color-highlighted-background': '#EbEbEb',
-        'color-link-underline': 'var(--color-background-primary)',
-        'color-link-underline--hover': 'var(--color-background-primary)',
-        'color-version-popup': '#772953'
-    },
-    'dark_css_variables': {
-        'color-foreground-secondary': 'var(--color-foreground-primary)',
-        'color-foreground-muted': '#CDCDCD',
-        'color-background-secondary': 'var(--color-background-primary)',
-        'color-background-hover': '#666',
-        'color-brand-primary': '#fff',
-        'color-brand-content': '#06C',
-        'color-sidebar-link-text': '#f7f7f7',
-        'color-sidebar-item-background--current': '#666',
-        'color-sidebar-item-background--hover': '#333',
-        'color-admonition-background': 'transparent',
-        'color-admonition-title-background--note': 'var(--color-background-primary)',
-        'color-admonition-title-background--tip': 'var(--color-background-primary)',
-        'color-admonition-title-background--important': 'var(--color-background-primary)',
-        'color-admonition-title-background--caution': 'var(--color-background-primary)',
-        'color-admonition-title--note': '#24598F',
-        'color-admonition-title--tip': '#24598F',
-        'color-admonition-title--important': '#C7162B',
-        'color-admonition-title--caution': '#F99B11',
-        'color-highlighted-background': '#666',
-        'color-link-underline': 'var(--color-background-primary)',
-        'color-link-underline--hover': 'var(--color-background-primary)',
-        'color-version-popup': '#F29879'
-    },
-}
-
-############################################################
-### Additional files
-############################################################
-
-html_static_path = ['.sphinx/_static']
+# Adds custom CSS files, located under 'html_static_path'
 
 html_css_files = [
-    'custom.css',
-    'header.css',
-    'github_issue_links.css',
+    "css/cookie-banner.css",
 ]
-html_css_files.extend(custom_html_css_files)
 
-html_js_files = ['header-nav.js']
-if 'github_issues' in html_context and html_context['github_issues'] and not disable_feedback_button:
-    html_js_files.append('github_issue_links.js')
-html_js_files.extend(custom_html_js_files)
+# Adds custom JavaScript files, located under 'html_static_path'
+
+html_js_files = [
+    "js/bundle.js"
+]
+
+# Specifies a reST snippet to be appended to each .rst file
+
+rst_epilog = """
+.. include:: /reuse/links.txt
+.. include:: /reuse/substitutions.txt
+"""
+
+# Feedback button at the top; enabled by default
+#
+# TODO: To disable the button, uncomment this.
+
+# disable_feedback_button = True
+
+
+# Your manpage URL
+#
+# TODO: To enable manpage links, uncomment and replace {codename} with required
+#       release, preferably an LTS release (e.g. noble). Do *not* substitute
+#       {section} or {page}; these will be replaced by sphinx at build time
+#
+# NOTE: If set, adding ':manpage:' to an .rst file
+#       adds a link to the corresponding man section at the bottom of the page.
+
+# manpages_url = 'https://manpages.ubuntu.com/manpages/{codename}/en/' + \
+#     'man{section}/{page}.{section}.html'
+
+
+# Specifies a reST snippet to be prepended to each .rst file
+# This defines a :center: role that centers table cell content.
+# This defines a :h2: role that styles content for use with PDF generation.
+
+rst_prolog = """
+.. role:: center
+   :class: align-center
+.. role:: h2
+    :class: hclass2
+.. role:: woke-ignore
+    :class: woke-ignore
+.. role:: vale-ignore
+    :class: vale-ignore
+"""
+
+# Workaround for https://github.com/canonical/canonical-sphinx/issues/34
+
+if "discourse_prefix" not in html_context and "discourse" in html_context:
+    html_context["discourse_prefix"] = html_context["discourse"] + "/t/"
+
+# Workaround for substitutions.yaml
+
+if os.path.exists('./reuse/substitutions.yaml'):
+    with open('./reuse/substitutions.yaml', 'r') as fd:
+        myst_substitutions = yaml.safe_load(fd.read())
+
+# Add configuration for intersphinx mapping
+
+intersphinx_mapping = {
+    'starter-pack': ('https://canonical-example-product-documentation.readthedocs-hosted.com/en/latest', None)
+}
