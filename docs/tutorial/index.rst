@@ -1,5 +1,5 @@
-Tutorial
-========
+Tutorials
+=========
 
 The following guides provide a step-by-step tutorial to get you started with Charmed MLflow.
 

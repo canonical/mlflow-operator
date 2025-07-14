@@ -31,7 +31,7 @@ Charmed MLflow provides integration capabilities, including:
 - Canonical Observability Stack
 - Charmed Kubeflow: including the ability use the MLflow registry directly from Kubeflow pipelines and notebooks
 
-Enterprise Offering
+Enterprise offering
 --------------------
 
 Charmed MLflow offers an enterprise offering from Canonical, which includes:
