@@ -56,6 +56,18 @@ def s3_wrapper_empty():
     wrapper = S3BucketWrapper(
         access_key="",
         secret_access_key="",
+        s3_addressing_style="",
+        s3_service="",
+        s3_port="",
+    )
+    return wrapper
+
+@pytest.fixture(scope="function")
+def s3_wrapper_path():
+    wrapper = S3BucketWrapper(
+        access_key="key",
+        secret_access_key="key",
+        s3_addressing_style="path",
         s3_service="",
         s3_port="",
     )
@@ -92,6 +104,35 @@ def test_check_if_bucket_accessible(
 
 
 @pytest.mark.parametrize(
+    "expected_returned,mocked_client,context_raised",
+    [
+        (True, lf("client_bucket_accessible"), does_not_raise()),
+        (
+            False,
+            lf("client_accessible_emitting_ClientError"),
+            does_not_raise(),
+        ),  # A handled error, returning False
+        (
+            None,
+            lf("client_accessible_emitting_unknown_exception"),
+            pytest.raises(Exception),
+        ),
+    ],
+)
+def test_check_if_bucket_accessible_path(
+    expected_returned, mocked_client, context_raised, s3_wrapper_path
+):
+    with context_raised:
+        s3_wrapper_path._client = mocked_client
+
+        bucket_name = "some_bucket"
+        returned = s3_wrapper_path.check_if_bucket_accessible(bucket_name)
+        assert returned == expected_returned
+
+        s3_wrapper_path.client.head_bucket.assert_called_with(Bucket=bucket_name)
+
+
+@pytest.mark.parametrize(
     "is_bucket_accessible,",
     [
         (True,),
@@ -108,6 +149,34 @@ def test_create_bucket_if_not_exists(
 
     bucket_name = "some_bucket"
     s3_wrapper_empty.create_bucket_if_missing(bucket_name)
+
+    mocked_check_if_bucket_accessible.assert_called_with(bucket_name=bucket_name)
+
+    if is_bucket_accessible:
+        # Bucket already existed, so we do not create
+        mocked_boto3_client.create_bucket.assert_not_called()
+    else:
+        # Bucket not accessible, so we try to create
+        mocked_boto3_client.create_bucket.assert_called_once_with(Bucket=bucket_name)
+
+
+@pytest.mark.parametrize(
+    "is_bucket_accessible,",
+    [
+        (True,),
+        (False,),
+    ],
+)
+def test_create_bucket_if_not_exists_path(
+    is_bucket_accessible, mocked_boto3_client, mocker, s3_wrapper_path
+):
+    mocked_check_if_bucket_accessible = mocker.patch(
+        "services.s3.S3BucketWrapper.check_if_bucket_accessible"
+    )
+    mocked_check_if_bucket_accessible.return_value = is_bucket_accessible
+
+    bucket_name = "some_bucket"
+    s3_wrapper_path.create_bucket_if_missing(bucket_name)
 
     mocked_check_if_bucket_accessible.assert_called_with(bucket_name=bucket_name)
 
