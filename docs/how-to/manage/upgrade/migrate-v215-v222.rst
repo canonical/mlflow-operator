@@ -22,7 +22,7 @@ Charmed MLflow 2.22 requires:
 
 If you do not meet these requirements, please upgrade these dependencies. 
 See `MicroK8s upgrade <https://microk8s.io/docs/upgrading>`_ 
-and `Juju upgrade <https://documentation.ubuntu.com/juju/3.6/tutorial/#upgrade>`_ respectively for more details.
+and `Juju upgrade <https://documentation.ubuntu.com/juju/3.6/howto/manage-your-deployment/#upgrade-your-deployment>`_ respectively for more details.
 
 Upgrade MLflow
 ---------------
