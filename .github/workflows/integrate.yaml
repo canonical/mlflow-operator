@@ -76,14 +76,15 @@ jobs:
         remove-docker-images: 'true'
 
     - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: pipx install tox
 
-    - name: Setup operator environment
-      uses: charmed-kubernetes/actions-operator@main
-      with:
-        juju-channel: 3.6/stable
-        provider: microk8s
-        channel: 1.32-strict/stable
-        microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
+      - name: Setup environment
+        run: |
+          sudo apt-get remove -y docker-ce docker-ce-cli containerd.io
+          sudo rm -rf /run/containerd
+          sudo snap install concierge --classic
+          sudo concierge prepare --trace
 
     - name: Run integration tests
       run: tox -vve integration -- --model testing
