@@ -20,6 +20,7 @@ providers:
   lxd:
     enable: true
     bootstrap: false
+    channel: latest/stable
 
 host:
   snaps:
