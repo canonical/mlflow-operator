@@ -76,15 +76,15 @@ jobs:
         remove-docker-images: 'true'
 
     - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: pipx install tox
+    - name: Install dependencies
+      run: pipx install tox
 
-      - name: Setup environment
-        run: |
-          sudo apt-get remove -y docker-ce docker-ce-cli containerd.io
-          sudo rm -rf /run/containerd
-          sudo snap install concierge --classic
-          sudo concierge prepare --trace
+    - name: Setup environment
+      run: |
+        sudo apt-get remove -y docker-ce docker-ce-cli containerd.io
+        sudo rm -rf /run/containerd
+        sudo snap install concierge --classic
+        sudo concierge prepare --trace
 
     - name: Run integration tests
       run: tox -vve integration -- --model testing
