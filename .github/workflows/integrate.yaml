@@ -62,13 +62,13 @@ jobs:
       apply: false
 
   integration:
-    name: Integration tests (microk8s)
+    name: Integration tests
     runs-on: ubuntu-24.04
     steps:
     - name: Maximise GH runner space
       uses: easimon/maximize-build-space@v8
       with:
-        root-reserve-mb: 29696
+        root-reserve-mb: 34816
         remove-dotnet: 'true'
         remove-haskell: 'true'
         remove-android: 'true'
@@ -76,14 +76,15 @@ jobs:
         remove-docker-images: 'true'
 
     - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: pipx install tox
 
-    - name: Setup operator environment
-      uses: charmed-kubernetes/actions-operator@main
-      with:
-        juju-channel: 3.6/stable
-        provider: microk8s
-        channel: 1.32-strict/stable
-        microk8s-addons: "dns storage rbac metallb:10.64.140.43-10.64.140.49"
+    - name: Setup environment
+      run: |
+        sudo apt-get remove -y docker-ce docker-ce-cli containerd.io
+        sudo rm -rf /run/containerd
+        sudo snap install concierge --classic
+        sudo concierge prepare --trace
 
     - name: Run integration tests
       run: tox -vve integration -- --model testing
