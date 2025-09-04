@@ -68,7 +68,7 @@ jobs:
     - name: Maximise GH runner space
       uses: easimon/maximize-build-space@v8
       with:
-        root-reserve-mb: 39936
+        root-reserve-mb: 34816
         remove-dotnet: 'true'
         remove-haskell: 'true'
         remove-android: 'true'
