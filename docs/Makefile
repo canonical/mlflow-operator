@@ -3,7 +3,7 @@
 # Add your customisation to `Makefile` instead.
 
 # You can set these variables from the command line, and also
-# from the environment for the first two.
+# from the environment for the first two variables.
 SPHINXDIR       = .sphinx
 SPHINXOPTS      ?= -c . -d $(SPHINXDIR)/.doctrees -j auto
 SPHINXBUILD     ?= $(VENVDIR)/bin/sphinx-build
