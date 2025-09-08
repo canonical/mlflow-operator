@@ -22,7 +22,7 @@ You can follow [these always up-to-date docs](https://documentation.ubuntu.com/c
 Our docs also provide [instructions](https://documentation.ubuntu.com/charmed-mlflow/en/latest/tutorial/mlflow-kubeflow/#run-mlflow-examples) on how to run MLflow examples.
 
 ## Access Artifacts
-Based on the setup in the Get Started section, artifacts will be stored in MinIO. You are able to access the artifacts using the MinIO client or Boto3 with Python.
+Based on the setup in the Get Started section, artifacts will be stored in MinIO. You can access the artifacts using the MinIO client or Boto3 with Python.
 
 ### Get MinIO Access Key and Secret Access Key
 Run the MLflow action to retrieve MinIO credentials:
