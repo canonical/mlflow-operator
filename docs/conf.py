@@ -231,6 +231,7 @@ linkcheck_ignore = [
     "https://github.com/canonical/ACME/*",
     "https://matrix.to/#/#charmhub-mlops-kubeflow:ubuntu.com",
     "https://snapcraft.io/yq",
+    "https://snapcraft.io/rclone",
     "https://ubuntu.com/kubernetes/charmed-k8s/docs",
     "https://microk8s.io/docs/addons"
     ]
