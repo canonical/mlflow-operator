@@ -227,7 +227,7 @@ redirects = {}
 linkcheck_ignore = [
     "http://127.0.0.1:8000",
     "https://github.com/canonical/ACME/*",
-    "https://matrix.to/#/#charmhub-mlops-kubeflow:ubuntu.com"
+    "https://matrix.to/#/#charmhub-mlops-kubeflow:ubuntu.com",
     "https://snapcraft.io/yq",
     "https://ubuntu.com/kubernetes/charmed-k8s/docs"
     ]
