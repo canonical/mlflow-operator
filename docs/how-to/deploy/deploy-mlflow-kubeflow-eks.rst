@@ -1,35 +1,34 @@
 Deploy Charmed MLflow and Kubeflow to EKS
 =========================================
 
-+-----------+---------+
-| Component | Version |
-+-----------+---------+
-|   MLflow  |    2    |
-+-----------+---------+
-
-This guide shows how to deploy Charmed MLflow alongside Kubeflow on `AWS Elastic Kubernetes Service <https://aws.amazon.com/eks/>`_ (EKS). In this guide, we will create an AWS EKS cluster, connect Juju to it, deploy the MLflow and Kubeflow bundles, and relate them to each other.
+This guide shows how to deploy Charmed MLflow alongside Kubeflow on `AWS Elastic Kubernetes Service <https://aws.amazon.com/eks/>`_ (EKS). 
+In this guide, you will create an AWS EKS cluster, connect `Juju <https://juju.is/>`_ to it, deploy the MLflow and Kubeflow bundles, and relate them to each other.
 
 Requirements
 -------------
 
-- Your machine runs Ubuntu 22.04 or later.
-- You have an AWS account (`How to create an AWS account <https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-creating.html>`_).
+- An AWS account (`How to create an AWS account <https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-creating.html>`_).
+- Ubuntu 22.04 or later.
 
-Deploy EKS cluster
--------------------
+Create an EKS cluster
+----------------------
 
-See our `EKS creation guide <https://discourse.charmhub.io/t/create-an-eks-cluster-for-use-with-an-mlops-platform/10983>`_ for a complete guide on how to do this. **Do not forget** to edit the ``instanceType`` field under ``managedNodeGroups[0].instanceType`` from ``t2.2xlarge`` to ``t3.2xlarge``, as instructed in the guide, since worker nodes of type ``t3.2xlarge`` are required for deploying both MLflow and Kubeflow.
+See the `EKS creation guide <https://discourse.charmhub.io/t/create-an-eks-cluster-for-use-with-an-mlops-platform/10983>`_ to learn how to create an EKS cluster where Charmed MLflow will be deployed.
 
-Setup Juju
-----------
+.. note:: 
+   Make sure to change the value of ``instanceType`` under ``managedNodeGroups[0].instanceType`` from ``t2.2xlarge`` to ``t3.2xlarge``, 
+   as worker nodes of type ``t3.2xlarge`` or larger are required to deploy both MLflow and Kubeflow.
 
-Set up your local ``juju`` to talk to the remote Kubernetes cloud. First, install Juju with:
+Set up Juju
+------------
+
+First, install Juju with:
 
 .. code-block:: bash
 
-    sudo snap install juju --classic
+    sudo snap install juju --channel=3.6/stable
 
-Connect it to Kubernetes:
+Connect it to Kubernetes (K8s):
 
 .. code-block:: bash
 
@@ -41,88 +40,116 @@ Create the controller:
 
     juju bootstrap --no-gui kubeflow kubeflow-controller
 
-.. note:: we chose the name ``kubeflow-controller``, but you can choose any other name.
+.. note:: You can use any name for the controller.
 
-Add a Juju model:
+Add the ``kubeflow`` model to your Juju controller:
 
 .. code-block:: bash
 
     juju add-model kubeflow
 
-Deploy MLflow bundle
----------------------
+.. note:: You must choose ``kubeflow`` as the model name to connect MLflow to Kubeflow.
 
-Deploy the MLflow bundle with the following command:
+Deploy MLflow
+--------------
 
-.. code-block:: bash
-
-    juju deploy mlflow --channel=2.1/stable --trust
-
-Wait until all charms are in the active state. You can check the state of the charms with the command:
+Deploy the `MLflow bundle <https://charmhub.io/mlflow>`_ as follows:
 
 .. code-block:: bash
 
-    juju status --watch 5s --relations
+    juju deploy mlflow --channel=2.22/stable --trust
 
-Deploy Kubeflow bundle
-----------------------
+Deploy Kubeflow
+---------------
 
-Deploy the Kubeflow bundle with the following command:
-
-.. code-block:: bash
-
-    juju deploy kubeflow --channel=1.7/stable --trust
-
-Wait until all charms are in the active state. You can check the state of the charms with the command:
+To deploy Kubeflow along with MLflow, run the following command:
 
 .. code-block:: bash
 
-    juju status --watch 5s --relations
+   juju deploy kubeflow --trust  --channel=1.10/stable
 
-Relate MLflow to Kubeflow
--------------------------
+Once the deployment is completed, you will see the following message:
 
-The resource dispatcher is used to connect MLflow with Kubeflow. In particular, it is responsible for configuring MLflow related Kubernetes objects for Kubeflow user namespaces. Deploy the resource dispatcher to the cluster with the command:
+.. code-block:: bash
+                
+   Deploy of bundle completed.
+
+.. note:: 
+   The bundle components need some time to initialise and establish communication with each other. 
+   This process may take up to 20 minutes.
+
+Check the status of the components with:
+
+.. code-block:: bash
+                
+    juju status
+
+The deployment is ready when all the applications and units in the bundle are in ``active`` status. 
+You can also use the ``watch`` option to continuously monitor the statuses:
+
+.. code-block:: bash
+                
+    juju status --watch 5s
+
+During the deployment process, some of the components statuses may momentarily change to blocked or error state. 
+This is an expected behaviour, and these statuses should resolve by themselves as the bundle configures.
+
+Set credentials for your Kubeflow deployment:
 
 .. code-block:: bash
 
-    juju deploy resource-dispatcher --channel 1.0/stable --trust
+   juju config dex-auth static-username=admin
+   juju config dex-auth static-password=admin
 
-Relate the resource dispatcher to MLflow with the following commands:
+Deploy Resource dispatcher
+--------------------------
 
-.. code-block:: bash
-
-    juju relate mlflow-server:secrets resource-dispatcher:secrets
-    juju relate mlflow-server:pod-defaults resource-dispatcher:pod-defaults
-
-Wait until all charms are in the active state. You can check the state of the charms with the command:
-
-.. code-block:: bash
-
-    juju status --watch 5s --relations
-
-Configure Kubeflow dashboard
-----------------------------
-
-Get the hostname from the ``istio-ingressgateway-workload`` Kubernetes load balancer service:
+The Resource dispatcher operator is an optional component which distributes K8s objects related to MLflow credentials to all user namespaces in Kubeflow. 
+This enables all Kubeflow users to access the MLflow model registry from their namespaces. 
+Deploy it as follows:
 
 .. code-block:: bash
 
-    export INGRESS_HOST=$(kubectl get svc -n kubeflow istio-ingressgateway-workload -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+   juju deploy resource-dispatcher --channel 2.0/stable --trust
 
-Then, configure OIDC and DEX with the ``INGRESS_HOST`` we just retrieved, and also a username and password of your choosing:
+See `Resource Dispatcher <https://github.com/canonical/resource-dispatcher>`_ for more details.
 
-.. code-block:: bash
-    
-    juju config dex-auth public-url="http://${INGRESS_HOST}"
-    juju config oidc-gatekeeper public-url="http://${INGRESS_HOST}"
-    juju config dex-auth static-password=user123
-    juju config dex-auth static-username=user123@email.com
-
-Wait until all charms are in the active state. You can check the state of the charms with the command:
+Then, relate the Resource dispatcher to Charmed MLflow as follows:
 
 .. code-block:: bash
 
-    juju status --watch 5s --relations
+   juju integrate mlflow-server:secrets resource-dispatcher:secrets
+   juju integrate mlflow-server:pod-defaults resource-dispatcher:pod-defaults
 
-Now you can access the Kubeflow dashboard at the value from ``INGRESS_HOST`` in your browser.
+To deploy MLflow models using KServe, create the required relations as follows:
+
+.. code-block:: bash
+
+   juju integrate mlflow-minio:object-storage kserve-controller:object-storage
+   juju integrate kserve-controller:service-accounts resource-dispatcher:service-accounts
+   juju integrate kserve-controller:secrets resource-dispatcher:secrets
+
+
+Integrate MLflow with Kubeflow dashboard
+----------------------------------------
+
+You can integrate the MLflow server with the Kubeflow dashboard as follows:
+
+.. code-block:: bash
+
+   juju integrate mlflow-server:ingress istio-pilot:ingress
+   juju integrate mlflow-server:dashboard-links kubeflow-dashboard:links
+
+Now you should see the MLflow tab in the left-hand sidebar of your Kubeflow dashboard at:
+
+.. code-block:: bash
+   
+   http://10.64.140.43.nip.io/
+
+.. note:: 
+   
+   The address of your Kubeflow dashboard may differ depending on your setup. Check its URL by running: 
+   
+   .. code-block:: bash
+      
+      microk8s kubectl -n kubeflow get svc istio-ingressgateway-workload -o jsonpath='{.status.loadBalancer.ingress[0].ip}'

@@ -1,4 +1,3 @@
-:relatedlinks: [Diátaxis](https://diataxis.fr/)
 
 .. _home:
 
@@ -14,46 +13,46 @@ It also addresses a number of common ML challenges including collaboration, repr
 
 It is intended for data scientists and ML engineers, looking to optimise their ML workflows with charms.
 
----------
-
-In this documentation
----------------------
-
-..  grid:: 1 1 2 2
-
-   ..  grid-item:: :doc:`Tutorial <tutorial/index>`
-
-       **Start here**: a hands-on introduction to Charmed MLflow for newcomers
-
-   ..  grid-item:: :doc:`How-to guides <how-to/index>`
-
-      **Step-by-step guides** covering key operations and common tasks in Charmed MLflow
-
-.. grid:: 1 1 2 2
-
-   .. grid-item:: :doc:`Explanation <explanation/index>`
-
-      **Discussion and clarification** of key Charmed MLflow concepts and features
-
----------
-
-Project and community
----------------------
-
-Charmed MLflow is an open-source project that values its community. We warmly welcome contributions, suggestions, fixes, and constructive feedback from everyone.
-
-* Read our `Code of conduct`_.
-* `Contribute`_ and `report bugs <https://github.com/canonical/mlflow-operator/issues/new/choose>`_.
-* Join the `Discourse forum`_.
-* `Talk to us on Matrix <https://matrix.to/#/#charmhub-mlops-kubeflow:ubuntu.com>`_.
-* Learn more about the `upstream project`_.
-
 .. toctree::
    :hidden:
    :maxdepth: 2
 
-   Home <self>
-   tutorial/index
+   Tutorials <tutorial/index>
    How to <how-to/index>
    explanation/index
-   Contribute <contributing>
+
+In this documentation
+---------------------
+
+.. grid:: 1 1 2 2
+
+   .. grid-item-card:: Tutorials
+      :link: /tutorial/index
+      :link-type: doc
+
+      Get started with Charmed MLflow.
+
+   .. grid-item-card:: How-to guides
+      :link: /how-to/index
+      :link-type: doc
+
+      Step-by-step guides covering key operations and common tasks in Charmed MLflow.
+
+.. grid:: 1 1 2 2
+
+   .. grid-item-card:: Explanation
+      :link: /explanation/index
+      :link-type: doc
+
+      Learn about Charmed MLflow key concepts and features. 
+
+
+Project and community
+---------------------
+
+Charmed MLflow is an open-source project that values its community. 
+Contributions, suggestions, fixes, and constructive feedback are welcome from everyone.
+
+* Read our `Code of conduct`_.
+* `Contribute <https://github.com/canonical/mlflow-operator>`_ and `report bugs <https://github.com/canonical/mlflow-operator/issues>`_.
+* Talk to us on `Matrix`_.

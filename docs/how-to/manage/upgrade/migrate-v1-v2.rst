@@ -10,7 +10,7 @@ Requirements
 #. You have deployed MLflow version 1 with MariaDB, MLflow server version 1.x, and MinIO.
 #. You have CLI access to the machine where the Juju controller is deployed (all commands will be executed from there).
 
-MariaDB Backup
+MariaDB backup
 --------------
 
 Install the ``mysqldump`` command:
@@ -26,8 +26,8 @@ Backup the MariaDB database with the following command:
 
    mysqldump --host=<mariadb-charm-ip-address> --user=root --password=root --column-statistics=0 --databases database > mlflow-db.sql
 
-Deploy MySQL Charm
--------------------
+Deploy MySQL
+------------
 
 Deploy the MySQL charm, which is needed for MLflow v2:
 
@@ -43,7 +43,7 @@ Please wait until the charm goes to active in ``juju status``. Then run the foll
 
    juju run-action mysql-k8s/0 get-password --wait
 
-Adjust the Database Backup
+Adjust the database backup
 --------------------------
 
 Rename the database from ``database`` (used in MariaDB) to ``mlflow`` (used in MySQL):
@@ -60,7 +60,7 @@ Rename any duplicate constraints as MySQL does not allow that. In practice, the 
 
 You can do all the above modifications in the text editor of your choice if you prefer.
 
-Move Database to MySQL
+Move database to MySQL
 ----------------------
 
 Install the MySQL CLI tool:
@@ -91,7 +91,7 @@ Move the updated database dump file to MySQL:
 
    mysql -u root -p <mysql_password> mlflow <mlflow-db-updated.sql
 
-Migrate MySQL Database
+Migrate MySQL database
 ----------------------
 
 Install the MLflow Python client version 2.1.1:
@@ -106,7 +106,7 @@ Run the migration script against the MySQL ``mlflow`` database:
 
    mlflow db upgrade mysql+pymysql://root:<mysql-password>@<mysql-ip>/mlflow
 
-Update MLflow Server
+Update MLflow server
 ---------------------
 
 Remove relations from the old MLflow server:
