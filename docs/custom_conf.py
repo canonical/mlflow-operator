@@ -1,4 +1,5 @@
 import datetime
+import os
 
 # Custom configuration for the Sphinx documentation builder.
 # All configuration specific to your project should be done in this file.
@@ -68,7 +69,7 @@ html_context = {
 
 # If your project is on documentation.ubuntu.com, specify the project
 # slug (for example, "lxd") here.
-slug = ""
+slug = "charmed-mlflow"
 
 ############################################################
 ### Redirects
@@ -98,7 +99,14 @@ linkcheck_ignore = [
 ## Use them to extend the default functionality.
 
 # Add extensions
-custom_extensions = []
+custom_extensions = [
+    'notfound.extension',
+    'sphinx_sitemap'
+]
+
+custom_required_modules = [
+    'sphinx-sitemap',
+]
 
 # Add files or directories that should be excluded from processing.
 custom_excludes = []
@@ -125,3 +133,20 @@ disable_feedback_button = False
 ############################################################
 
 ## Add any configuration that is not covered by the common conf.py file.
+
+#######################
+# Sitemap configuration: https://sphinx-sitemap.readthedocs.io/
+#######################
+
+# Base URL of RTD hosted project
+
+html_baseurl = 'https://documentation.ubuntu.com/charmed-mlflow/'
+
+# URL scheme. Add language and version scheme elements.
+# When configured with RTD variables, check for RTD environment so manual runs succeed:
+
+if 'READTHEDOCS_VERSION' in os.environ:
+    version = os.environ["READTHEDOCS_VERSION"]
+    sitemap_url_scheme = '{version}{link}'
+else:
+    sitemap_url_scheme = 'MANUAL/{link}' 
