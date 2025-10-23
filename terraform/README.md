@@ -13,7 +13,7 @@ The module offers the following configurable inputs:
 | Name | Type | Description | Required |
 | - | - | - | - |
 | `app_name`| string | Application name | False |
-| `base`| string | Application base | False |
+| `base`| string | Charm base | False |
 | `channel`| string | Channel that the charm is deployed from | False |
 | `config`| map(string) | Map of the charm configuration options | False |
 | `model_name`| string | Name of the model that the charm is deployed on | True |
