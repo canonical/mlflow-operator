@@ -1,6 +1,7 @@
 resource "juju_application" "mlflow_server" {
   charm {
     name     = "mlflow-server"
+    base     = var.base
     channel  = var.channel
     revision = var.revision
   }

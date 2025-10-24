@@ -4,6 +4,12 @@ variable "app_name" {
   default     = "mlflow-server"
 }
 
+variable "base" {
+  description = "Charm base"
+  type        = string
+  default     = "ubuntu@24.04"
+}
+
 variable "channel" {
   description = "Charm channel"
   type        = string
