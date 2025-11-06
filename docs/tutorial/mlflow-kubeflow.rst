@@ -6,7 +6,7 @@ Get started with Charmed MLflow and Kubeflow
 +-----------+---------+
 | Component | Version |
 +-----------+---------+
-|   MLflow  |   2.22  |
+|   MLflow  |   3.5   |
 +-----------+---------+
 |  Kubeflow |   1.10  |
 +-----------+---------+
