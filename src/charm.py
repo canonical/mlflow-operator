@@ -10,6 +10,21 @@ import botocore.exceptions
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.istio_beacon_k8s.v0.service_mesh import ServiceMeshConsumer
+from charms.istio_ingress_k8s.v0.istio_ingress_route import (
+    BackendRef,
+    HTTPPathMatch,
+    HTTPRoute,
+    HTTPRouteMatch,
+    IstioIngressRouteConfig,
+    IstioIngressRouteRequirer,
+    Listener,
+    PathModifier,
+    PathModifierType,
+    ProtocolType,
+    URLRewriteFilter,
+    URLRewriteSpec,
+)
 from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
     DashboardLink,
     KubeflowDashboardLinksRequirer,
@@ -124,6 +139,11 @@ class MlflowCharm(CharmBase):
             ],
         )
 
+        # ambient mesh
+        self._mesh = ServiceMeshConsumer(self)
+        self.ingress = IstioIngressRouteRequirer(self)
+        self._ambient_ingress_setup()
+
     @property
     def container(self):
         """Return container."""
@@ -149,6 +169,50 @@ class MlflowCharm(CharmBase):
                 charm=self, relation_name="pod-defaults"
             )
         return self._poddefaults_manifests_wrapper
+
+    def _ambient_ingress_setup(self):
+        http_listener = Listener(port=80, protocol=ProtocolType.HTTP)
+
+        config = IstioIngressRouteConfig(
+            model=self.model.name,
+            listeners=[http_listener],
+            http_routes=[
+                HTTPRoute(
+                    name="http-ingress",
+                    listener=http_listener,
+                    matches=[HTTPRouteMatch(path=HTTPPathMatch(value="/mlflow/"))],
+                    filters=[
+                        URLRewriteFilter(
+                            urlRewrite=URLRewriteSpec(
+                                path=PathModifier(
+                                    type=PathModifierType.ReplacePrefixMatch, value="/"
+                                )
+                            )
+                        )
+                    ],
+                    backends=[BackendRef(service=self.app.name, port=int(self._port))],
+                )
+            ],
+        )
+
+        if self.unit.is_leader():
+            self.ingress.submit_config(config)
+
+    def _check_istio_relations(self):
+        """Check that both ambient and sidecar relations are not present simultaneously."""
+        ambient_relation = self.model.get_relation("istio-ingress-route")
+        sidecar_relation = self.model.get_relation("ingress")
+
+        if ambient_relation and sidecar_relation:
+            self.logger.error(
+                "Both 'istio-ingress-route' and 'ingress' relations are present, "
+                "remove one to unblock."
+            )
+            raise ErrorWithStatus(
+                "Cannot have both 'istio-ingress-route' and 'ingress' relations "
+                "at the same time.",
+                BlockedStatus,
+            )
 
     def _create_service(self):
         """Create k8s service based on charm'sconfig."""
@@ -406,7 +470,10 @@ class MlflowCharm(CharmBase):
         self.unit.status = BlockedStatus("Please add relation to the database")
 
     def _send_manifests(
-        self, context, manifest_files, relation_requirer: KubernetesManifestRequirerWrapper
+        self,
+        context,
+        manifest_files,
+        relation_requirer: KubernetesManifestRequirerWrapper,
     ):
         """Send manifests from folder to desired relation."""
         manifests = self._create_manifests(manifest_files, context)
@@ -438,6 +505,7 @@ class MlflowCharm(CharmBase):
         """Perform all required actions for the Charm."""
         try:
             self._check_leader()
+            self._check_istio_relations()
             interfaces = self._get_interfaces()
             object_storage_data = self._get_object_storage_data(interfaces)
             relational_db_data = self._get_relational_db_data()
@@ -460,11 +528,14 @@ class MlflowCharm(CharmBase):
                     f"Container {self._container_name} is not ready", WaitingStatus
                 )
             self._update_layer(
-                self.container, self._container_name, self._charmed_mlflow_layer(envs, bucket_name)
+                self.container,
+                self._container_name,
+                self._charmed_mlflow_layer(envs, bucket_name),
             )
             if not self.exporter_container.can_connect():
                 raise ErrorWithStatus(
-                    f"Container {self._exporter_container_name} is not ready", WaitingStatus
+                    f"Container {self._exporter_container_name} is not ready",
+                    WaitingStatus,
                 )
             self._update_layer(
                 self.exporter_container,
@@ -488,7 +559,9 @@ class MlflowCharm(CharmBase):
             }
             self._send_manifests(secrets_context, SECRETS_FILES, self.secrets_manifests_wrapper)
             self._send_manifests(
-                poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
+                poddefaults_context,
+                PODDEFAULTS_FILES,
+                self.poddefaults_manifests_wrapper,
             )
             self._send_ingress_info(interfaces)
         except ErrorWithStatus as err:
