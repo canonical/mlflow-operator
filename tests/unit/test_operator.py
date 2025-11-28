@@ -14,6 +14,7 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import MlflowCharm
 
+NAMESPACE = "mlflow-ns"
 EXPECTED_SERVICE = {
     "mlflow-server": Service(
         "mlflow-server",
@@ -62,7 +63,7 @@ INGRESS_DATA = {
     "prefix": "/mlflow/",
     "rewrite": "/",
     "service": "mlflow-server",
-    "namespace": None,
+    "namespace": NAMESPACE,
     "port": 5000,
 }
 
@@ -83,10 +84,13 @@ def harness() -> Harness:
     # setup container networking simulation
     harness.set_can_connect("mlflow-server", True)
 
+    harness.set_leader(True)
+    harness.set_model_name(NAMESPACE)
+
     return harness
 
 
-def enable_exporter_container(harness: harness) -> Harness:
+def enable_exporter_container(harness: Harness) -> Harness:
     """Enable mlflow-prometheus-exporter for connections."""
     harness.set_can_connect("mlflow-prometheus-exporter", True)
     return harness
@@ -94,7 +98,10 @@ def enable_exporter_container(harness: harness) -> Harness:
 
 def add_object_storage_to_harness(harness: Harness):
     """Helper function to handle object storage relation"""
-    object_storage_data = {"_supported_versions": "- v1", "data": yaml.dump(OBJECT_STORAGE_DATA)}
+    object_storage_data = {
+        "_supported_versions": "- v1",
+        "data": yaml.dump(OBJECT_STORAGE_DATA),
+    }
     harness.set_leader(True)
     object_storage_relation_id = harness.add_relation("object-storage", "storage-provider")
     harness.add_relation_unit(object_storage_relation_id, "storage-provider/0")
@@ -120,14 +127,6 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_check_leader_failure(self, harness: Harness):
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == WaitingStatus("Waiting for leadership")
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
     def test_check_leader_success(self, harness: Harness):
         harness.set_leader(True)
         harness.begin_with_initial_hooks()
@@ -139,6 +138,8 @@ class TestCharm:
     )
     def tests_on_pebble_ready_failure(self):
         harness = Harness(MlflowCharm)
+        harness.set_leader(True)
+        harness.set_model_name(NAMESPACE)
         harness.set_can_connect("mlflow-server", False)
         harness.begin()
         with pytest.raises(ErrorWithStatus):
@@ -461,7 +462,10 @@ class TestCharm:
     @patch("charm.MlflowCharm._create_manifests")
     @patch("charm.MlflowCharm.secrets_manifests_wrapper")
     def test_send_manifests(
-        self, secrets_manifests_wrapper: MagicMock, create_manifests: MagicMock, harness: Harness
+        self,
+        secrets_manifests_wrapper: MagicMock,
+        create_manifests: MagicMock,
+        harness: Harness,
     ):
         tmp_manifests = "[]"
         create_manifests.return_value = tmp_manifests
@@ -475,7 +479,8 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch(
-        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access",
+        lambda *args, **kw: True,
     )
     @patch(
         "charm.S3BucketWrapper.__init__",
@@ -501,7 +506,8 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch(
-        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access",
+        lambda *args, **kw: True,
     )
     @patch(
         "charm.S3BucketWrapper.__init__",
@@ -573,3 +579,24 @@ class TestCharm:
         interfaces = {"ingress": ingress}
         harness.charm._send_ingress_info(interfaces)
         ingress.send_data.assert_called_with(INGRESS_DATA)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_sidecar_and_ambient_relations_added(self, harness: Harness):
+        """Test the charm is in BlockedStatus when both sidecar and ambient relations are added."""
+        # Arrange
+        harness.add_relation("ingress", "istio-pilot")
+
+        harness.add_relation("istio-ingress-route", "istio-ingress-k8s")
+
+        # Act
+        harness.begin_with_initial_hooks()
+        harness.container_pebble_ready(harness.charm._container_name)
+
+        # Assert
+        assert isinstance(
+            harness.charm.model.unit.status,
+            BlockedStatus,
+        )

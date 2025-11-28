@@ -21,6 +21,17 @@ resources:
     description: Image for Prometheus exporter
     upstream-source: docker.io/charmedkubeflow/mlflow-prometheus-exporter:1.0-22.04
 requires:
+  istio-ingress-route:
+    interface: istio_ingress_route
+  service-mesh:
+    limit: 1
+    interface: service_mesh
+    description: |
+      Integrate this charm into a service mesh
+  require-cmr-mesh:
+    interface: cross_model_mesh
+    description: |
+      If this app relates to other applications on a charmed service mesh cross-model, use this relation to send that related app additional data needed to automatically generate traffic authorization policies.  This is required because Juju does not natively provide all information required to build these policies when related cross-model.
   relational-db:
     interface: mysql_client
   object-storage:
@@ -106,3 +117,7 @@ provides:
     interface: prometheus_scrape
   grafana-dashboard:
     interface: grafana_dashboard
+  provide-cmr-mesh:
+    interface: cross_model_mesh
+    description: |
+      If this app is generating polciies to provide access to related applications that are cross-model, relate that app to this additional relation to retrieve additional data required for these policies.  This is required because Juju does not natively provide all information required to build these policies when related cross-model.
