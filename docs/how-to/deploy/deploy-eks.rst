@@ -53,7 +53,7 @@ Deploy the `MLflow bundle <https://charmhub.io/mlflow>`_ as follows:
 
 .. code-block:: bash
 
-    juju deploy mlflow --channel=2.22/stable --trust
+    juju deploy mlflow --channel=3.5/stable --trust
 
 This deploys the stable version of Charmed MLflow with `MinIO <https://min.io/>`_ as the object storage and `MySQL` as the metadata store.
 
