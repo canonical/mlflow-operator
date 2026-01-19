@@ -12,7 +12,7 @@ containers:
     # NOTE: ideally, we would run also this workload as a non-root user...
     # uid: 584792
     # gid: 584792
-    # ...but that would fail, so we have to instead run it with root privileges:
+    # ...but that would make the application fail, so we have to run it with root privileges instead:
     uid: 0
     gid: 0
   mlflow-prometheus-exporter:
