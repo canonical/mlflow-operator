@@ -17,12 +17,8 @@ containers:
     gid: 0
   mlflow-prometheus-exporter:
     resource: exporter-oci-image
-    # NOTE: ideally, we would run also this workload as a non-root user...
-    # uid: 584792
-    # gid: 584792
-    # ...but that would fail, so we have to instead run it with root privileges:
-    uid: 0
-    gid: 0
+    uid: 584792
+    gid: 584792
 resources:
   oci-image:
     type: oci-image
