@@ -83,12 +83,8 @@ jobs:
       run: |
         sudo apt-get remove -y docker-ce docker-ce-cli containerd.io
         sudo rm -rf /run/containerd
-
         sudo snap install concierge --classic
         sudo concierge prepare --trace
-
-        kubectl -n kube-system patch configmap cilium-config --type merge --patch '{"data":{"bpf-lb-sock-hostns-only":"true"}}'
-        kubectl -n kube-system rollout restart daemonset cilium
 
     - name: Run integration tests
       run: tox -vve integration -- --model testing
