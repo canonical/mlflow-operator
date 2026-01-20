@@ -103,7 +103,9 @@ jobs:
       if: failure()
 
     - name: Get workload logs
-      run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c mlflow-server
+      run: |
+        kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c mlflow-server
+        kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c mlflow-prometheus-exporter
       if: failure()
 
     - name: Get operator logs
