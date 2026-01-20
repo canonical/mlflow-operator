@@ -214,7 +214,6 @@ class TestCharm:
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
     @pytest.mark.parametrize("container_name", list(CONTAINERS_SECURITY_CONTEXT_MAP.keys()))
-    @pytest.mark.abort_on_fail
     async def test_container_security_context(
         self,
         ops_test: OpsTest,
