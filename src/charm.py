@@ -446,6 +446,7 @@ class MlflowCharm(CharmBase):
             s3_wrapper = S3BucketWrapper(
                 access_key=object_storage_data["access-key"],
                 secret_access_key=object_storage_data["secret-key"],
+                s3_addressing_style=self.model.config["s3_addressing_style"],
                 s3_service=f"{object_storage_data['service']}.{object_storage_data['namespace']}",
                 s3_port=object_storage_data["port"],
             )

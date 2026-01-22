@@ -37,3 +37,7 @@ options:
     description: Deploy the NodePort service for MLFlow
     type: boolean
     default: true
+  s3_addressing_style:
+    description: The addressing style for the s3 storage. Has to be "virtual" or "path".
+    type: string
+    default: virtual

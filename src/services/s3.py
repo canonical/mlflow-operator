@@ -12,7 +12,7 @@ class S3BucketWrapper:
     """Wrapper for basic accessing and validating of S3 Buckets."""
 
     def __init__(
-        self, access_key: str, secret_access_key: str, s3_service: str, s3_port: Union[str, int]
+        self, access_key: str, secret_access_key: str, s3_addressing_style: str, s3_service: str, s3_port: Union[str, int]
     ):
         """Initialize S3 Bucket Wrapper.
 
@@ -24,6 +24,7 @@ class S3BucketWrapper:
 
         self.access_key: str = access_key
         self.secret_access_key: str = secret_access_key
+        self.s3_addressing_style: str = s3_addressing_style
         self.s3_service: str = s3_service
         self.s3_port: str = str(s3_port)
 
@@ -65,11 +66,15 @@ class S3BucketWrapper:
         if self._client:
             return self._client
         else:
+            if self.s3_addressing_style not in ("path", "virtual"):
+                self.s3_addressing_style = "virtual"
+
             self._client = boto3.client(
                 "s3",
                 endpoint_url=self.s3_url,
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_access_key,
+                config=botocore.config.Config(s3={"addressing_style": self.s3_addressing_style})
             )
             return self._client
 
