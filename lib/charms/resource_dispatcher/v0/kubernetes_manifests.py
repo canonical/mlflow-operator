@@ -100,10 +100,11 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
+import re
 from typing import List, Optional, Union
 
 import yaml
-from ops import SecretRemoveEvent
+from ops import Relation, RelationChangedEvent, SecretRemoveEvent
 from ops.charm import CharmBase, RelationEvent, SecretChangedEvent
 from ops.framework import BoundEvent, EventBase, EventSource, Object, ObjectEvents
 from ops.model import SecretNotFoundError
@@ -121,24 +122,24 @@ LIBAPI = 0
 LIBPATCH = 2
 
 KUBERNETES_MANIFESTS_FIELD = "kubernetes_manifests"
+IS_SECRET_FIELD = "is_secret"
+MANIFESTS_SECRET_KEY = "manifests"
 
-
-def generate_secret_label(relation_id: int) -> str:
-    """Generates a unique secret label based on the relation id."""
-    return f"manifest.{relation_id}"
+def generate_secret_label(relation: Relation) -> str:
+    """Generate a unique secret label based on the relation name and ID."""
+    return f"manifest.{relation.name}.{relation.id}"
 
 
 def parse_relation_id_from_secret_label(secret_label: str) -> Optional[int]:
-    """Parses the relation id from a secret label."""
-    prefix = "manifest."
-    if not secret_label.startswith(prefix):
+    """Parse the relation id from a secret label."""
+    pattern = r"^manifest\.(?P<relation_name>[^.]+)\.(?P<relation_id>\d+)$"
+    match = re.match(pattern, secret_label)
+    if not match:
         return None
     try:
-        relation_id_str = secret_label[len(prefix) :]
-        return int(relation_id_str)
+        return int(match.group("relation_id"))
     except ValueError:
         return None
-
 
 @dataclass
 class KubernetesManifest:
@@ -199,9 +200,11 @@ class KubernetesManifestsProvider(Object):
         self._relation_name = relation_name
 
         self.framework.observe(
+            self._charm.on.secret_changed, self._on_secret_changed_event
+        )
+        self.framework.observe(
             self._charm.on[self._relation_name].relation_changed, self._on_relation_changed
         )
-
         self.framework.observe(
             self._charm.on[self._relation_name].relation_broken, self._on_relation_broken
         )
@@ -236,7 +239,7 @@ class KubernetesManifestsProvider(Object):
             if other_app.name == other_app_to_skip:
                 # Skip this app because it is leaving a broken relation
                 continue
-            is_secret = relation.data[other_app].get("is-secret", "false") == "true"
+            is_secret = relation.data[other_app].get(IS_SECRET_FIELD, "false") == "true"
             if is_secret:
                 secret_id = relation.data[other_app].get(KUBERNETES_MANIFESTS_FIELD, None)
                 if not secret_id:
@@ -253,15 +256,30 @@ class KubernetesManifestsProvider(Object):
                     )
                     continue
                 secret_content = secret.get_content(refresh=True)
-                json_data = secret_content.get("manifests", "[]")
+                json_data = secret_content.get(MANIFESTS_SECRET_KEY, "[]")
             else:
                 json_data = relation.data[other_app].get(KUBERNETES_MANIFESTS_FIELD, "[]")
             manifests.extend(json.loads(json_data))
 
         return manifests
 
-    def _on_relation_changed(self, event):
+    def register_secrets_to_relation(self, relation: Relation):
+        if relation.data[relation.app].get(IS_SECRET_FIELD) != "true":
+            logger.info("Detected the other side is not sending secret, skipping secret registration.")
+            return
+
+        secret_uri = relation.data[relation.app].get(KUBERNETES_MANIFESTS_FIELD)
+        if not secret_uri:
+            return
+        secret_label = generate_secret_label(relation=relation)
+        try:
+            self.model.get_secret(label=secret_label)
+        except SecretNotFoundError:
+            self.model.get_secret(id=secret_uri, label=secret_label)
+
+    def _on_relation_changed(self, event: RelationChangedEvent):
         """Handler for relation-changed event for this relation."""
+        self.register_secrets_to_relation(event.relation)
         self.on.updated.emit(event.relation)
 
     def _on_relation_broken(self, event: BoundEvent):
@@ -288,11 +306,11 @@ class KubernetesManifestsProvider(Object):
             )
             return
 
-        if relation.app == self.charm.app:
+        if relation.app == self._charm.app:
             logger.info("Secret changed event ignored for Secret Owner")
             return
 
-        self.on.updated.emit(event.relation)
+        self.on.updated.emit(relation)
 
 
 class KubernetesManifestsRequirer(Object):
@@ -357,18 +375,18 @@ class KubernetesManifestsRequirer(Object):
         if not event.secret.label:
             return
 
-        relation = self._relation_from_secret_label(event.secret.label)
-
-        if not relation:
-            logging.info(
-                f"Received secret {event.secret.label} but couldn't parse, seems irrelevant"
+        relation_id = parse_relation_id_from_secret_label(event.secret.label)
+        if relation_id is None:
+            logger.info(
+                f"Received secret {event.secret.label} but couldn't parse relation id, seems irrelevant."
             )
             return
 
+        relation = self.model.get_relation(self._relation_name, relation_id)
         if relation.name != self._relation_name:
-            logging.info("Secret changed on wrong relation.")
+            logging.info("Event triggered for some other relation.")
             return
-
+        
         # Ignore the event raised for secret that no longer exists
         # https://github.com/juju/juju/issues/20794
         try:
@@ -378,6 +396,7 @@ class KubernetesManifestsRequirer(Object):
             return
 
         event.remove_revision()
+
 
 
 class KubernetesManifestRequirerWrapper(Object):
@@ -411,15 +430,15 @@ class KubernetesManifestRequirerWrapper(Object):
         for relation in relations:
             relation_data = relation.data[self._charm.app]
             manifests_as_json = json.dumps(manifests)
-            secret_content = {"manifests": manifests_as_json}
-            secret_label = generate_secret_label(relation.id)
+            secret_content = {MANIFESTS_SECRET_KEY: manifests_as_json}
+            secret_label = generate_secret_label(relation=relation)
             try:
                 secret = self._charm.model.get_secret(label=secret_label)
                 secret.set_content(secret_content)
             except SecretNotFoundError:
                 secret = self._charm.app.add_secret(content=secret_content, label=secret_label)
             secret.grant(relation=relation)
-            relation_data.update({KUBERNETES_MANIFESTS_FIELD: secret.id, "is-secret": "true"})
+            relation_data.update({KUBERNETES_MANIFESTS_FIELD: secret.id, IS_SECRET_FIELD: "true"})
 
 
 def get_name_of_breaking_app(relation_name: str) -> Optional[str]:
