@@ -34,6 +34,7 @@ from charms_dependencies import (
     MINIO,
     MYSQL_K8S,
     RESOURCE_DISPATCHER,
+    RESOURCE_DISPTCHER_REVISION,
 )
 from lightkube import codecs
 from lightkube.generic_resource import (
@@ -344,6 +345,7 @@ class TestCharm:
             RESOURCE_DISPATCHER.charm,
             channel=RESOURCE_DISPATCHER.channel,
             trust=RESOURCE_DISPATCHER.trust,
+            revision=RESOURCE_DISPTCHER_REVISION,
         )
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],

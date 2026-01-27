@@ -31,5 +31,5 @@ RESOURCE_DISPATCHER = CharmSpec(
     charm="resource-dispatcher",
     channel="latest/edge",
     trust=True,
-    revision=417,  # TODO: Remove pinning once charm released to latest/edge
 )
+RESOURCE_DISPTCHER_REVISION = 432  # TODO: Remove pinning once charm released to latest/edge

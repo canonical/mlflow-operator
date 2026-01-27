@@ -1,7 +1,8 @@
 """KubernetesManifests Library
 
 This library implements data transfer for the kubernetes_manifest interface. The library can be used by the requirer
-charm to send Kubernetes manifests to the provider charm.
+charm to send Kubernetes manifests to the provider charm. The manifests sent by the requirer using this charm lib is
+sent encapsulated inside a Juju secret that has been granted to the provider charm on the other side of the relation.
 
 ## Getting Started
 
@@ -104,7 +105,7 @@ import re
 from typing import List, Optional, Union
 
 import yaml
-from ops import Relation, RelationChangedEvent, SecretRemoveEvent
+from ops import Relation, RelationChangedEvent, SecretRemoveEvent, ModelError
 from ops.charm import CharmBase, RelationEvent, SecretChangedEvent
 from ops.framework import BoundEvent, EventBase, EventSource, Object, ObjectEvents
 from ops.model import SecretNotFoundError
@@ -183,16 +184,17 @@ class KubernetesManifestsProvider(Object):
 
         This relation manager subscribes to:
         * on[relation_name].relation_changed
+        * secret_changed
         * any events provided in refresh_event
 
         This library emits:
         * KubernetesManifestsUpdatedEvent:
-            when data received on the relation is updated
+            when data received on the relation (either as plaintext or as secret) is updated
 
         Args:
             charm: Charm this relation is being used by
             relation_name: Name of this relation (from metadata.yaml)
-            refresh_event: List of BoundEvents that this manager should handle.  Use this to update
+            refresh_event: List of BoundEvents that this manager should handle. Use this to update
                            the data sent on this relation on demand.
         """
         super().__init__(charm, relation_name)
@@ -217,9 +219,15 @@ class KubernetesManifestsProvider(Object):
             for evt in refresh_event:
                 self.framework.observe(evt, self._on_relation_changed)
 
+    def is_secret_enabled(self, relation: Relation) -> bool:
+        """Return whether secret support is enabled for this relation."""
+        return relation.data[relation.app].get(IS_SECRET_FIELD, "false") == "true"
+
     def get_manifests(self) -> List[dict]:
         """
-        Returns a list of dictionaries sent in the data of relation relation_name.
+        Returns a list of manifest dictionaries sent in the data of relation relation_name.
+        If this relation supports sharing data over Juju secrets, the secret is decoded
+        on-the-fly to return the actual list of manifest dictionaries.
         """
 
         other_app_to_skip = get_name_of_breaking_app(relation_name=self._relation_name)
@@ -239,22 +247,29 @@ class KubernetesManifestsProvider(Object):
             if other_app.name == other_app_to_skip:
                 # Skip this app because it is leaving a broken relation
                 continue
-            is_secret = relation.data[other_app].get(IS_SECRET_FIELD, "false") == "true"
-            if is_secret:
+
+            if self.is_secret_enabled(relation=relation):
                 secret_id = relation.data[other_app].get(KUBERNETES_MANIFESTS_FIELD, None)
                 if not secret_id:
                     logger.error(
-                        f"Relation {relation.id} from app {other_app.name} indicates manifests are "
-                        f"in a secret, but no secret id was provided."
+                        f"Relation {relation.name} ID {relation.id} from app {other_app.name} indicates "
+                        f"manifests are in a secret, but no secret id was provided."
                     )
                     continue
-                secret = self._charm.model.get_secret(id=secret_id)
-                if not secret:
+                try:
+                    secret = self._charm.model.get_secret(id=secret_id)
+                except SecretNotFoundError:
                     logger.error(
-                        f"Relation {relation.id} from app {other_app.name} provided secret id "
-                        f"'{secret_id}' but no such secret exists."
+                        f"Relation {relation.name} ID {relation.id} from app {other_app.name} provided "
+                        f"secret id '{secret_id}' but no such secret exists."
                     )
-                    continue
+                    raise
+                except ModelError:
+                    logger.error(
+                        f"Relation {relation.name} ID {relation.id} from app {other_app.name} provided "
+                        f"secret id '{secret_id}' but the secret cannot be read / decoded."
+                    )
+                    raise
                 secret_content = secret.get_content(refresh=True)
                 json_data = secret_content.get(MANIFESTS_SECRET_KEY, "[]")
             else:
@@ -264,18 +279,35 @@ class KubernetesManifestsProvider(Object):
         return manifests
 
     def register_secrets_to_relation(self, relation: Relation):
-        if relation.data[relation.app].get(IS_SECRET_FIELD) != "true":
-            logger.info("Detected the other side is not sending secret, skipping secret registration.")
+        """Register the secret received in the relation with a label (local to this application).
+        This is necessary because afterwards in secret-changed, we reference this secret with its local label.
+        """
+        if not self.is_secret_enabled(relation=relation):
+            logger.info(
+                f"Detected the other side of relation {relation.name} ID {relation.id} is not sending secret, "
+                "skipping secret registration."
+            )
             return
 
         secret_uri = relation.data[relation.app].get(KUBERNETES_MANIFESTS_FIELD)
         if not secret_uri:
+            logger.error(
+                f"Could not find the secret URI in field {KUBERNETES_MANIFESTS_FIELD} in the relation data "
+                f"of the relation {relation.name} and ID {relation.id}."
+            )
             return
         secret_label = generate_secret_label(relation=relation)
         try:
-            self.model.get_secret(label=secret_label)
-        except SecretNotFoundError:
+            # Attach appropriate label to the secret
             self.model.get_secret(id=secret_uri, label=secret_label)
+        except SecretNotFoundError:
+            logger.error(
+                f"The secret with URI {secret_uri} received in {relation.name} ID {relation.id} does not exist in the model."
+            )
+        except ModelError:
+            logger.error(
+                f"The secret with URI {secret_uri} received in {relation.name} ID {relation.id} could not be read / decoded."
+            )
 
     def _on_relation_changed(self, event: RelationChangedEvent):
         """Handler for relation-changed event for this relation."""
@@ -302,7 +334,7 @@ class KubernetesManifestsProvider(Object):
         relation = self.model.get_relation(self._relation_name, relation_id)
         if not relation:
             logger.info(
-                f"Received secret {event.secret.label} but couldn't parse, seems irrelevant."
+                f"Received secret {event.secret.label} but couldn't fetch the relation, seems irrelevant."
             )
             return
 
@@ -437,6 +469,11 @@ class KubernetesManifestRequirerWrapper(Object):
                 secret.set_content(secret_content)
             except SecretNotFoundError:
                 secret = self._charm.app.add_secret(content=secret_content, label=secret_label)
+            except ModelError:
+                logger.error(
+                    f"The secret with label {secret_label} could not be accessed by the charm."
+                )
+                raise
             secret.grant(relation=relation)
             relation_data.update({KUBERNETES_MANIFESTS_FIELD: secret.id, IS_SECRET_FIELD: "true"})
 

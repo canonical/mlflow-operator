@@ -6,6 +6,8 @@ import pytest
 from lightkube.resources.core_v1 import Service
 from pytest_operator.plugin import OpsTest
 
+from .charms_dependencies import RESOURCE_DISPTCHER_REVISION
+
 # Environment variables
 KUBEFLOW_CHANNEL = os.environ.get(
     "KUBEFLOW_CHANNEL", "1.9/stable"
@@ -61,6 +63,7 @@ class TestCharm:
             entity_url="resource-dispatcher",
             channel=RESOURCE_DISPATCHER_CHANNEL,
             trust=True,
+            revision=RESOURCE_DISPTCHER_REVISION,
         )
 
         # Relate services as per Juju integrations
