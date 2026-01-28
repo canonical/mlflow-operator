@@ -27,9 +27,4 @@ MINIO = CharmSpec(
 MYSQL_K8S = CharmSpec(
     charm="mysql-k8s", channel="8.0/stable", config={"profile": "testing"}, trust=True
 )
-RESOURCE_DISPATCHER = CharmSpec(
-    charm="resource-dispatcher",
-    channel="latest/edge",
-    trust=True,
-)
-RESOURCE_DISPTCHER_REVISION = 432  # TODO: Remove pinning once charm released to latest/edge
+RESOURCE_DISPATCHER = CharmSpec(charm="resource-dispatcher", channel="latest/edge", trust=True)
