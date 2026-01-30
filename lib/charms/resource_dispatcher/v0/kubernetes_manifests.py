@@ -100,12 +100,12 @@ class SomeCharm(CharmBase):
 import json
 import logging
 import os
-from dataclasses import dataclass, field
 import re
+from dataclasses import dataclass, field
 from typing import List, Optional, Union
 
 import yaml
-from ops import Relation, RelationChangedEvent, SecretRemoveEvent, ModelError
+from ops import ModelError, Relation, RelationChangedEvent, SecretRemoveEvent
 from ops.charm import CharmBase, RelationEvent, SecretChangedEvent
 from ops.framework import BoundEvent, EventBase, EventSource, Object, ObjectEvents
 from ops.model import SecretNotFoundError
@@ -126,6 +126,7 @@ KUBERNETES_MANIFESTS_FIELD = "kubernetes_manifests"
 IS_SECRET_FIELD = "is_secret"
 MANIFESTS_SECRET_KEY = "manifests"
 
+
 def generate_secret_label(relation: Relation) -> str:
     """Generate a unique secret label based on the relation name and ID."""
     return f"manifest.{relation.name}.{relation.id}"
@@ -141,6 +142,7 @@ def parse_relation_id_from_secret_label(secret_label: str) -> Optional[int]:
         return int(match.group("relation_id"))
     except ValueError:
         return None
+
 
 @dataclass
 class KubernetesManifest:
@@ -201,9 +203,7 @@ class KubernetesManifestsProvider(Object):
         self._charm = charm
         self._relation_name = relation_name
 
-        self.framework.observe(
-            self._charm.on.secret_changed, self._on_secret_changed_event
-        )
+        self.framework.observe(self._charm.on.secret_changed, self._on_secret_changed_event)
         self.framework.observe(
             self._charm.on[self._relation_name].relation_changed, self._on_relation_changed
         )
@@ -418,7 +418,7 @@ class KubernetesManifestsRequirer(Object):
         if relation.name != self._relation_name:
             logging.info("Event triggered for some other relation.")
             return
-        
+
         # Ignore the event raised for secret that no longer exists
         # https://github.com/juju/juju/issues/20794
         try:
@@ -428,7 +428,6 @@ class KubernetesManifestsRequirer(Object):
             return
 
         event.remove_revision()
-
 
 
 class KubernetesManifestRequirerWrapper(Object):
