@@ -66,14 +66,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - name: Maximise GH runner space
-      uses: easimon/maximize-build-space@v8
-      with:
-        root-reserve-mb: 34816
-        remove-dotnet: 'true'
-        remove-haskell: 'true'
-        remove-android: 'true'
-        remove-codeql: 'true'
-        remove-docker-images: 'true'
+      uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
 
     - uses: actions/checkout@v4
     - name: Install dependencies
@@ -103,9 +96,11 @@ jobs:
       if: failure()
 
     - name: Get workload logs
-      run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server
+      run: |
+        kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c mlflow-server
+        kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c mlflow-prometheus-exporter
       if: failure()
 
     - name: Get operator logs
-      run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server
+      run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c charm
       if: failure()
