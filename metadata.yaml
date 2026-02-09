@@ -12,9 +12,6 @@ containers:
     resource: oci-image
     uid: 584792
     gid: 584792
-    mounts:
-      - storage: metrics
-        location: /metrics
   mlflow-prometheus-exporter:
     resource: exporter-oci-image
     uid: 584792
@@ -28,10 +25,6 @@ resources:
     type: oci-image
     description: Image for Prometheus exporter
     upstream-source: docker.io/charmedkubeflow/mlflow-prometheus-exporter:1.0-22.04
-storage:
-  metrics:
-    type: filesystem
-    minimum-size: 1M
 requires:
   relational-db:
     interface: mysql_client
