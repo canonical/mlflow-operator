@@ -46,6 +46,9 @@ RELATIONAL_DB_DATA = {
     "port": "port",
 }
 
+SERVICE_MESH_RELATION_ENDPOINT = "service-mesh"
+SERVICE_MESH_RELATION_PROVIDER = "istio-beacon-k8s"
+
 EXPECTED_ENVIRONMENT = {
     "AWS_ACCESS_KEY_ID": "minio-access-key",
     "AWS_ENDPOINT_URL": "http://service.namespace:1234",
@@ -79,6 +82,8 @@ def harness() -> Harness:
     """Create and return Harness for testing."""
 
     harness = Harness(MlflowCharm)
+
+    harness.set_leader(True)
 
     # setup container networking simulation
     harness.set_can_connect("mlflow-server", True)
@@ -121,6 +126,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     def test_check_leader_failure(self, harness: Harness):
+        harness.set_leader(False)
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == WaitingStatus("Waiting for leadership")
 
@@ -129,7 +135,6 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     def test_check_leader_success(self, harness: Harness):
-        harness.set_leader(True)
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status != WaitingStatus("Waiting for leadership")
 
@@ -196,7 +201,6 @@ class TestCharm:
     )
     def test_get_interfaces_success(self, harness: Harness):
         harness = add_object_storage_to_harness(harness)
-        harness.set_leader(True)
         harness.begin()
         interfaces = harness.charm._get_interfaces()
         assert interfaces["object-storage"] is not None
@@ -210,7 +214,6 @@ class TestCharm:
         self, _get_interfaces: MagicMock, harness: Harness
     ):
         _get_interfaces.return_value = {"object-storage": ""}
-        harness.set_leader(True)
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == WaitingStatus(
             "Waiting for object-storage relation data"
@@ -227,7 +230,6 @@ class TestCharm:
         storage_object = MagicMock()
         storage_object.get_data.return_value = ["a"]
         _get_interfaces.return_value = {"object-storage": storage_object}
-        harness.set_leader(True)
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
             "Unexpected error unpacking object storage data - data format not as expected. "
@@ -489,7 +491,6 @@ class TestCharm:
         __: MagicMock,
         harness: Harness,
     ):
-        harness.set_leader(True)
         harness.begin()
         harness.charm._on_event(None)
         assert harness.charm.model.unit.status == WaitingStatus(
