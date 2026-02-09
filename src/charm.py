@@ -160,17 +160,14 @@ class MlflowCharm(CharmBase):
             # - the one required for traffic from the ingress route is already created by the
             #   ingress-route provider itself and we therefore don't need to create it on the
             #   requirer side
-            # - the MLflow is directly called from the UI of the Kubeflow Dashboard, from
-            #   the client's browser and not via the Kubeflow Dashboard service, so no
-            #   AuthorizationPolicies from the Dashboard are necessary
-            # - Feast's integrator and Resource Dispatcher, while exchanging data via Juju
-            #   integrations with the UI, do not expect direct API calls from the UI
-            # - while MLflow does make direct API calls to its databases, such workloads are not
-            #   part of the mesh (yet) on their end and, given there is no general
-            #   AuthorizationPolicy in place (yet) that implements a deny-by-default behavior, the
-            #   receiving ends of such API calls do allow traffic
-            # - TODO: metric scrapers?
-            # - TODO: other relations?
+            # - MLflow is directly called from the UI of the Kubeflow Dashboard, from the client
+            #   and not via the backend of the Dashboard service, so no AuthorizationPolicies from
+            #   the Dashboard are necessary
+            # - while MLflow does make direct API calls to its relational database and its object
+            #   storage, such workloads are not part of the mesh (yet) on their end and, given
+            #   there is no general AuthorizationPolicy in place (yet) that implements a
+            #   deny-by-default behavior, the receiving ends of such API calls do allow traffic
+            # - TODO: Loki, Prometheus & Grafana?
             policies=None,
         )
 
@@ -593,10 +590,14 @@ class MlflowCharm(CharmBase):
 
     def _on_ambient_mode_ingress_ready(self, _):
         """Configure the ingess for ambient mode."""
+        self._check_leader()
+
         try:
             self.ambient_mode_ingress.submit_config(self._ingress_config)
         except Exception as e:
             raise GenericCharmRuntimeError(f"Failed to submit ingress config: {e}")
+
+        self.model.unit.status = ActiveStatus()
 
 
 if __name__ == "__main__":
