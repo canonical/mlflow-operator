@@ -142,8 +142,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def tests_on_pebble_ready_failure(self):
-        harness = Harness(MlflowCharm)
+    def tests_on_pebble_ready_failure(self, harness: Harness):
         harness.set_can_connect("mlflow-server", False)
         harness.begin()
         with pytest.raises(ErrorWithStatus):
