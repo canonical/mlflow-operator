@@ -511,18 +511,18 @@ files = [
 
 [[package]]
 name = "boto3"
-version = "1.42.44"
+version = "1.42.45"
 description = "The AWS SDK for Python"
 optional = false
 python-versions = ">=3.9"
 groups = ["charm"]
 files = [
-    {file = "boto3-1.42.44-py3-none-any.whl", hash = "sha256:32e995b0d56e19422cff22f586f698e8924c792eb00943de9c517ff4607e4e18"},
-    {file = "boto3-1.42.44.tar.gz", hash = "sha256:d5601ea520d30674c1d15791a1f98b5c055e973c775e1d9952ccc09ee5913c4e"},
+    {file = "boto3-1.42.45-py3-none-any.whl", hash = "sha256:5074e074a718a6f3c2b519cbb9ceab258f17b331a143d23351d487984f2a412f"},
+    {file = "boto3-1.42.45.tar.gz", hash = "sha256:4db50b8b39321fab87ff7f40ab407887d436d004c1f2b0dfdf56e42b4884709b"},
 ]
 
 [package.dependencies]
-botocore = ">=1.42.44,<1.43.0"
+botocore = ">=1.42.45,<1.43.0"
 jmespath = ">=0.7.1,<2.0.0"
 s3transfer = ">=0.16.0,<0.17.0"
 
@@ -531,14 +531,14 @@ crt = ["botocore[crt] (>=1.21.0,<2.0a0)"]
 
 [[package]]
 name = "botocore"
-version = "1.42.44"
+version = "1.42.45"
 description = "Low-level, data-driven core of boto 3."
 optional = false
 python-versions = ">=3.9"
 groups = ["charm"]
 files = [
-    {file = "botocore-1.42.44-py3-none-any.whl", hash = "sha256:ba406b9243a20591ee87d53abdb883d46416705cebccb639a7f1c923f9dd82df"},
-    {file = "botocore-1.42.44.tar.gz", hash = "sha256:47ba27360f2afd2c2721545d8909217f7be05fdee16dd8fc0b09589535a0701c"},
+    {file = "botocore-1.42.45-py3-none-any.whl", hash = "sha256:a5ea5d1b7c46c2d5d113879e45b21eaf7d60dc865f4bcb46dfcf0703fe3429f4"},
+    {file = "botocore-1.42.45.tar.gz", hash = "sha256:40b577d07b91a0ed26879da9e4658d82d3a400382446af1014d6ad3957497545"},
 ]
 
 [package.dependencies]
@@ -673,24 +673,26 @@ pycparser = {version = "*", markers = "implementation_name != \"PyPy\""}
 
 [[package]]
 name = "charmed-kubeflow-chisme"
-version = "0.4.21"
+version = "0.4.24"
 description = "A collection of helpers for Charms maintained by the Charmed Kubeflow team"
 optional = false
 python-versions = ">=3.6"
 groups = ["charm", "integration"]
 files = [
-    {file = "charmed_kubeflow_chisme-0.4.21-py3-none-any.whl", hash = "sha256:a87b62d73b445a43bcfc20701762174232a5f06a282a563039a1f24f20a2ffc5"},
-    {file = "charmed_kubeflow_chisme-0.4.21.tar.gz", hash = "sha256:951a59e74d97335e868fa9fc476971ce9aba88bd7393650bc20fa2f7a57f5737"},
+    {file = "charmed_kubeflow_chisme-0.4.24-py3-none-any.whl", hash = "sha256:f30c1a47419c9b5dbc04cd387fb85caf414b4b4ab3e3bea638b3090074ad257a"},
+    {file = "charmed_kubeflow_chisme-0.4.24.tar.gz", hash = "sha256:390ab912eeae5f7f37dc227d46f25672933f0b70710706d47497f0c86bbd9183"},
 ]
 
 [package.dependencies]
 aiohttp = ">=3.8,<4.0"
+charmed-service-mesh-helpers = ">=0.3.0"
 deepdiff = "<=6.2.1"
 httpx = "<0.28.0"
 jinja2 = "*"
 juju = "*"
 kubernetes = ">=30.1.0"
 lightkube = ">0.10.0"
+lightkube-extensions = ">=0.3.0"
 ops = ">1.2.0"
 "ruamel.yaml" = "*"
 serialized-data-interface = "*"
@@ -698,6 +700,25 @@ tenacity = "*"
 
 [package.extras]
 test = ["black", "pytest"]
+
+[[package]]
+name = "charmed-service-mesh-helpers"
+version = "0.5.0"
+description = "Helpers for the Service Mesh charms."
+optional = false
+python-versions = "~=3.8"
+groups = ["charm", "integration"]
+files = [
+    {file = "charmed_service_mesh_helpers-0.5.0-py3-none-any.whl", hash = "sha256:7fcf98434b1ba7a47cae118037a9977ada574cfe3533ba634b5a0cd66ef6cd49"},
+    {file = "charmed_service_mesh_helpers-0.5.0.tar.gz", hash = "sha256:b5188e9c915bc5c816e2a128d544ef86919077f99408fe5598b367892b42eb45"},
+]
+
+[package.dependencies]
+ops = ">=2.5,<3.0"
+pydantic = ">=2"
+
+[package.extras]
+dev = ["codespell", "coverage[toml]", "pyright", "pytest", "ruff"]
 
 [[package]]
 name = "charset-normalizer"
@@ -1291,14 +1312,14 @@ tests = ["asttokens (>=2.1.0)", "coverage", "coverage-enable-subprocess", "ipyth
 
 [[package]]
 name = "fastapi"
-version = "0.128.5"
+version = "0.128.6"
 description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production"
 optional = false
 python-versions = ">=3.9"
 groups = ["integration"]
 files = [
-    {file = "fastapi-0.128.5-py3-none-any.whl", hash = "sha256:bceec0de8aa6564599c5bcc0593b0d287703562c848271fca8546fd2c87bf4dd"},
-    {file = "fastapi-0.128.5.tar.gz", hash = "sha256:a7173579fc162d6471e3c6fbd9a4b7610c7a3b367bcacf6c4f90d5d022cab711"},
+    {file = "fastapi-0.128.6-py3-none-any.whl", hash = "sha256:bb1c1ef87d6086a7132d0ab60869d6f1ee67283b20fbf84ec0003bd335099509"},
+    {file = "fastapi-0.128.6.tar.gz", hash = "sha256:0cb3946557e792d731b26a42b04912f16367e3c3135ea8290f620e234f2b604f"},
 ]
 
 [package.dependencies]
@@ -2304,6 +2325,22 @@ PyYAML = "*"
 dev = ["pytest", "pytest-asyncio", "respx"]
 
 [[package]]
+name = "lightkube-extensions"
+version = "0.3.0"
+description = "A collection of helpers and shared code for using Lightkube."
+optional = false
+python-versions = "~=3.8"
+groups = ["charm", "integration"]
+files = [
+    {file = "lightkube_extensions-0.3.0-py3-none-any.whl", hash = "sha256:580178f937be39b378158264e926d6f188a05d13dd17d8491c2f1f6a234ebaf8"},
+    {file = "lightkube_extensions-0.3.0.tar.gz", hash = "sha256:997c5f7457c297449083ee66dce498a1a5a6423d58d4f87258cf68da04bb99f2"},
+]
+
+[package.dependencies]
+jinja2 = "*"
+lightkube = ">=0.11.0"
+
+[[package]]
 name = "lightkube-models"
 version = "1.35.0.8"
 description = "Models and Resources for lightkube module"
@@ -3017,24 +3054,25 @@ typing-extensions = ">=4.5.0"
 
 [[package]]
 name = "ops"
-version = "3.5.1"
+version = "2.23.1"
 description = "The Python library behind great charms"
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.8"
 groups = ["charm", "integration"]
 files = [
-    {file = "ops-3.5.1-py3-none-any.whl", hash = "sha256:890dd7bf33d1381afeed0e484d02c7bb13ad3945dcc7b723e8d73e4bba0ff94c"},
-    {file = "ops-3.5.1.tar.gz", hash = "sha256:376ef51d35d45b376795196851550e209565e922e58af8ac491cf23bc8b46498"},
+    {file = "ops-2.23.1-py3-none-any.whl", hash = "sha256:fdf58163beafd25180c12a4c7efaf1e76e5f8710508a97840c07055bb78b0c77"},
+    {file = "ops-2.23.1.tar.gz", hash = "sha256:aecacd67ef7ca913f63f397e0330bfa93d70529a3ef71ed2d99e2bc232564ae3"},
 ]
 
 [package.dependencies]
+importlib-metadata = "*"
 opentelemetry-api = ">=1.0,<2.0"
 PyYAML = "==6.*"
 websocket-client = "==1.*"
 
 [package.extras]
-testing = ["ops-scenario (==8.5.1)"]
-tracing = ["ops-tracing (==3.5.1)"]
+testing = ["ops-scenario (==7.23.1)"]
+tracing = ["ops-tracing (==2.23.1)"]
 
 [[package]]
 name = "ordered-set"
@@ -5215,4 +5253,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "b3346b072ed5b619c87db5e90afe898dc174218158b8ea786590c018093ba234"
+content-hash = "4d4fa5be464a203bfaaaf0b5e34e44d6b3fe19215de9a3e99f54237cad42ce3f"
