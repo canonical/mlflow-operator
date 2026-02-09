@@ -150,33 +150,33 @@ class MlflowCharm(CharmBase):
 
         # for an ambient-mode service mesh:
 
-        self._check_leader()
+        if self.unit.is_leader():
 
-        self._mesh = ServiceMeshConsumer(
-            self,
-            # NOTE: no (additional) AuthorizationPolicies are necessary because:
-            # - the one required for traffic from the ingress route is already created by the
-            #   ingress-route provider itself and we therefore don't need to create it on the
-            #   requirer side
-            # - MLflow is directly called from the UI of the Kubeflow Dashboard, from the client
-            #   and not via the backend of the Dashboard service, so no AuthorizationPolicies from
-            #   the Dashboard are necessary
-            # - while MLflow does make direct API calls to its relational database and its object
-            #   storage, such workloads are not part of the mesh (yet) on their end and, given
-            #   there is no general AuthorizationPolicy in place (yet) that implements a
-            #   deny-by-default behavior, the receiving ends of such API calls do allow traffic
-            # - TODO: Loki, Prometheus & Grafana?
-            policies=None,
-        )
+            self._mesh = ServiceMeshConsumer(
+                self,
+                # NOTE: no (additional) AuthorizationPolicies are necessary because:
+                # - the one required for traffic from the ingress route is already created by the
+                #   ingress-route provider itself and we therefore don't need to create it on the
+                #   requirer side
+                # - MLflow is directly called from the UI of the Kubeflow Dashboard, from the
+                #   client and not via the backend of the Dashboard service, so no
+                #   AuthorizationPolicies from the Dashboard are necessary
+                # - while MLflow does make direct API calls to its relational database and its
+                #   object storage, such workloads are not part of the mesh (yet) on their end and,
+                #   given there is no general AuthorizationPolicy in place (yet) that implements a
+                #   deny-by-default behavior, the receiving ends of such API calls do allow traffic
+                # - TODO: Loki, Prometheus & Grafana?
+                policies=None,
+            )
 
-        self.ambient_mode_ingress = IstioIngressRouteRequirer(
-            self, relation_name=INGRESS_MODES_TO_RELATION_NAMES["ambient"]
-        )
+            self.ambient_mode_ingress = IstioIngressRouteRequirer(
+                self, relation_name=INGRESS_MODES_TO_RELATION_NAMES["ambient"]
+            )
 
-        self.framework.observe(
-            self.ambient_mode_ingress.on.ready,
-            self._on_ambient_mode_ingress_ready
-        )
+            self.framework.observe(
+                self.ambient_mode_ingress.on.ready,
+                self._on_ambient_mode_ingress_ready
+            )
 
     @property
     def container(self):
@@ -613,12 +613,12 @@ class MlflowCharm(CharmBase):
 
     def _on_ambient_mode_ingress_ready(self, _):
         """Configure the ingess for ambient mode."""
-        self._check_leader()
+        if self.unit.is_leader():
 
-        try:
-            self.ambient_mode_ingress.submit_config(self._ingress_config)
-        except Exception as e:
-            raise GenericCharmRuntimeError(f"Failed to submit ingress config: {e}")
+            try:
+                self.ambient_mode_ingress.submit_config(self._ingress_config)
+            except Exception as e:
+                raise GenericCharmRuntimeError(f"Failed to submit ingress config: {e}")
 
         self.model.unit.status = ActiveStatus()
 
