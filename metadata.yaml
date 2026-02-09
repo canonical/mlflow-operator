@@ -106,8 +106,34 @@ requires:
   logging:
     interface: loki_push_api
     optional: true
+  require-cmr-mesh:
+    interface: cross_model_mesh
+    description: |
+      Allow a cross-model application access to catalogue via the service mesh.
+      This relation provides additional data required by the service mesh to enforce
+      cross-model authorization policies.
+      If this app relates to other applications on a charmed service mesh cross-model,
+      use this relation to send that related app additional data needed to automatically
+      generate traffic authorization policies. This is required because Juju does not
+      natively provide all information required to build these policies when related
+      cross-model.
+  service-mesh:
+    limit: 1
+    interface: service_mesh
+    description: |
+      Subscribe this charm into a service mesh to enforce authorization policies.
 provides:
   metrics-endpoint:
     interface: prometheus_scrape
   grafana-dashboard:
     interface: grafana_dashboard
+  provide-cmr-mesh:
+    interface: cross_model_mesh
+    description: |
+      Access a cross-model application from catalogue via the service mesh.
+      This relation provides additional data required by the service mesh to enforce
+      cross-model authorization policies.
+      If this app is generating policies to provide access to related applications that
+      are cross-model, relate that app to this additional relation to retrieve additional
+      data required for these policies. This is required because Juju does not natively
+      provide all information required to build these policies when related cross-model.

@@ -62,7 +62,11 @@ jobs:
       apply: false
 
   integration:
-    name: Integration tests
+    strategy:
+      fail-fast: false
+      matrix:
+        test-type: [integration, integration-ambient]
+    name: Integration tests (${{ matrix.test-type }})
     runs-on: ubuntu-24.04
     steps:
     - name: Maximise GH runner space
@@ -80,7 +84,7 @@ jobs:
         sudo concierge prepare --trace
 
     - name: Run integration tests
-      run: tox -vve integration -- --model testing
+      run: tox -vve ${{ matrix.test-type }} -- --model testing
 
     - name: Collect charm debug artifacts
       uses: canonical/kubeflow-ci/actions/dump-charm-debug-artifacts@main
