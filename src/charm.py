@@ -8,7 +8,6 @@ from pathlib import Path
 
 import botocore.exceptions
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus, GenericCharmRuntimeError
-from charmed_kubeflow_chisme.service_mesh import generate_allow_all_authorization_policy
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.istio_beacon_k8s.v0.service_mesh import ServiceMeshConsumer
@@ -38,10 +37,9 @@ from charms.resource_dispatcher.v0.kubernetes_manifests import (
     KubernetesManifestRequirerWrapper,
 )
 from jinja2 import Template
-from lightkube import Client
 from lightkube.models.core_v1 import ServicePort
 from ops import main
-from ops.charm import CharmBase, RelationEvent
+from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ChangeError, Layer
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, get_interfaces
@@ -470,6 +468,26 @@ class MlflowCharm(CharmBase):
             self.logger.info("Not a leader, skipping setup")
             raise ErrorWithStatus("Waiting for leadership", WaitingStatus)
 
+    def _check_no_conflicting_ingress_relations(self) -> None:
+        """Check that ambient-mode and sidecar-mode ingress relations are not both set."""
+        ambient_relation = self.model.get_relation(INGRESS_MODES_TO_RELATION_NAMES["ambient"])
+        sidecar_relation = self.model.get_relation(INGRESS_MODES_TO_RELATION_NAMES["sidecar"])
+
+        if ambient_relation and sidecar_relation:
+            self.logger.error(
+                f"Both '{INGRESS_MODES_TO_RELATION_NAMES["ambient"]}' and "
+                f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations are present, remove "
+                "one to unblock."
+            )
+            raise ErrorWithStatus(
+                (
+                    f"Cannot have both '{INGRESS_MODES_TO_RELATION_NAMES["ambient"]}' and "
+                    f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations at the same time, "
+                    "remove one to unblock."
+                ),
+                BlockedStatus
+            )
+
     def _update_layer(self, container, container_name, new_layer) -> None:
         current_layer = self.container.get_plan()
         if current_layer.services != new_layer.services:
@@ -529,10 +547,13 @@ class MlflowCharm(CharmBase):
         """Perform all required actions for the Charm."""
         try:
             self._check_leader()
+
             interfaces = self._get_interfaces()
             object_storage_data = self._get_object_storage_data(interfaces)
             relational_db_data = self._get_relational_db_data()
             envs = self._get_env_vars(relational_db_data, object_storage_data)
+
+            self._check_no_conflicting_ingress_relations()
 
             s3_wrapper = S3BucketWrapper(
                 access_key=object_storage_data["access-key"],
@@ -582,10 +603,12 @@ class MlflowCharm(CharmBase):
                 poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
             )
             self._send_ingress_info(interfaces)
+
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
             self.logger.info(f"Event {event} stopped early with message: {str(err)}")
             return
+
         self.model.unit.status = ActiveStatus()
 
     def _on_ambient_mode_ingress_ready(self, _):
