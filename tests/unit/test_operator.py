@@ -89,6 +89,8 @@ def harness() -> Harness:
 
     harness = Harness(MlflowCharm)
 
+    harness.set_model_name("testing")
+
     harness.set_leader(True)
 
     harness.set_can_connect("mlflow-server", True)
