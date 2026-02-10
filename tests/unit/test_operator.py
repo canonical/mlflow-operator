@@ -628,7 +628,9 @@ class TestCharm:
                 relation_id, _ = add_relation(
                     harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
                 )
-                harness.charm.on[RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE].relation_changed.emit(
+                harness.charm.on[
+                    RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
+                ].relation_changed.emit(
                     harness.charm.framework.model.get_relation(
                         RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE, relation_id
                     )
@@ -639,7 +641,9 @@ class TestCharm:
                 relation_id, _ = add_relation(
                     harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE
                 )
-                harness.charm.on[RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE].relation_changed.emit(
+                harness.charm.on[
+                    RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE
+                ].relation_changed.emit(
                     harness.charm.framework.model.get_relation(
                         RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE, relation_id
                     )
@@ -657,8 +661,8 @@ class TestCharm:
                 assert isinstance(status, BlockedStatus)
                 assert (
                     f"Cannot have both '{RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE}' and "
-                    f"'{RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE}' relations at the same time, "
-                    "remove one to unblock."
+                    f"'{RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE}' relations at the same time"
+                    ", remove one to unblock."
                 ) in status.message
 
             else:
