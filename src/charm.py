@@ -483,8 +483,7 @@ class MlflowCharm(CharmBase):
         if ambient_relation and sidecar_relation:
             self.logger.error(
                 f"Both '{INGRESS_MODES_TO_RELATION_NAMES["ambient"]}' and "
-                f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations are present, remove "
-                "one to unblock."
+                f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations are present."
             )
             raise ErrorWithStatus(
                 (
