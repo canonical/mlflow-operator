@@ -72,7 +72,7 @@ class MlflowCharm(CharmBase):
         super().__init__(*args)
 
         self.logger = logging.getLogger(__name__)
-        self._port = int(self.model.config["mlflow_port"])
+        self._mlflow_port = int(self.model.config["mlflow_port"])
         self._service_name = self.model.app.name
         self._namespace = self.model.name
         self._exporter_port = self.model.config["mlflow_prometheus_exporter_port"]
@@ -119,7 +119,7 @@ class MlflowCharm(CharmBase):
                     "static_configs": [
                         {
                             "targets": [
-                                "*:{}".format(self._port),
+                                "*:{}".format(self._mlflow_port),
                                 "*:{}".format(
                                     self.model.config["mlflow_prometheus_exporter_port"]
                                 ),
@@ -217,7 +217,7 @@ class MlflowCharm(CharmBase):
                             )
                         )
                     ],
-                    backends=[BackendRef(service=self._service_name, port=self._port)],
+                    backends=[BackendRef(service=self._service_name, port=self._mlflow_port)],
                 ),
             ],
         )
@@ -245,9 +245,9 @@ class MlflowCharm(CharmBase):
             self._node_port = self.model.config["mlflow_nodeport"]
             self._exporter_node_port = self.model.config["mlflow_prometheus_exporter_nodeport"]
             port = ServicePort(
-                self._port,
+                self._mlflow_port,
                 name=f"{self.app.name}",
-                targetPort=self._port,
+                targetPort=self._mlflow_port,
                 nodePort=int(self._node_port),
             )
 
@@ -259,7 +259,7 @@ class MlflowCharm(CharmBase):
             )
         else:
             service_type = "ClusterIP"
-            port = ServicePort(self._port, name=f"{self.app.name}")
+            port = ServicePort(self._mlflow_port, name=f"{self.app.name}")
             exporter_port = ServicePort(
                 int(self._exporter_port), name=f"{self.app.name}-prometheus-exporter"
             )
@@ -301,7 +301,7 @@ class MlflowCharm(CharmBase):
                         "--host "
                         "0.0.0.0 "
                         "--port "
-                        f"{self._port} "
+                        f"{self._mlflow_port} "
                         "--backend-store-uri "
                         f"{env_vars['MLFLOW_TRACKING_URI']} "
                         "--default-artifact-root "
@@ -331,7 +331,7 @@ class MlflowCharm(CharmBase):
                         "python3 "
                         "mlflow_exporter.py "
                         f"--port {self._exporter_port} "
-                        f"--mlflowurl http://localhost:{self._port}/"
+                        f"--mlflowurl http://localhost:{self._mlflow_port}/"
                     ),
                     "startup": "enabled",
                 },
@@ -538,7 +538,7 @@ class MlflowCharm(CharmBase):
                     "rewrite": INGRESS_PATH_REWRITTEN_PREFIX,
                     "service": self._service_name,
                     "namespace": self._namespace,
-                    "port": self._port,
+                    "port": self._mlflow_port,
                 }
             )
 
@@ -585,7 +585,10 @@ class MlflowCharm(CharmBase):
 
             secrets_context = {
                 "app_name": self.app.name,
-                "s3_endpoint": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
+                "s3_endpoint": (
+                    f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:"
+                    f"{object_storage_data['port']}"
+                ),
                 "s3_type": "s3",
                 "s3_provider": "minio",
                 "enable_env_auth": "false",
@@ -595,7 +598,10 @@ class MlflowCharm(CharmBase):
             poddefaults_context = {
                 "app_name": self.app.name,
                 "s3_endpoint": secrets_context["s3_endpoint"],
-                "mlflow_endpoint": f"http://{self.app.name}.{self._namespace}.svc.cluster.local:{self._port}",  # noqa: E501
+                "mlflow_endpoint": (
+                    f"http://{self.app.name}.{self._namespace}.svc.cluster.local:"
+                    f"{self._mlflow_port}"
+                ),
             }
             self._send_manifests(secrets_context, SECRETS_FILES, self.secrets_manifests_wrapper)
             self._send_manifests(
