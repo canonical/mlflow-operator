@@ -10,7 +10,7 @@ import botocore.exceptions
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus, GenericCharmRuntimeError
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.istio_beacon_k8s.v0.service_mesh import ServiceMeshConsumer
+from charms.istio_beacon_k8s.v0.service_mesh import ServiceMeshConsumer, UnitPolicy
 from charms.istio_ingress_k8s.v0.istio_ingress_route import (
     BackendRef,
     HTTPPathMatch,
@@ -52,6 +52,7 @@ INGRESS_MODES_TO_RELATION_NAMES = {
 }
 INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
 INGRESS_PATH_REWRITTEN_PREFIX = "/"
+METRICS_RELATION_NAME = "metrics-endpoint"
 METRICS_PATH = "/metrics"
 PODDEFAULTS_FILES = [
     "src/poddefaults/poddefault-minio.yaml.j2",
@@ -152,7 +153,10 @@ class MlflowCharm(CharmBase):
 
         self._mesh = ServiceMeshConsumer(
             self,
-            # NOTE: no (additional) AuthorizationPolicies are necessary because:
+            # NOTE: only AuthorizationPolicies for observability components are necessary, so that
+            # traffic from metric and log scrapres to MLflow is allowed...
+            policies=[UnitPolicy(relation=METRICS_RELATION_NAME)],
+            # ...while no additional AuthorizationPolicies are necessary because:
             # - the one required for traffic from the ingress route is already created by the
             #   ingress-route provider itself and we therefore don't need to create it on the
             #   requirer side
@@ -163,8 +167,6 @@ class MlflowCharm(CharmBase):
             #   object storage, such workloads are not part of the mesh (yet) on their end and,
             #   given there is no general AuthorizationPolicy in place (yet) that implements a
             #   deny-by-default behavior, the receiving ends of such API calls do allow traffic
-            # - TODO: Loki, Prometheus & Grafana?
-            policies=None,
         )
 
         self.ambient_mode_ingress = IstioIngressRouteRequirer(
