@@ -350,7 +350,7 @@ class TestCharm:
             http_path=HTTP_PATH,
             namespace=ops_test.model.name,
             expected_content_type="text/html",
-            expected_response_text="Kubeflow Pipelines",
+            expected_response_text="MLflow",
         )
 
     @pytest.mark.abort_on_fail
