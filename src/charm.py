@@ -174,8 +174,7 @@ class MlflowCharm(CharmBase):
         )
 
         self.framework.observe(
-            self.ambient_mode_ingress.on.ready,
-            self._on_ambient_mode_ingress_ready
+            self.ambient_mode_ingress.on.ready, self._on_ambient_mode_ingress_ready
         )
 
     @property
@@ -485,7 +484,7 @@ class MlflowCharm(CharmBase):
                     f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations at the same time, "
                     "remove one to unblock."
                 ),
-                BlockedStatus
+                BlockedStatus,
             )
 
     def _update_layer(self, container, container_name, new_layer) -> None:

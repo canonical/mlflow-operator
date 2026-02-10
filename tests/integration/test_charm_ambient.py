@@ -12,14 +12,12 @@ from pathlib import Path
 from random import choices
 from string import ascii_lowercase
 
-import aiohttp
 import lightkube
 import pytest
 import requests
 import yaml
 from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
 from charmed_kubeflow_chisme.testing import (
-    CharmSpec,
     assert_alert_rules,
     assert_grafana_dashboards,
     assert_logging,
@@ -33,18 +31,13 @@ from charmed_kubeflow_chisme.testing import (
     get_pod_names,
     integrate_with_service_mesh,
 )
-from charms_dependencies import (
-    METACONTROLLER_OPERATOR,
-    MINIO,
-    MYSQL_K8S,
-    RESOURCE_DISPATCHER,
-)
+from charms_dependencies import METACONTROLLER_OPERATOR, MINIO, MYSQL_K8S, RESOURCE_DISPATCHER
 from lightkube import codecs
 from lightkube.generic_resource import (
     create_namespaced_resource,
     load_in_cluster_generic_resources,
 )
-from lightkube.resources.core_v1 import Secret, Service
+from lightkube.resources.core_v1 import Secret
 from minio import Minio
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
@@ -340,7 +333,7 @@ class TestCharm:
         )
 
     async def test_ingress_relation(self, ops_test: OpsTest):
-        """Setup Istio in ambient mode to inlcude MLflow and any subsidiary charms in the mesh."""
+        """Setup Istio in ambient mode to include MLflow and any subsidiary charms in the mesh."""
         # deploy charms providing the service mesh and the ingress while relating MLflow to them:
         await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
 
