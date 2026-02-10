@@ -2,12 +2,13 @@
 # See LICENSE file for licensing details.
 
 import json
+from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
-from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
+from charmed_kubeflow_chisme.exceptions import ErrorWithStatus, GenericCharmRuntimeError
+from ops.model import ActiveStatus, BlockedStatus, ErrorStatus, WaitingStatus
 from ops.pebble import ChangeError, Service
 from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
@@ -28,6 +29,7 @@ EXPECTED_SERVICE = {
 }
 BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
+DEFAULT_JUJU_APP_NAME = CHARM_NAME
 
 OBJECT_STORAGE_DATA = {
     "access-key": "minio-access-key",
@@ -46,9 +48,6 @@ RELATIONAL_DB_DATA = {
     "port": "port",
 }
 
-SERVICE_MESH_RELATION_ENDPOINT = "service-mesh"
-SERVICE_MESH_RELATION_PROVIDER = "istio-beacon-k8s"
-
 EXPECTED_ENVIRONMENT = {
     "AWS_ACCESS_KEY_ID": "minio-access-key",
     "AWS_ENDPOINT_URL": "http://service.namespace:1234",
@@ -61,12 +60,19 @@ EXPECTED_ENVIRONMENT = {
 
 SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 
+EXPECTED_INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
+EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX = "/"
+EXPECTED_K8S_SERVICE_HTTP_PORT = 5000
+RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE = "istio-ingress-route"
+RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE = "ingress"
+RELATION_ENDPOINT_FOR_SERVICE_MESH = "service-mesh"
+
 INGRESS_DATA = {
-    "prefix": "/mlflow/",
-    "rewrite": "/",
-    "service": "mlflow-server",
+    "prefix": EXPECTED_INGRESS_PATH_MATCHED_PREFIX,
+    "rewrite": EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX,
+    "service": DEFAULT_JUJU_APP_NAME,
     "namespace": None,
-    "port": 5000,
+    "port": EXPECTED_K8S_SERVICE_HTTP_PORT,
 }
 
 
@@ -91,6 +97,17 @@ def harness() -> Harness:
     return harness
 
 
+def add_relation(harness: harness, relation_endpoint: str) -> tuple[int, str]:
+    """Add the given relation to the charm unit, using a random name for the remote application."""
+    relation_provider_app_name = f"app-for-{relation_endpoint}"
+
+    relation_id = harness.add_relation(relation_endpoint, relation_provider_app_name)
+
+    harness.add_relation_unit(relation_id, f"{relation_provider_app_name}/0")
+
+    return relation_id, relation_provider_app_name
+
+
 def enable_exporter_container(harness: harness) -> Harness:
     """Enable mlflow-prometheus-exporter for connections."""
     harness.set_can_connect("mlflow-prometheus-exporter", True)
@@ -101,11 +118,10 @@ def add_object_storage_to_harness(harness: Harness):
     """Helper function to handle object storage relation"""
     object_storage_data = {"_supported_versions": "- v1", "data": yaml.dump(OBJECT_STORAGE_DATA)}
     harness.set_leader(True)
-    object_storage_relation_id = harness.add_relation("object-storage", "storage-provider")
-    harness.add_relation_unit(object_storage_relation_id, "storage-provider/0")
-    harness.update_relation_data(
-        object_storage_relation_id, "storage-provider", object_storage_data
+    object_storage_relation_id, remote_app_name = add_relation(
+        harness, relation_endpoint="object-storage"
     )
+    harness.update_relation_data(object_storage_relation_id, remote_app_name, object_storage_data)
     return harness
 
 
@@ -573,3 +589,152 @@ class TestCharm:
         interfaces = {"ingress": ingress}
         harness.charm._send_ingress_info(interfaces)
         ingress.send_data.assert_called_with(INGRESS_DATA)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @pytest.mark.parametrize(
+        "add_ambient_mode_ingress", [True, False], ids=["ambient", "no-ambient"]
+    )
+    @pytest.mark.parametrize(
+        "add_sidecar_mode_ingress", [True, False], ids=["sidecar", "no-sidecar"]
+    )
+    def test_istio_relations_conflict_detector(
+        self,
+        _: MagicMock,
+        __: MagicMock,
+        harness: Harness,
+        add_ambient_mode_ingress,
+        add_sidecar_mode_ingress,
+    ):
+        """Test the status based on conflicting ingress relations."""
+        # arrange:
+
+        harness.begin()
+
+        # act:
+
+        if add_ambient_mode_ingress:
+            add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE)
+
+        if add_sidecar_mode_ingress:
+            add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE)
+
+        # assert:
+
+        status = harness.charm.model.unit.status
+
+        if add_ambient_mode_ingress and add_sidecar_mode_ingress:
+            assert isinstance(status, BlockedStatus)
+            assert (
+                f"Cannot have both '{RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE}' and "
+                f"'{RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE}' relations at the same time, "
+                "remove one to unblock."
+            ) in status.message
+
+        else:
+            assert isinstance(status, ActiveStatus)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @pytest.mark.parametrize("config_submission_broken", [True, False], ids=["broken", "good"])
+    @pytest.mark.parametrize("is_ingress_ready", [True, False], ids=["ready", "not-ready"])
+    @pytest.mark.parametrize("is_unit_leader", [True, False], ids=["leader", "non-leader"])
+    def test_ambient_mode_ingress_configurations(
+        self,
+        _: MagicMock,
+        __: MagicMock,
+        harness: Harness,
+        config_submission_broken,
+        is_ingress_ready,
+        is_unit_leader,
+    ):
+        """Test configuring the ingress is correctly handled based on leadership and errors."""
+        # arrange:
+
+        expected_status = ActiveStatus if not config_submission_broken else ErrorStatus
+
+        harness.begin()
+
+        relation_id, _ = add_relation(
+            harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
+        )
+
+        # mocking the behavior of the ingress attribute of the charm according to the test case:
+        with patch.object(harness.charm, "ambient_mode_ingress") as mocked_ingress:
+            ingress_submit_config = mocked_ingress.submit_config
+            if config_submission_broken:
+                ingress_submit_config.side_effect = Exception("Test case's exception!")
+
+            # act (and assert exception raised, if any):
+
+            with (
+                pytest.raises(GenericCharmRuntimeError)
+                if config_submission_broken
+                else nullcontext()
+            ) as exc_info:
+                harness.charm.on[RELATION_ENDPOINT_FOR_SERVICE_MESH].relation_changed.emit(
+                    harness.charm.framework.model.get_relation(
+                        RELATION_ENDPOINT_FOR_SERVICE_MESH, relation_id
+                    )
+                )
+
+            # assert (the rest):
+
+            if config_submission_broken:
+                assert "Failed to submit ingress config: " in str(exc_info.value)
+
+            if is_unit_leader and is_ingress_ready:
+                ingress_submit_config.assert_called_once()
+
+                # asserting one and only one HTTPRoute is defined:
+                submitted_ingress_configurations = ingress_submit_config.call_args.args[0]
+                assert len(submitted_ingress_configurations.http_routes) == 1
+                first_and_only_httproute = submitted_ingress_configurations.http_routes[0]
+
+                # asserting that the first and only HTTPRoute defined holds the expected...
+
+                # ...matches:
+                assert len(first_and_only_httproute.matches) == 1
+                assert (
+                    first_and_only_httproute.matches[0].path.value
+                    == EXPECTED_INGRESS_PATH_MATCHED_PREFIX
+                )
+
+                # ...filters:
+                assert len(first_and_only_httproute.filters) == 1
+                assert (
+                    first_and_only_httproute.filters[0].urlRewrite.path.value
+                    == EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX
+                )
+
+                # ...backends:
+                assert len(first_and_only_httproute.backends) == 1
+                assert first_and_only_httproute.backends[0].service == DEFAULT_JUJU_APP_NAME
+                assert first_and_only_httproute.backends[0].port == EXPECTED_K8S_SERVICE_HTTP_PORT
+
+            else:
+                ingress_submit_config.assert_not_called()
+
+            assert isinstance(harness.charm.model.unit.status, expected_status)
