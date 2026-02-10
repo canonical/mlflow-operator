@@ -662,102 +662,94 @@ class TestCharm:
             else:
                 assert isinstance(status, ActiveStatus)
 
-    # @patch(
-    #     "charm.KubernetesServicePatch",
-    #     lambda x, y, service_name, service_type, refresh_event: None,
-    # )
-    # @patch(
-    #     "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
-    # )
-    # @patch(
-    #     "charm.S3BucketWrapper.__init__",
-    #     lambda *args, **kw: None,
-    # )
-    # @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
-    # @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
-    # @patch("charm.MlflowCharm._get_interfaces")
-    # @patch("charm.IstioIngressRouteRequirer.submit_config")
-    # @patch("charm.ServiceMeshConsumer")
-    # @pytest.mark.parametrize("config_submission_broken", [True, False], ids=["broken", "good"])
-    # @pytest.mark.parametrize("is_ingress_ready", [True, False], ids=["ready", "not-ready"])
-    # @pytest.mark.parametrize("is_unit_leader", [True, False], ids=["leader", "non-leader"])
-    # def test_ambient_mode_ingress_configurations(
-    #     self,
-    #     _: MagicMock,
-    #     __: MagicMock,
-    #     ___: MagicMock,
-    #     ____: MagicMock,
-    #     _____: MagicMock,
-    #     harness: Harness,
-    #     config_submission_broken,
-    #     is_ingress_ready,
-    #     is_unit_leader,
-    # ):
-    #     """Test configuring the ingress is correctly handled based on leadership and errors."""
-    #     # arrange:
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_interfaces")
+    @patch("charm.ServiceMeshConsumer")
+    @pytest.mark.parametrize("config_submission_broken", [True, False], ids=["broken", "good"])
+    def test_ambient_mode_ingress_configurations(
+        self,
+        _: MagicMock,
+        __: MagicMock,
+        ___: MagicMock,
+        ____: MagicMock,
+        harness: Harness,
+        config_submission_broken,
+    ):
+        """Test configuring the ingress is correctly handled, including possible exceptions."""
+        # arrange:
 
-    #     expected_status = ActiveStatus if not config_submission_broken else ErrorStatus
+        expected_status = ActiveStatus if not config_submission_broken else ErrorStatus
 
-    #     harness.begin()
+        harness.begin()
 
-    #     relation_id, _ = add_relation(
-    #         harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
-    #     )
+        # mocking the behavior of the ingress attribute of the charm according to the test case:
+        with patch.object(harness.charm.ambient_mode_ingress, "submit_config") as submit_config:
+            if config_submission_broken:
+                submit_config.side_effect = Exception("Test case's exception!")
 
-    #     # mocking the behavior of the ingress attribute of the charm according to the test case:
-    #     with patch.object(harness.charm, "ambient_mode_ingress") as mocked_ingress:
-    #         ingress_submit_config = mocked_ingress.submit_config
-    #         if config_submission_broken:
-    #             ingress_submit_config.side_effect = Exception("Test case's exception!")
+            # act (and assert exception raised, if any):
 
-    #         # act (and assert exception raised, if any):
+            with (
+                pytest.raises(GenericCharmRuntimeError)
+                if config_submission_broken
+                else nullcontext()
+            ) as exc_info:
+                # adding the ambient-mode ingress relation while triggering the ingress-ready event:
+                relation_id, _ = add_relation(
+                    harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
+                )
+                # harness.charm.on[RELATION_ENDPOINT_FOR_SERVICE_MESH].relation_changed.emit(
+                    
+                # )
+                harness.charm.ambient_mode_ingress.on.ready.emit(
+                    harness.charm.framework.model.get_relation(
+                        RELATION_ENDPOINT_FOR_SERVICE_MESH, relation_id
+                    )
+                )
 
-    #         with (
-    #             pytest.raises(GenericCharmRuntimeError)
-    #             if config_submission_broken
-    #             else nullcontext()
-    #         ) as exc_info:
-    #             harness.charm.on[RELATION_ENDPOINT_FOR_SERVICE_MESH].relation_changed.emit(
-    #                 harness.charm.framework.model.get_relation(
-    #                     RELATION_ENDPOINT_FOR_SERVICE_MESH, relation_id
-    #                 )
-    #             )
+            # assert (the rest):
 
-    #         # assert (the rest):
+            if config_submission_broken:
+                assert "Failed to submit ingress config: " in str(exc_info.value)
 
-    #         if config_submission_broken:
-    #             assert "Failed to submit ingress config: " in str(exc_info.value)
+            submit_config.assert_called_once()
 
-    #         if is_unit_leader and is_ingress_ready:
-    #             ingress_submit_config.assert_called_once()
+            # asserting one and only one HTTPRoute is defined:
+            submitted_ingress_configurations = submit_config.call_args.args[0]
+            assert len(submitted_ingress_configurations.http_routes) == 1
+            first_and_only_httproute = submitted_ingress_configurations.http_routes[0]
 
-    #             # asserting one and only one HTTPRoute is defined:
-    #             submitted_ingress_configurations = ingress_submit_config.call_args.args[0]
-    #             assert len(submitted_ingress_configurations.http_routes) == 1
-    #             first_and_only_httproute = submitted_ingress_configurations.http_routes[0]
+            # asserting that the first and only HTTPRoute defined holds the expected...
 
-    #             # asserting that the first and only HTTPRoute defined holds the expected...
+            # ...matches:
+            assert len(first_and_only_httproute.matches) == 1
+            assert (
+                first_and_only_httproute.matches[0].path.value
+                == EXPECTED_INGRESS_PATH_MATCHED_PREFIX
+            )
 
-    #             # ...matches:
-    #             assert len(first_and_only_httproute.matches) == 1
-    #             assert (
-    #                 first_and_only_httproute.matches[0].path.value
-    #                 == EXPECTED_INGRESS_PATH_MATCHED_PREFIX
-    #             )
+            # ...filters:
+            assert len(first_and_only_httproute.filters) == 1
+            assert (
+                first_and_only_httproute.filters[0].urlRewrite.path.value
+                == EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX
+            )
 
-    #             # ...filters:
-    #             assert len(first_and_only_httproute.filters) == 1
-    #             assert (
-    #                 first_and_only_httproute.filters[0].urlRewrite.path.value
-    #                 == EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX
-    #             )
+            # ...backends:
+            assert len(first_and_only_httproute.backends) == 1
+            assert first_and_only_httproute.backends[0].service == DEFAULT_JUJU_APP_NAME
+            assert first_and_only_httproute.backends[0].port == EXPECTED_K8S_SERVICE_HTTP_PORT
 
-    #             # ...backends:
-    #             assert len(first_and_only_httproute.backends) == 1
-    #             assert first_and_only_httproute.backends[0].service == DEFAULT_JUJU_APP_NAME
-    #             assert first_and_only_httproute.backends[0].port == EXPECTED_K8S_SERVICE_HTTP_PORT
-
-    #         else:
-    #             ingress_submit_config.assert_not_called()
-
-    #         assert isinstance(harness.charm.model.unit.status, expected_status)
+            assert isinstance(harness.charm.model.unit.status, expected_status)
