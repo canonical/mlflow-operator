@@ -332,7 +332,7 @@ class TestCharm:
             timeout=1200,
         )
 
-    async def test_ingress_relation(self, ops_test: OpsTest):
+    async def test_mesh_and_ingress_integrations(self, ops_test: OpsTest):
         """Setup Istio in ambient mode to include MLflow and any subsidiary charms in the mesh."""
         # deploy charms providing the service mesh and the ingress while relating MLflow to them:
         await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
