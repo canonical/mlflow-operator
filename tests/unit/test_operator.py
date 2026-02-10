@@ -2,13 +2,12 @@
 # See LICENSE file for licensing details.
 
 import json
-from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-from charmed_kubeflow_chisme.exceptions import ErrorWithStatus, GenericCharmRuntimeError
-from ops.model import ActiveStatus, BlockedStatus, ErrorStatus, WaitingStatus
+from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
+from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.pebble import ChangeError, Service
 from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
@@ -30,6 +29,7 @@ EXPECTED_SERVICE = {
 BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
 DEFAULT_JUJU_APP_NAME = CHARM_NAME
+MODEL_NAME = "testing"
 
 OBJECT_STORAGE_DATA = {
     "access-key": "minio-access-key",
@@ -71,7 +71,7 @@ INGRESS_DATA = {
     "prefix": EXPECTED_INGRESS_PATH_MATCHED_PREFIX,
     "rewrite": EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX,
     "service": DEFAULT_JUJU_APP_NAME,
-    "namespace": None,
+    "namespace": MODEL_NAME,
     "port": EXPECTED_K8S_SERVICE_HTTP_PORT,
 }
 
@@ -89,7 +89,7 @@ def harness() -> Harness:
 
     harness = Harness(MlflowCharm)
 
-    harness.set_model_name("testing")
+    harness.set_model_name(MODEL_NAME)
 
     harness.set_leader(True)
 
@@ -692,7 +692,7 @@ class TestCharm:
         """Test configuring the ingress is correctly handled, including possible exceptions."""
         # arrange:
 
-        expected_status = ActiveStatus if not config_submission_broken else ErrorStatus
+        expected_status = ActiveStatus if not config_submission_broken else BlockedStatus
 
         harness.begin()
 
@@ -701,30 +701,21 @@ class TestCharm:
             if config_submission_broken:
                 submit_config.side_effect = Exception("Test case's exception!")
 
-            # act (and assert exception raised, if any):
+            # act:
 
-            with (
-                pytest.raises(GenericCharmRuntimeError)
-                if config_submission_broken
-                else nullcontext()
-            ) as exc_info:
-                # adding the ambient-mode ingress relation while triggering the ingress-ready event:
-                relation_id, _ = add_relation(
-                    harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
+            # adding the ambient-mode ingress relation:
+            relation_id, _ = add_relation(
+                harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
+            )
+
+            # triggering the ingress-ready event:
+            harness.charm.ambient_mode_ingress.on.ready.emit(
+                harness.charm.framework.model.get_relation(
+                    RELATION_ENDPOINT_FOR_SERVICE_MESH, relation_id
                 )
-                # harness.charm.on[RELATION_ENDPOINT_FOR_SERVICE_MESH].relation_changed.emit(
-                    
-                # )
-                harness.charm.ambient_mode_ingress.on.ready.emit(
-                    harness.charm.framework.model.get_relation(
-                        RELATION_ENDPOINT_FOR_SERVICE_MESH, relation_id
-                    )
-                )
+            )
 
-            # assert (the rest):
-
-            if config_submission_broken:
-                assert "Failed to submit ingress config: " in str(exc_info.value)
+            # assert:
 
             submit_config.assert_called_once()
 

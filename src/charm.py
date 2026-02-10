@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 import botocore.exceptions
-from charmed_kubeflow_chisme.exceptions import ErrorWithStatus, GenericCharmRuntimeError
+from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.istio_beacon_k8s.v0.service_mesh import ServiceMeshConsumer, UnitPolicy
@@ -629,8 +629,12 @@ class MlflowCharm(CharmBase):
 
             try:
                 self.ambient_mode_ingress.submit_config(self._ingress_config)
-            except Exception as e:
-                raise GenericCharmRuntimeError(f"Failed to submit ingress config: {e}")
+
+            except Exception as error:
+                error_message = f"Failed to submit ingress config: {error}"
+                self.model.unit.status = BlockedStatus(error_message)
+                self.logger.error(error_message)
+                return
 
         self.model.unit.status = ActiveStatus()
 
