@@ -54,6 +54,7 @@ INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
 INGRESS_PATH_REWRITTEN_PREFIX = "/"
 METRICS_RELATION_NAME = "metrics-endpoint"
 METRICS_PATH = "/metrics"
+OBJECT_STORAGE_RELATION_NAME = "object-storage"
 PODDEFAULTS_FILES = [
     "src/poddefaults/poddefault-minio.yaml.j2",
     "src/poddefaults/poddefault-mlflow.yaml.j2",
@@ -153,20 +154,25 @@ class MlflowCharm(CharmBase):
 
         self._mesh = ServiceMeshConsumer(
             self,
-            # NOTE: only AuthorizationPolicies for observability components are necessary, so that
-            # traffic from metric and log scrapres to MLflow is allowed...
-            policies=[UnitPolicy(relation=METRICS_RELATION_NAME)],
+            # NOTE: only AuthorizationPolicies for:
+            # - Prometheus (traffic from metric scrapres to MLflow)
+            # - object storage (traffic from MLflow to MinIO)
+            # are necessary...
+            policies=[
+                UnitPolicy(relation=METRICS_RELATION_NAME),
+                UnitPolicy(relation=OBJECT_STORAGE_RELATION_NAME),
+            ],
             # ...while no additional AuthorizationPolicies are necessary because:
             # - the one required for traffic from the ingress route is already created by the
             #   ingress-route provider itself and we therefore don't need to create it on the
             #   requirer side
+            # - while MLflow does make direct API calls to its relational database, such a workload
+            #   is not part of the mesh (yet) on their end and, given there is no general
+            #   AuthorizationPolicy in place (yet) that implements a deny-by-default behavior, the
+            #   receiving end of such API calls does allow traffic
             # - MLflow is directly called from the UI of the Kubeflow Dashboard, from the
             #   client and not via the backend of the Dashboard service, so no
             #   AuthorizationPolicies from the Dashboard are necessary
-            # - while MLflow does make direct API calls to its relational database and its
-            #   object storage, such workloads are not part of the mesh (yet) on their end and,
-            #   given there is no general AuthorizationPolicy in place (yet) that implements a
-            #   deny-by-default behavior, the receiving ends of such API calls do allow traffic
         )
 
         self.ambient_mode_ingress = IstioIngressRouteRequirer(
@@ -382,7 +388,9 @@ class MlflowCharm(CharmBase):
 
         Raises CheckFailedError if an anticipated error occurs.
         """
-        if not ((obj_storage := interfaces["object-storage"]) and obj_storage.get_data()):
+        if not (
+            (obj_storage := interfaces[OBJECT_STORAGE_RELATION_NAME]) and obj_storage.get_data()
+        ):
             raise ErrorWithStatus("Waiting for object-storage relation data", WaitingStatus)
 
         try:

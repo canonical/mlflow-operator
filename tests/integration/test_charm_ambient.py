@@ -138,7 +138,7 @@ class TestCharm:
             raise_on_error=False,
             timeout=600,
         )
-        await ops_test.model.integrate(MINIO.charm, CHARM_NAME)
+        await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
         await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
 
         await ops_test.model.wait_for_idle(
