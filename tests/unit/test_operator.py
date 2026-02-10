@@ -91,8 +91,8 @@ def harness() -> Harness:
 
     harness.set_leader(True)
 
-    # setup container networking simulation
     harness.set_can_connect("mlflow-server", True)
+    harness.set_can_connect("mlflow-prometheus-exporter", True)
 
     return harness
 
@@ -108,16 +108,9 @@ def add_relation(harness: harness, relation_endpoint: str) -> tuple[int, str]:
     return relation_id, relation_provider_app_name
 
 
-def enable_exporter_container(harness: harness) -> Harness:
-    """Enable mlflow-prometheus-exporter for connections."""
-    harness.set_can_connect("mlflow-prometheus-exporter", True)
-    return harness
-
-
 def add_object_storage_to_harness(harness: Harness):
     """Helper function to handle object storage relation"""
     object_storage_data = {"_supported_versions": "- v1", "data": yaml.dump(OBJECT_STORAGE_DATA)}
-    harness.set_leader(True)
     object_storage_relation_id, remote_app_name = add_relation(
         harness, relation_endpoint="object-storage"
     )
@@ -506,6 +499,7 @@ class TestCharm:
         __: MagicMock,
         harness: Harness,
     ):
+        harness.set_can_connect("mlflow-prometheus-exporter", False)
         harness.begin()
         harness.charm._on_event(None)
         assert harness.charm.model.unit.status == WaitingStatus(
@@ -531,8 +525,6 @@ class TestCharm:
         __: MagicMock,
         harness: Harness,
     ):
-        harness = enable_exporter_container(harness)
-        harness.set_leader(True)
         harness.begin()
         harness.charm._on_event(None)
         assert harness.charm.model.unit.status == ActiveStatus()
@@ -650,6 +642,10 @@ class TestCharm:
                         RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE, relation_id
                     )
                 )
+
+            if not add_ambient_mode_ingress and not add_sidecar_mode_ingress:
+                # when no relation events are emitted, some other trigger is necessary:
+                harness.charm.on.config_changed.emit()
 
             # assert:
 
