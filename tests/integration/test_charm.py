@@ -185,7 +185,12 @@ class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_add_relational_db_with_relation_expect_active(self, ops_test: OpsTest):
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
-        await ops_test.model.deploy(MINIO.charm, channel=MINIO.channel, config=MINIO.config)
+        await ops_test.model.deploy(
+            MINIO.charm,
+            channel=MINIO.channel,
+            config=MINIO.config,
+            trust=MINIO.trust,
+        )
         await ops_test.model.deploy(
             MYSQL_K8S.charm,
             channel=MYSQL_K8S.channel,

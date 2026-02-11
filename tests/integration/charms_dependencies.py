@@ -28,7 +28,7 @@ MINIO = CharmSpec(
         "secret-key": "minio123",
         "port": "9000",
     },
-    trust=False,
+    trust=True,
 )
 MYSQL_K8S = CharmSpec(
     charm="mysql-k8s", channel="8.0/stable", config={"profile": "testing"}, trust=True

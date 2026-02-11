@@ -123,7 +123,12 @@ class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_add_relational_db_with_relation_expect_active(self, ops_test: OpsTest):
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
-        await ops_test.model.deploy(MINIO.charm, channel=MINIO.channel, config=MINIO.config)
+        await ops_test.model.deploy(
+            MINIO.charm,
+            channel=MINIO.channel,
+            config=MINIO.config,
+            trust=MINIO.trust,
+        )
         await ops_test.model.deploy(
             MYSQL_K8S.charm,
             channel=MYSQL_K8S.channel,
@@ -340,6 +345,13 @@ class TestCharm:
         # including subsidiary charms to the service mesh:
         await integrate_with_service_mesh(
             MINIO.charm, ops_test.model, relate_to_ingress_route_endpoint=False
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[MINIO.charm],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=600,
         )
 
     @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
