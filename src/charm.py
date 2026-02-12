@@ -160,7 +160,7 @@ class MlflowCharm(CharmBase):
             # are necessary...
             policies=[
                 UnitPolicy(relation=METRICS_RELATION_NAME),
-                AppPolicy(relation=OBJECT_STORAGE_RELATION_NAME),
+                AppPolicy(relation=OBJECT_STORAGE_RELATION_NAME, endpoints=[]),
             ],
             # ...while no additional AuthorizationPolicies are necessary because:
             # - the one required for traffic from the ingress route is already created by the
