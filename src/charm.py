@@ -10,7 +10,7 @@ import botocore.exceptions
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.istio_beacon_k8s.v0.service_mesh import ServiceMeshConsumer, UnitPolicy
+from charms.istio_beacon_k8s.v0.service_mesh import AppPolicy, ServiceMeshConsumer, UnitPolicy
 from charms.istio_ingress_k8s.v0.istio_ingress_route import (
     BackendRef,
     HTTPPathMatch,
@@ -160,7 +160,7 @@ class MlflowCharm(CharmBase):
             # are necessary...
             policies=[
                 UnitPolicy(relation=METRICS_RELATION_NAME),
-                UnitPolicy(relation=OBJECT_STORAGE_RELATION_NAME),
+                AppPolicy(relation=OBJECT_STORAGE_RELATION_NAME),
             ],
             # ...while no additional AuthorizationPolicies are necessary because:
             # - the one required for traffic from the ingress route is already created by the
