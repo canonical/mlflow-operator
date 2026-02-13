@@ -10,6 +10,21 @@ import botocore.exceptions
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.istio_beacon_k8s.v0.service_mesh import AppPolicy, ServiceMeshConsumer, UnitPolicy
+from charms.istio_ingress_k8s.v0.istio_ingress_route import (
+    BackendRef,
+    HTTPPathMatch,
+    HTTPRoute,
+    HTTPRouteMatch,
+    IstioIngressRouteConfig,
+    IstioIngressRouteRequirer,
+    Listener,
+    PathModifier,
+    PathModifierType,
+    ProtocolType,
+    URLRewriteFilter,
+    URLRewriteSpec,
+)
 from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
     DashboardLink,
     KubeflowDashboardLinksRequirer,
@@ -31,15 +46,24 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, ge
 
 from services.s3 import S3BucketWrapper, validate_s3_bucket_name
 
-SECRETS_FILES = [
-    "src/secrets/mlflow-minio-artifact.j2",
-    "src/secrets/mlflow-seldon-rclone-secret.j2",
-]
+INGRESS_MODES_TO_RELATION_NAMES = {
+    "ambient": "istio-ingress-route",
+    "sidecar": "ingress",
+}
+INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
+INGRESS_PATH_REWRITTEN_PREFIX = "/"
+METRICS_RELATION_NAME = "metrics-endpoint"
+METRICS_PATH = "/metrics"
+OBJECT_STORAGE_RELATION_NAME = "object-storage"
 PODDEFAULTS_FILES = [
     "src/poddefaults/poddefault-minio.yaml.j2",
     "src/poddefaults/poddefault-mlflow.yaml.j2",
 ]
-METRICS_PATH = "/metrics"
+SECRETS_FILES = [
+    "src/secrets/mlflow-minio-artifact.j2",
+    "src/secrets/mlflow-seldon-rclone-secret.j2",
+]
+SERVICE_MESH_RELATION_NAME = "service-mesh"
 
 
 class MlflowCharm(CharmBase):
@@ -49,7 +73,9 @@ class MlflowCharm(CharmBase):
         super().__init__(*args)
 
         self.logger = logging.getLogger(__name__)
-        self._port = self.model.config["mlflow_port"]
+        self._mlflow_port = int(self.model.config["mlflow_port"])
+        self._service_name = self.model.app.name
+        self._namespace = self.model.name
         self._exporter_port = self.model.config["mlflow_prometheus_exporter_port"]
         self._container_name = "mlflow-server"
         self._exporter_container_name = "mlflow-prometheus-exporter"
@@ -94,7 +120,7 @@ class MlflowCharm(CharmBase):
                     "static_configs": [
                         {
                             "targets": [
-                                "*:{}".format(self.model.config["mlflow_port"]),
+                                "*:{}".format(self._mlflow_port),
                                 "*:{}".format(
                                     self.model.config["mlflow_prometheus_exporter_port"]
                                 ),
@@ -116,12 +142,45 @@ class MlflowCharm(CharmBase):
             dashboard_links=[
                 DashboardLink(
                     text="MLflow",
-                    link="/mlflow/",
+                    link=INGRESS_PATH_MATCHED_PREFIX,
                     type="item",
                     icon="device:data-usage",
                     location="external",
                 )
             ],
+        )
+
+        # for an ambient-mode service mesh:
+
+        self._mesh = ServiceMeshConsumer(
+            self,
+            # NOTE: only AuthorizationPolicies for:
+            # - Prometheus (traffic from metric scrapres to MLflow)
+            # - object storage (traffic from MLflow to MinIO)
+            # are necessary...
+            policies=[
+                UnitPolicy(relation=METRICS_RELATION_NAME),
+                AppPolicy(relation=OBJECT_STORAGE_RELATION_NAME, endpoints=[]),
+            ],
+            # ...while no additional AuthorizationPolicies are necessary because:
+            # - the one required for traffic from the ingress route is already created by the
+            #   ingress-route provider itself and we therefore don't need to create it on the
+            #   requirer side
+            # - while MLflow does make direct API calls to its relational database, such a workload
+            #   is not part of the mesh (yet) on their end and, given there is no general
+            #   AuthorizationPolicy in place (yet) that implements a deny-by-default behavior, the
+            #   receiving end of such API calls does allow traffic
+            # - MLflow is directly called from the UI of the Kubeflow Dashboard, from the
+            #   client and not via the backend of the Dashboard service, so no
+            #   AuthorizationPolicies from the Dashboard are necessary
+        )
+
+        self.ambient_mode_ingress = IstioIngressRouteRequirer(
+            self, relation_name=INGRESS_MODES_TO_RELATION_NAMES["ambient"]
+        )
+
+        self.framework.observe(
+            self.ambient_mode_ingress.on.ready, self._on_ambient_mode_ingress_ready
         )
 
     @property
@@ -133,6 +192,41 @@ class MlflowCharm(CharmBase):
     def exporter_container(self):
         """Return container."""
         return self._exporter_container
+
+    @property
+    def _ingress_config(self):
+        http_listener = Listener(
+            port=80,  # expecting ingress traffic to come through the default HTTP port: 80
+            protocol=ProtocolType.HTTP,  # expecting ingress traffic via HTTP
+            # NOTE: listener name auto-generated by the charm
+        )
+
+        return IstioIngressRouteConfig(
+            model=self._namespace,  # NOTE: requirer's namespace, where target services live
+            listeners=[http_listener],
+            http_routes=[
+                # resource of kind `HTTPRoute.gateway.networking.k8s.io`:
+                # https://gateway-api.sigs.k8s.io/reference/spec/#httproute
+                HTTPRoute(
+                    name="http-route",
+                    listener=http_listener,
+                    matches=[
+                        HTTPRouteMatch(path=HTTPPathMatch(value=INGRESS_PATH_MATCHED_PREFIX))
+                    ],
+                    filters=[
+                        URLRewriteFilter(
+                            urlRewrite=URLRewriteSpec(
+                                path=PathModifier(
+                                    type=PathModifierType.ReplacePrefixMatch,
+                                    value=INGRESS_PATH_REWRITTEN_PREFIX,
+                                )
+                            )
+                        )
+                    ],
+                    backends=[BackendRef(service=self._service_name, port=self._mlflow_port)],
+                ),
+            ],
+        )
 
     @property
     def secrets_manifests_wrapper(self):
@@ -157,9 +251,9 @@ class MlflowCharm(CharmBase):
             self._node_port = self.model.config["mlflow_nodeport"]
             self._exporter_node_port = self.model.config["mlflow_prometheus_exporter_nodeport"]
             port = ServicePort(
-                int(self._port),
+                self._mlflow_port,
                 name=f"{self.app.name}",
-                targetPort=int(self._port),
+                targetPort=self._mlflow_port,
                 nodePort=int(self._node_port),
             )
 
@@ -171,7 +265,7 @@ class MlflowCharm(CharmBase):
             )
         else:
             service_type = "ClusterIP"
-            port = ServicePort(int(self._port), name=f"{self.app.name}")
+            port = ServicePort(self._mlflow_port, name=f"{self.app.name}")
             exporter_port = ServicePort(
                 int(self._exporter_port), name=f"{self.app.name}-prometheus-exporter"
             )
@@ -179,7 +273,7 @@ class MlflowCharm(CharmBase):
             self,
             [port, exporter_port],
             service_type=service_type,
-            service_name=f"{self.model.app.name}",
+            service_name=self._service_name,
             refresh_event=self.on.config_changed,
         )
 
@@ -213,7 +307,7 @@ class MlflowCharm(CharmBase):
                         "--host "
                         "0.0.0.0 "
                         "--port "
-                        f"{self._port} "
+                        f"{self._mlflow_port} "
                         "--backend-store-uri "
                         f"{env_vars['MLFLOW_TRACKING_URI']} "
                         "--default-artifact-root "
@@ -243,7 +337,7 @@ class MlflowCharm(CharmBase):
                         "python3 "
                         "mlflow_exporter.py "
                         f"--port {self._exporter_port} "
-                        f"--mlflowurl http://localhost:{self._port}/"
+                        f"--mlflowurl http://localhost:{self._mlflow_port}/"
                     ),
                     "startup": "enabled",
                 },
@@ -294,7 +388,9 @@ class MlflowCharm(CharmBase):
 
         Raises CheckFailedError if an anticipated error occurs.
         """
-        if not ((obj_storage := interfaces["object-storage"]) and obj_storage.get_data()):
+        if not (
+            (obj_storage := interfaces[OBJECT_STORAGE_RELATION_NAME]) and obj_storage.get_data()
+        ):
             raise ErrorWithStatus("Waiting for object-storage relation data", WaitingStatus)
 
         try:
@@ -379,6 +475,25 @@ class MlflowCharm(CharmBase):
             self.logger.info("Not a leader, skipping setup")
             raise ErrorWithStatus("Waiting for leadership", WaitingStatus)
 
+    def _check_no_conflicting_ingress_relations(self) -> None:
+        """Check that ambient-mode and sidecar-mode ingress relations are not both set."""
+        ambient_relation = self.model.get_relation(INGRESS_MODES_TO_RELATION_NAMES["ambient"])
+        sidecar_relation = self.model.get_relation(INGRESS_MODES_TO_RELATION_NAMES["sidecar"])
+
+        if ambient_relation and sidecar_relation:
+            self.logger.error(
+                f"Both '{INGRESS_MODES_TO_RELATION_NAMES["ambient"]}' and "
+                f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations are present."
+            )
+            raise ErrorWithStatus(
+                (
+                    f"Cannot have both '{INGRESS_MODES_TO_RELATION_NAMES["ambient"]}' and "
+                    f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations at the same time, "
+                    "remove one to unblock."
+                ),
+                BlockedStatus,
+            )
+
     def _update_layer(self, container, container_name, new_layer) -> None:
         current_layer = self.container.get_plan()
         if current_layer.services != new_layer.services:
@@ -423,14 +538,14 @@ class MlflowCharm(CharmBase):
         return manifests
 
     def _send_ingress_info(self, interfaces):
-        if interfaces["ingress"]:
-            interfaces["ingress"].send_data(
+        if interfaces[INGRESS_MODES_TO_RELATION_NAMES["sidecar"]]:
+            interfaces[INGRESS_MODES_TO_RELATION_NAMES["sidecar"]].send_data(
                 {
-                    "prefix": "/mlflow/",
-                    "rewrite": "/",
-                    "service": self.model.app.name,
-                    "namespace": self.model.name,
-                    "port": int(self._port),
+                    "prefix": INGRESS_PATH_MATCHED_PREFIX,
+                    "rewrite": INGRESS_PATH_REWRITTEN_PREFIX,
+                    "service": self._service_name,
+                    "namespace": self._namespace,
+                    "port": self._mlflow_port,
                 }
             )
 
@@ -438,10 +553,13 @@ class MlflowCharm(CharmBase):
         """Perform all required actions for the Charm."""
         try:
             self._check_leader()
+
             interfaces = self._get_interfaces()
             object_storage_data = self._get_object_storage_data(interfaces)
             relational_db_data = self._get_relational_db_data()
             envs = self._get_env_vars(relational_db_data, object_storage_data)
+
+            self._check_no_conflicting_ingress_relations()
 
             s3_wrapper = S3BucketWrapper(
                 access_key=object_storage_data["access-key"],
@@ -474,7 +592,10 @@ class MlflowCharm(CharmBase):
 
             secrets_context = {
                 "app_name": self.app.name,
-                "s3_endpoint": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
+                "s3_endpoint": (
+                    f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:"
+                    f"{object_storage_data['port']}"
+                ),
                 "s3_type": "s3",
                 "s3_provider": "minio",
                 "enable_env_auth": "false",
@@ -484,17 +605,37 @@ class MlflowCharm(CharmBase):
             poddefaults_context = {
                 "app_name": self.app.name,
                 "s3_endpoint": secrets_context["s3_endpoint"],
-                "mlflow_endpoint": f"http://{self.app.name}.{self.model.name}.svc.cluster.local:{self._port}",  # noqa: E501
+                "mlflow_endpoint": (
+                    f"http://{self.app.name}.{self._namespace}.svc.cluster.local:"
+                    f"{self._mlflow_port}"
+                ),
             }
             self._send_manifests(secrets_context, SECRETS_FILES, self.secrets_manifests_wrapper)
             self._send_manifests(
                 poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
             )
             self._send_ingress_info(interfaces)
+
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
             self.logger.info(f"Event {event} stopped early with message: {str(err)}")
             return
+
+        self.model.unit.status = ActiveStatus()
+
+    def _on_ambient_mode_ingress_ready(self, _):
+        """Configure the ingess for ambient mode."""
+        if self.unit.is_leader():
+
+            try:
+                self.ambient_mode_ingress.submit_config(self._ingress_config)
+
+            except Exception as error:
+                error_message = f"Failed to submit ingress config: {error}"
+                self.model.unit.status = BlockedStatus(error_message)
+                self.logger.error(error_message)
+                return
+
         self.model.unit.status = ActiveStatus()
 
 

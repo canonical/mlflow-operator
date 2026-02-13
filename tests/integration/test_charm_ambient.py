@@ -1,8 +1,8 @@
-# Copyright 2022 Canonical Ltd.
+# Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 #
 
-"""Integration tests for Seldon Core Operator/Charm."""
+"""Integration tests for Mlflow."""
 
 import base64
 import logging
@@ -12,38 +12,32 @@ from pathlib import Path
 from random import choices
 from string import ascii_lowercase
 
-import aiohttp
 import lightkube
 import pytest
 import requests
 import yaml
 from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
 from charmed_kubeflow_chisme.testing import (
-    CharmSpec,
     assert_alert_rules,
     assert_grafana_dashboards,
     assert_logging,
     assert_metrics_endpoint,
+    assert_path_reachable_through_ingress,
     assert_security_context,
+    deploy_and_integrate_service_mesh_charms,
     generate_container_securitycontext_map,
     get_alert_rules,
     get_grafana_dashboards,
     get_pod_names,
+    integrate_with_service_mesh,
 )
-from charms_dependencies import (
-    ISTIO_GATEWAY,
-    ISTIO_PILOT,
-    METACONTROLLER_OPERATOR,
-    MINIO,
-    MYSQL_K8S,
-    RESOURCE_DISPATCHER,
-)
+from charms_dependencies import METACONTROLLER_OPERATOR, MINIO, MYSQL_K8S, RESOURCE_DISPATCHER
 from lightkube import codecs
 from lightkube.generic_resource import (
     create_namespaced_resource,
     load_in_cluster_generic_resources,
 )
-from lightkube.resources.core_v1 import Secret, Service
+from lightkube.resources.core_v1 import Secret
 from minio import Minio
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
@@ -54,6 +48,7 @@ logger = logging.getLogger(__name__)
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 CHARM_NAME = METADATA["name"]
 CONTAINERS_SECURITY_CONTEXT_MAP = generate_container_securitycontext_map(METADATA)
+HTTP_PATH = "/mlflow/"
 NAMESPACE_FILE = "./tests/integration/namespace.yaml"
 PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
 PODDEFAULTS_SUFFIXES = ["-access-minio", "-minio"]
@@ -105,15 +100,6 @@ def deploy_k8s_resources(template_files: str):
     k8s_resource_handler.apply()
 
 
-async def fetch_url(url):
-    """Fetch provided URL and return JSON."""
-    result = None
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            result = await response.json()
-    return result
-
-
 @pytest.fixture(scope="session")
 def namespace(lightkube_client: lightkube.Client):
     yaml_text = _safe_load_file_to_text(NAMESPACE_FILE)
@@ -126,54 +112,6 @@ def namespace(lightkube_client: lightkube.Client):
     yield obj.metadata.name
 
     delete_all_from_yaml(yaml_text, lightkube_client)
-
-
-async def setup_istio(ops_test: OpsTest, istio_gateway: CharmSpec, istio_pilot: CharmSpec):
-    """Deploy Istio Ingress Gateway and Istio Pilot."""
-    await ops_test.model.deploy(
-        entity_url=istio_gateway.charm,
-        channel=istio_gateway.channel,
-        config=istio_gateway.config,
-        trust=istio_gateway.trust,
-    )
-    await ops_test.model.deploy(
-        istio_pilot.charm,
-        channel=istio_pilot.channel,
-        config=istio_pilot.config,
-        trust=istio_pilot.trust,
-    )
-    await ops_test.model.integrate(istio_pilot.charm, istio_gateway.charm)
-
-    await ops_test.model.wait_for_idle(
-        apps=[istio_pilot.charm, istio_gateway.charm],
-        status="active",
-        timeout=60 * 5,
-        raise_on_blocked=False,
-        raise_on_error=False,
-    )
-
-
-def get_ingress_url(lightkube_client: lightkube.Client, model_name: str):
-    gateway_svc = lightkube_client.get(
-        Service, "istio-ingressgateway-workload", namespace=model_name
-    )
-    ingress_record = gateway_svc.status.loadBalancer.ingress[0]
-    if ingress_record.ip:
-        public_url = f"http://{ingress_record.ip}.nip.io"
-    if ingress_record.hostname:
-        public_url = f"http://{ingress_record.hostname}"  # Use hostname (e.g. EKS)
-    return public_url
-
-
-async def fetch_response(url, headers):
-    """Fetch provided URL and return pair - status and text (int, string)."""
-    result_status = 0
-    result_text = ""
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url=url, headers=headers) as response:
-            result_status = response.status
-            result_text = await response.text()
-    return result_status, str(result_text)
 
 
 class TestCharm:
@@ -399,23 +337,33 @@ class TestCharm:
             timeout=1200,
         )
 
-    async def test_ingress_relation(self, ops_test: OpsTest):
-        """Setup Istio and relate it to the MLflow."""
-        await setup_istio(ops_test, ISTIO_GATEWAY, ISTIO_PILOT)
+    async def test_mesh_and_ingress_integrations(self, ops_test: OpsTest):
+        """Setup Istio in ambient mode to include MLflow and any subsidiary charms in the mesh."""
+        # deploy charms providing the service mesh and the ingress while relating MLflow to them:
+        await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
 
-        await ops_test.model.add_relation(f"{ISTIO_PILOT.charm}:ingress", f"{CHARM_NAME}:ingress")
-
-        await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
+        # including subsidiary charms to the service mesh:
+        await integrate_with_service_mesh(
+            MINIO.charm, ops_test.model, relate_to_ingress_route_endpoint=False
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[MINIO.charm],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=600,
+        )
 
     @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
-    async def test_ingress_url(self, lightkube_client, ops_test: OpsTest):
-        ingress_url = get_ingress_url(lightkube_client, ops_test.model_name)
-        result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
-
-        # verify that UI is accessible
-        assert result_status == 200
-        assert len(result_text) > 0
+    async def test_ui_is_accessible(self, lightkube_client, ops_test: OpsTest):
+        """Verify that UI is accessible through the ingress gateway."""
+        await assert_path_reachable_through_ingress(
+            http_path=HTTP_PATH,
+            namespace=ops_test.model.name,
+            expected_content_type="text/html",
+            expected_response_text="MLflow",
+        )
 
     @pytest.mark.abort_on_fail
     async def test_new_user_namespace_has_manifests(
