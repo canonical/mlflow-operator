@@ -30,7 +30,11 @@ jobs:
           subnet-id: ${{ vars.AWS_DEFAULT_SUBNET_ID }}
           security-group-id: ${{ vars.AWS_SECURITY_GROUP_ID }}
   integration-tests:
-    name: Run integration tests
+    strategy:
+      fail-fast: false
+      matrix:
+        test-type: [integration, integration-ambient]
+    name: Run integration tests (${{ matrix.test-type }})
     needs: [start-runner, lint, unit-tests]
     runs-on: ${{ needs.start-runner.outputs.label }} 
     steps:
@@ -45,7 +49,7 @@ jobs:
     - name: Setup microk8s
       run: /bin/su -c "$(pwd)/.github/workflows/setup_microk8s.sh" - ubuntu
     - name: Run integration tests
-      run: /bin/su -c "cd $(pwd) && tox -vve aws-integration -- --model kubeflow" - ubuntu 
+      run: /bin/su -c "cd $(pwd) && tox -vve aws-${{ matrix.test-type }} -- --model kubeflow" - ubuntu 
 
     # On failure, capture debugging resources
     - name: Get all
