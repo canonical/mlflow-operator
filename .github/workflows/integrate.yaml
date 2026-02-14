@@ -62,18 +62,15 @@ jobs:
       apply: false
 
   integration:
-    name: Integration tests
+    strategy:
+      fail-fast: false
+      matrix:
+        test-type: [integration, integration-ambient]
+    name: Integration tests (${{ matrix.test-type }})
     runs-on: ubuntu-24.04
     steps:
     - name: Maximise GH runner space
-      uses: easimon/maximize-build-space@v8
-      with:
-        root-reserve-mb: 34816
-        remove-dotnet: 'true'
-        remove-haskell: 'true'
-        remove-android: 'true'
-        remove-codeql: 'true'
-        remove-docker-images: 'true'
+      uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
 
     - uses: actions/checkout@v4
     - name: Install dependencies
@@ -86,8 +83,15 @@ jobs:
         sudo snap install concierge --classic
         sudo concierge prepare --trace
 
+    - name: Configure Cilium for Istio
+      run: |
+        # for context, see https://docs.cilium.io/en/stable/network/servicemesh/istio/
+        kubectl -n kube-system patch configmap cilium-config --type merge --patch '{"data":{"bpf-lb-sock-hostns-only":"true"}}'
+        kubectl -n kube-system patch configmap cilium-config --type merge --patch '{"data":{"cni-exclusive":"false"}}'
+        kubectl -n kube-system rollout restart daemonset cilium
+
     - name: Run integration tests
-      run: tox -vve integration -- --model testing
+      run: tox -vve ${{ matrix.test-type }} -- --model testing
 
     - name: Collect charm debug artifacts
       uses: canonical/kubeflow-ci/actions/dump-charm-debug-artifacts@main
@@ -103,9 +107,11 @@ jobs:
       if: failure()
 
     - name: Get workload logs
-      run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server
+      run: |
+        kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c mlflow-server
+        kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c mlflow-prometheus-exporter
       if: failure()
 
     - name: Get operator logs
-      run: kubectl logs --tail 100 -ntesting -loperator.juju.is/name=mlflow-server
+      run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c charm
       if: failure()

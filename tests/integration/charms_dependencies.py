@@ -2,6 +2,7 @@
 
 from charmed_kubeflow_chisme.testing import CharmSpec
 
+# for Istio in sidecar mode only:
 ISTIO_GATEWAY = CharmSpec(
     charm="istio-gateway", channel="latest/edge", config={"kind": "ingress"}, trust=True
 )
@@ -11,6 +12,7 @@ ISTIO_PILOT = CharmSpec(
     config={"default-gateway": "test-gateway"},
     trust=True,
 )
+
 METACONTROLLER_OPERATOR = CharmSpec(
     charm="metacontroller-operator", channel="latest/edge", trust=True
 )
@@ -22,7 +24,7 @@ MINIO = CharmSpec(
         "secret-key": "minio123",
         "port": "9000",
     },
-    trust=False,
+    trust=True,
 )
 MYSQL_K8S = CharmSpec(
     charm="mysql-k8s", channel="8.0/stable", config={"profile": "testing"}, trust=True
