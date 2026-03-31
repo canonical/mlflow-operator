@@ -1,0 +1,23 @@
+name: On Pull Request Closed
+
+# When a pull request is pushed on the main branch, automatically
+# create backport PRs according to the labels on the pull request.
+# If there are conflicts, create a PR but leave it as draft.
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches:
+    - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+
+  backport:
+    name: Backport pull request
+    if: github.event.pull_request.merged
+    uses: canonical/charmed-kubeflow-workflows/.github/workflows/backport-pr.yaml@main
+    secrets: inherit
