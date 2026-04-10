@@ -108,7 +108,9 @@ requires:
       all routes will have authentication applied to them.
   secrets:
     interface: kubernetes_manifest
+    optional: true
   pod-defaults:
+    optional: true
     interface: kubernetes_manifest
   logging:
     interface: loki_push_api
