@@ -156,6 +156,23 @@ class TestCharm:
         )
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
+    async def test_mesh_and_ingress_integrations(self, ops_test: OpsTest):
+        """Setup Istio in ambient mode to include MLflow and any subsidiary charms in the mesh."""
+        # deploy charms providing the service mesh and the ingress while relating MLflow to them:
+        await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
+
+        # including subsidiary charms to the service mesh:
+        await integrate_with_service_mesh(
+            MINIO.charm, ops_test.model, relate_to_ingress_route_endpoint=False
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[MINIO.charm],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=600,
+        )
+
     @pytest.mark.parametrize("container_name", list(CONTAINERS_SECURITY_CONTEXT_MAP.keys()))
     async def test_container_security_context(
         self,
@@ -335,23 +352,6 @@ class TestCharm:
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=1200,
-        )
-
-    async def test_mesh_and_ingress_integrations(self, ops_test: OpsTest):
-        """Setup Istio in ambient mode to include MLflow and any subsidiary charms in the mesh."""
-        # deploy charms providing the service mesh and the ingress while relating MLflow to them:
-        await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
-
-        # including subsidiary charms to the service mesh:
-        await integrate_with_service_mesh(
-            MINIO.charm, ops_test.model, relate_to_ingress_route_endpoint=False
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[MINIO.charm],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=600,
         )
 
     @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
