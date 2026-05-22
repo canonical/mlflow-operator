@@ -1,27 +1,25 @@
-# reusable workflow triggered manually
-name: Release charm to other tracks and channels
+# Copyright 2025 Canonical Ltd.
+# See LICENSE file for licensing details.
+name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      destination-channel:
-        description: 'Destination Channel'
-        required: true
-      origin-channel:
-        description: 'Origin Channel'
-        required: true
+  push:
+    branches:
+      - main
+      - track/**
 
 jobs:
-  promote-charm:
-    name: Promote charm
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Release charm to channel
-        uses: canonical/charming-actions/release-charm@2.3.0
-        with:
-          credentials: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          destination-channel: ${{ github.event.inputs.destination-channel }}
-          origin-channel: ${{ github.event.inputs.origin-channel }}
-          base-channel: "24.04"
+  ci:
+    uses: ./.github/workflows/ci.yaml
+    secrets: inherit
+
+  release:
+    name: Release charm
+    needs: ci
+    uses: canonical/data-platform-workflows/.github/workflows/release_charm.yaml@v31.0.0
+    with:
+      artifact-prefix: mlflow-server
+      channel: latest/edge
+      charmcraft-snap-channel: latest/edge
+    secrets:
+      charmhub-token: ${{ secrets.CHARMCRAFT_CREDENTIALS }}

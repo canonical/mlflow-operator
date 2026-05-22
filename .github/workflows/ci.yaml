@@ -1,0 +1,111 @@
+# Copyright 2025 Canonical Ltd.
+# See LICENSE file for licensing details.
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+      - track/**
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx install tox
+      - run: tox -e lint
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx install tox
+      - run: tox -e unit
+
+  terraform-checks:
+    name: Terraform
+    uses: canonical/charmed-kubeflow-workflows/.github/workflows/terraform-checks.yaml@main
+    with:
+      charm-path: .
+      apply: false
+
+  build:
+    name: Build charm
+    uses: canonical/data-platform-workflows/.github/workflows/build_charm.yaml@v31.0.0
+    with:
+      cache: true
+      charmcraft-snap-channel: latest/edge
+
+  integration:
+    name: Integration tests (${{ matrix.test-type }})
+    needs:
+      - lint
+      - unit
+      - build
+    strategy:
+      fail-fast: false
+      matrix:
+        charm:
+          - mlflow-server
+        test-type:
+          - integration
+          - integration-ambient
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Maximise GH runner space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
+
+      - uses: actions/checkout@v4
+
+      - name: Download packed charm
+        id: download-charm
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.charm }}_ubuntu-24.04-amd64
+          path: ${{ github.workspace }}
+
+      - run: pipx install tox
+
+      - name: Setup environment
+        run: |
+          sudo apt-get remove -y docker-ce docker-ce-cli containerd.io
+          sudo rm -rf /run/containerd
+          sudo snap install concierge --classic
+          sudo concierge prepare --trace
+
+      - name: Configure Cilium for Istio
+        run: |
+          # for context, see https://docs.cilium.io/en/stable/network/servicemesh/istio/
+          kubectl -n kube-system patch configmap cilium-config --type merge --patch '{"data":{"bpf-lb-sock-hostns-only":"true"}}'
+          kubectl -n kube-system patch configmap cilium-config --type merge --patch '{"data":{"cni-exclusive":"false"}}'
+          kubectl -n kube-system rollout restart daemonset cilium
+
+      - name: Run integration tests
+        run: tox -vve ${{ matrix.test-type }} -- --charm-path=${{ github.workspace }}/${{ matrix.charm }}_ubuntu@24.04-amd64.charm --model testing
+
+      - name: Collect charm debug artifacts
+        uses: canonical/kubeflow-ci/actions/dump-charm-debug-artifacts@main
+        if: failure()
+
+      - name: Get all
+        run: kubectl get all -A
+        if: failure()
+
+      - name: Get juju status
+        run: juju status
+        if: failure()
+
+      - name: Get workload logs
+        run: |
+          kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c mlflow-server
+          kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c mlflow-prometheus-exporter
+        if: failure()
+
+      - name: Get operator logs
+        run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c charm
+        if: failure()
