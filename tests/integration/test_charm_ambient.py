@@ -393,7 +393,7 @@ class TestCharm:
     @retry(
         stop=stop_after_delay(300),
         wait=wait_fixed(10),
-        retry=retry_if_exception_type((subprocess.CalledProcessError, ApiError)),
+        retry=retry_if_exception_type(subprocess.CalledProcessError),
         reraise=True,
     )
     @pytest.mark.abort_on_fail
