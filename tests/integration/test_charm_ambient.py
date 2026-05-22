@@ -47,6 +47,7 @@ from lightkube.generic_resource import (
 )
 from lightkube.resources.core_v1 import Namespace, Secret
 from minio import Minio
+from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_fixed
 
@@ -284,6 +285,35 @@ class TestCharm:
         assert found, f"The '{default_bucket_name}' bucket does not exist"
 
         minio_subproces.terminate()
+
+    @pytest.mark.abort_on_fail
+    async def test_can_create_experiment_with_mlflow_library_via_port_forward(
+        self, ops_test: OpsTest
+    ):
+        """Create an experiment with the MLflow client through kubectl port-forward."""
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        mlflow_subprocess = subprocess.Popen(
+            [
+                "kubectl",
+                "-n",
+                f"{ops_test.model_name}",
+                "port-forward",
+                f"svc/{CHARM_NAME}",
+                f"{mlflow_port}:{mlflow_port}",
+            ]
+        )
+        time.sleep(10)  # Must wait for port-forward
+
+        url = f"http://localhost:{mlflow_port}"
+        client = MlflowClient(tracking_uri=url)
+        response = requests.get(url)
+        assert response.status_code == 200
+        client.create_experiment(TEST_EXPERIMENT_NAME)
+        all_experiments = client.search_experiments()
+        assert len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
+
+        mlflow_subprocess.terminate()
 
     @pytest.mark.abort_on_fail
     async def test_deploy_resource_dispatcher(self, ops_test: OpsTest):
