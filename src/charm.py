@@ -507,6 +507,8 @@ class MlflowCharm(CharmBase):
             )
 
     def _reconcile_policy_resource_manager(self):
+        if not self.unit.is_leader():
+            return
         if self.model.get_relation(SERVICE_MESH_RELATION_NAME):
             self._policy_resource_manager.reconcile(
                 policies=[], mesh_type=self._mesh.mesh_type, raw_policies=[self._allow_all_policy]
