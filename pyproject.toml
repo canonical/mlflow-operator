@@ -46,9 +46,9 @@ package-mode = false
 optional = true
 
 [tool.poetry.group.charm.dependencies]
-charmed-kubeflow-chisme = ">=0.4.11"
+charmed-kubeflow-chisme = "^0.4.11"
 lightkube-models = ">=1.25.4.4"
-ops = ">=2.3.0"
+ops = "^2.17.1"
 boto3 = "^1.35.76"
 cosl = "^0.0.50"
 lightkube = "^0.17.1"
