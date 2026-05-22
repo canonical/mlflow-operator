@@ -102,7 +102,10 @@ async def profile_namespace(ops_test: OpsTest, lightkube_client: lightkube.Clien
 
     load_in_cluster_generic_resources(lightkube_client)
     profile = codecs.from_dict(profile_manifest)
-    lightkube_client.apply(profile)
+    try:
+        lightkube_client.apply(profile)
+    except ApiError as err:
+        pytest.fail(f"Failed to apply Profile resource: {err}")
 
     # Profile reconciliation is asynchronous; wait until the namespace is created.
     for _ in range(18):
