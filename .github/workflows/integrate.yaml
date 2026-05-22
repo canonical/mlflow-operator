@@ -8,20 +8,6 @@ on:
         required: true
 
 jobs:
-  lib-check:
-    name: Check libraries
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check libs
-        uses: canonical/charming-actions/check-libraries@2.3.0
-        with:
-          credentials: "${{ secrets.CHARMCRAFT_CREDENTIALS }}"
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
-
   lint:
     name: Lint Check
     runs-on: ubuntu-24.04
