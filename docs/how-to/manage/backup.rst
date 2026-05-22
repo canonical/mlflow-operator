@@ -15,9 +15,9 @@ Requirements
 4. `rclone`_ installed and `configured`_ to connect to the S3 storage from 1.
 5. `s3-integrator` deployed and configured:
 
-   1. https://charmhub.io/mysql-k8s/docs/h-configure-s3-aws
+   1. https://documentation.ubuntu.com/charmed-mysql/8.0/how-to/back-up-and-restore/configure-s3-aws/
 
-   2. https://charmhub.io/mysql-k8s/docs/h-configure-s3-radosgw
+   2. https://documentation.ubuntu.com/charmed-mysql/8.0/how-to/back-up-and-restore/configure-s3-radosgw/
 
 6. `yq binary`_.
 
