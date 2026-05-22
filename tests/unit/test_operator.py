@@ -2,7 +2,7 @@
 # See LICENSE file for licensing details.
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 import yaml
@@ -12,7 +12,7 @@ from ops.pebble import ChangeError, Service
 from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
-from charm import MlflowCharm
+from charm import MeshType, MlflowCharm
 
 EXPECTED_SERVICE = {
     "mlflow-server": Service(
@@ -544,6 +544,82 @@ class TestCharm:
         assert harness.charm.model.unit.status == BlockedStatus(
             "Please add relation to the database"
         )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "has_service_mesh_relation, expected_called",
+        [(True, True), (False, False)],
+        ids=["with-service-mesh", "without-service-mesh"],
+    )
+    def test_reconcile_policy_resource_manager(
+        self,
+        harness: Harness,
+        has_service_mesh_relation,
+        expected_called,
+    ):
+        """Test policy reconciliation only happens when a service-mesh relation exists."""
+        harness.begin()
+        if has_service_mesh_relation:
+            add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+
+        mock_policy_manager = MagicMock()
+
+        with patch.object(
+            MlflowCharm,
+            "_policy_resource_manager",
+            new_callable=PropertyMock,
+            return_value=mock_policy_manager,
+        ):
+            harness.charm._reconcile_policy_resource_manager()
+
+        if expected_called:
+            mock_policy_manager.reconcile.assert_called_once_with(
+                policies=[],
+                mesh_type=harness.charm._mesh.mesh_type,
+                raw_policies=[harness.charm._allow_all_policy],
+            )
+        else:
+            mock_policy_manager.reconcile.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "is_leader, expected_called",
+        [(True, True), (False, False)],
+        ids=["leader", "non-leader"],
+    )
+    def test_remove_authorization_policies(
+        self,
+        harness: Harness,
+        is_leader,
+        expected_called,
+    ):
+        """Test authorization policy removal is leader-gated before reconciliation."""
+        harness.set_leader(is_leader)
+        harness.begin()
+        mock_policy_manager = MagicMock()
+
+        with patch.object(
+            MlflowCharm,
+            "_policy_resource_manager",
+            new_callable=PropertyMock,
+            return_value=mock_policy_manager,
+        ):
+            harness.charm._remove_authorization_policies(None)
+
+        if expected_called:
+            mock_policy_manager.reconcile.assert_called_once_with(
+                policies=[],
+                mesh_type=MeshType.istio,
+                raw_policies=[],
+            )
+        else:
+            mock_policy_manager.reconcile.assert_not_called()
 
     @patch(
         "charm.KubernetesServicePatch",

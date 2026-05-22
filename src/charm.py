@@ -8,9 +8,14 @@ from pathlib import Path
 
 import botocore.exceptions
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
+from charmed_kubeflow_chisme.service_mesh import generate_allow_all_authorization_policy
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.istio_beacon_k8s.v0.service_mesh import AppPolicy, ServiceMeshConsumer, UnitPolicy
+from charms.istio_beacon_k8s.v0.service_mesh import (
+    MeshType,
+    PolicyResourceManager,
+    ServiceMeshConsumer,
+)
 from charms.istio_ingress_k8s.v0.istio_ingress_route import (
     BackendRef,
     HTTPPathMatch,
@@ -37,6 +42,7 @@ from charms.resource_dispatcher.v0.kubernetes_manifests import (
     KubernetesManifestRequirerWrapper,
 )
 from jinja2 import Template
+from lightkube import Client
 from lightkube.models.core_v1 import ServicePort
 from ops import main
 from ops.charm import CharmBase
@@ -107,6 +113,14 @@ class MlflowCharm(CharmBase):
         self.framework.observe(
             self.on.get_minio_credentials_action, self._on_get_minio_credentials
         )
+
+        self.framework.observe(self.on.remove, self._remove_authorization_policies)
+
+        self.framework.observe(
+            self.on[SERVICE_MESH_RELATION_NAME].relation_broken,
+            self._remove_authorization_policies,
+        )
+
         # Log forwarding to Loki
         self._logging = LogForwarder(charm=self)
 
@@ -152,27 +166,12 @@ class MlflowCharm(CharmBase):
 
         # for an ambient-mode service mesh:
 
-        self._mesh = ServiceMeshConsumer(
-            self,
-            # NOTE: only AuthorizationPolicies for:
-            # - Prometheus (traffic from metric scrapres to MLflow)
-            # - object storage (traffic from MLflow to MinIO)
-            # are necessary...
-            policies=[
-                UnitPolicy(relation=METRICS_RELATION_NAME),
-                AppPolicy(relation=OBJECT_STORAGE_RELATION_NAME, endpoints=[]),
-            ],
-            # ...while no additional AuthorizationPolicies are necessary because:
-            # - the one required for traffic from the ingress route is already created by the
-            #   ingress-route provider itself and we therefore don't need to create it on the
-            #   requirer side
-            # - while MLflow does make direct API calls to its relational database, such a workload
-            #   is not part of the mesh (yet) on their end and, given there is no general
-            #   AuthorizationPolicy in place (yet) that implements a deny-by-default behavior, the
-            #   receiving end of such API calls does allow traffic
-            # - MLflow is directly called from the UI of the Kubeflow Dashboard, from the
-            #   client and not via the backend of the Dashboard service, so no
-            #   AuthorizationPolicies from the Dashboard are necessary
+        self._mesh = ServiceMeshConsumer(self)
+
+        # Allow all policy needed to allow requests from all user namespaces
+        self._allow_all_policy = generate_allow_all_authorization_policy(
+            app_name=self.app.name,
+            namespace=self.model.name,
         )
 
         self.ambient_mode_ingress = IstioIngressRouteRequirer(
@@ -226,6 +225,19 @@ class MlflowCharm(CharmBase):
                     backends=[BackendRef(service=self._service_name, port=self._mlflow_port)],
                 ),
             ],
+        )
+
+    @property
+    def _policy_resource_manager(self) -> PolicyResourceManager:
+        """Create and return PolicyResourceManager, used to manage authorization policies."""
+        return PolicyResourceManager(
+            charm=self,
+            lightkube_client=Client(field_manager=f"{self.app.name}-{self.model.name}"),
+            labels={
+                "app.kubernetes.io/instance": f"{self.app.name}-{self.model.name}",
+                "kubernetes-resource-handler-scope": f"{self.app.name}-allow-all",
+            },
+            logger=self.logger,
         )
 
     @property
@@ -494,6 +506,19 @@ class MlflowCharm(CharmBase):
                 BlockedStatus,
             )
 
+    def _reconcile_policy_resource_manager(self):
+        if self.model.get_relation(SERVICE_MESH_RELATION_NAME):
+            self._policy_resource_manager.reconcile(
+                policies=[], mesh_type=self._mesh.mesh_type, raw_policies=[self._allow_all_policy]
+            )
+
+    def _remove_authorization_policies(self, _):
+        if not self.unit.is_leader():
+            return
+        self._policy_resource_manager.reconcile(
+            policies=[], mesh_type=MeshType.istio, raw_policies=[]
+        )
+
     def _update_layer(self, container, container_name, new_layer) -> None:
         current_layer = self.container.get_plan()
         if current_layer.services != new_layer.services:
@@ -577,6 +602,7 @@ class MlflowCharm(CharmBase):
                 raise ErrorWithStatus(
                     f"Container {self._container_name} is not ready", WaitingStatus
                 )
+            self._reconcile_policy_resource_manager()
             self._update_layer(
                 self.container, self._container_name, self._charmed_mlflow_layer(envs, bucket_name)
             )
