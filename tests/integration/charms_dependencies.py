@@ -30,3 +30,12 @@ MYSQL_K8S = CharmSpec(
     charm="mysql-k8s", channel="8.0/stable", config={"profile": "testing"}, trust=True
 )
 RESOURCE_DISPATCHER = CharmSpec(charm="resource-dispatcher", channel="latest/edge", trust=True)
+KUBEFLOW_PROFILES = CharmSpec(
+    charm="kubeflow-profiles",
+    channel="latest/edge",
+    config={
+        "service-mesh-mode": "istio-ambient",
+        "istio-gateway-service-account": "istio-ingress-k8s-istio",
+    },
+    trust=True,
+)
