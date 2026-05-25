@@ -1,6 +1,5 @@
-# Copyright 2025 Canonical Ltd.
-# See LICENSE file for licensing details.
-name: Promote charm
+# reusable workflow triggered manually
+name: Promote charm to other tracks and channels
 
 on:
   workflow_dispatch:
@@ -11,18 +10,23 @@ on:
       origin-channel:
         description: 'Origin Channel'
         required: true
+      charm-name:
+        description: 'Charm subdirectory name'
+        required: true
 
 jobs:
   promote-charm:
     name: Promote charm
     runs-on: ubuntu-24.04
+    env:
+      CHARMCRAFT_AUTH: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Release charm to channel
-        uses: canonical/charming-actions/release-charm@2.3.0
-        with:
-          credentials: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          destination-channel: ${{ github.event.inputs.destination-channel }}
-          origin-channel: ${{ github.event.inputs.origin-channel }}
-          base-channel: "24.04"
+      - name: Install charmcraft
+        run: |
+          sudo snap install charmcraft --classic --channel latest/stable
+      - name: Run charmcraft promote
+        run: |
+          charmcraft promote --name ${{ github.event.inputs.charm-name }} \
+                              --from-channel ${{ github.event.inputs.origin-channel }} \
+                              --to-channel ${{ github.event.inputs.destination-channel }} \
+                              --yes
