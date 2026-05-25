@@ -66,8 +66,8 @@ jobs:
         id: download-charm
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.charm }}_ubuntu-24.04-amd64
-          path: ${{ github.workspace }}
+          pattern: ${{ needs.build.outputs.artifact-prefix }}-*
+          merge-multiple: true
 
       - run: pipx install tox
 
