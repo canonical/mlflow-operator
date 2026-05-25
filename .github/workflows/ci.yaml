@@ -2,15 +2,62 @@
 # See LICENSE file for licensing details.
 name: CI
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
-  workflow_dispatch:
   pull_request:
-  push:
-    branches:
-      - main
-      - track/**
+  schedule:
+    - cron: '0 8 * * TUE'
+  # Triggered on push by .github/workflows/release.yaml
+  workflow_call:
+    outputs:
+      artifact-prefix:
+        description: build_charm.yaml `artifact-prefix` output
+        value: ${{ jobs.build.outputs.artifact-prefix }}
+      charm-paths:
+        description: paths for all charms in this repo
+        value: ${{ jobs.get-charm-paths-track.outputs.charm-paths }}
+      track:
+        description: Charmhub track determined from branch name
+        value: ${{ jobs.get-charm-paths-track.outputs.track }}
 
 jobs:
+  get-charm-paths-track:
+    name: Get charm paths and track
+    runs-on: ubuntu-latest
+    outputs:
+      charm-paths: ${{ steps.get-charm-paths.outputs.charm-paths }}
+      track: ${{ steps.determine-track.outputs.track }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Get paths for all charms in this repo
+        id: get-charm-paths
+        uses: canonical/kubeflow-ci/actions/get-charm-paths@main
+      - name: Determine track
+        id: determine-track
+        shell: python
+        run: |
+          import os
+
+          if "${{ github.event_name }}" == "pull_request":
+              ref = "${{ github.base_ref }}"
+          else:
+              ref = "${{ github.ref_name }}"
+
+          if ref.startswith("track/"):
+              track = ref.removeprefix("track/")
+          else:
+              track = "latest"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"track={track}\n")
+
+          print(f"Track: {track}")
+
   lint:
     name: Lint
     runs-on: ubuntu-24.04
@@ -35,11 +82,39 @@ jobs:
       apply: false
 
   build:
-    name: Build charm
-    uses: canonical/data-platform-workflows/.github/workflows/build_charm.yaml@v31.0.0
+    strategy:
+      matrix:
+        charm: ${{ fromJSON(needs.get-charm-paths-track.outputs.charm-paths) }}
+    name: Build charm | ${{ matrix.charm }}
+    needs:
+      - get-charm-paths-track
+    uses: canonical/data-platform-workflows/.github/workflows/build_charm.yaml@v49.0.1
     with:
+      path-to-charm-directory: ${{ matrix.charm }}
       cache: true
-      charmcraft-snap-channel: latest/edge
+    permissions:
+      actions: read  # Needed for GitHub API call to get workflow version (for private repositories)
+      contents: read
+
+  release:
+    strategy:
+      matrix:
+        charm: ${{ fromJSON(needs.get-charm-paths-track.outputs.charm-paths) }}
+    name: Release charm to Charmhub branch | ${{ matrix.charm }}
+    if: ${{ github.event_name == 'pull_request' }}
+    needs:
+      - get-charm-paths-track
+      - build
+    uses: canonical/data-platform-workflows/.github/workflows/release_charm_pr.yaml@v49.0.1
+    with:
+      track: ${{ needs.get-charm-paths-track.outputs.track }}
+      artifact-prefix: ${{ needs.build.outputs.artifact-prefix }}
+      path-to-charm-directory: ${{ matrix.charm }}
+    secrets:
+      charmhub-token: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
+    permissions:
+      actions: read  # Needed for GitHub API call to get workflow version (for private repositories)
+      contents: read
 
   integration:
     name: Integration tests (${{ matrix.test-type }})
