@@ -173,7 +173,7 @@ jobs:
 
       - name: Get juju status
         run: juju status
-        if: failure()
+        if: always()
 
       - name: Get workload logs
         run: |
