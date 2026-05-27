@@ -1,0 +1,32 @@
+# reusable workflow triggered manually
+name: Promote charm to other tracks and channels
+
+on:
+  workflow_dispatch:
+    inputs:
+      destination-channel:
+        description: 'Destination Channel'
+        required: true
+      origin-channel:
+        description: 'Origin Channel'
+        required: true
+      charm-name:
+        description: 'Charm subdirectory name'
+        required: true
+
+jobs:
+  promote-charm:
+    name: Promote charm
+    runs-on: ubuntu-24.04
+    env:
+      CHARMCRAFT_AUTH: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
+    steps:
+      - name: Install charmcraft
+        run: |
+          sudo snap install charmcraft --classic --channel latest/stable
+      - name: Run charmcraft promote
+        run: |
+          charmcraft promote --name ${{ github.event.inputs.charm-name }} \
+                              --from-channel ${{ github.event.inputs.origin-channel }} \
+                              --to-channel ${{ github.event.inputs.destination-channel }} \
+                              --yes
