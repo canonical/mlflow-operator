@@ -11,18 +11,22 @@ CHARM_NAME = METADATA["name"]
 
 class TestDeployRunners:
     @pytest.mark.abort_on_fail
-    async def test_build_and_deploy(self, ops_test: OpsTest):
+    async def test_build_and_deploy(self, ops_test: OpsTest, request):
         """Build and deploy the charm.
 
         Assert on the unit status.
         """
-        charm_under_test = await ops_test.build_charm(".")
+        entity_url = (
+            await ops_test.build_charm(".")
+            if not (entity_url := request.config.getoption("--charm-path"))
+            else entity_url
+        )
         image_path = METADATA["resources"]["oci-image"]["upstream-source"]
         exporter_image_path = METADATA["resources"]["exporter-oci-image"]["upstream-source"]
         resources = {"oci-image": image_path, "exporter-oci-image": exporter_image_path}
 
         await ops_test.model.deploy(
-            charm_under_test, resources=resources, application_name=CHARM_NAME, trust=True
+            entity_url, resources=resources, application_name=CHARM_NAME, trust=True
         )
 
         await ops_test.model.wait_for_idle(
