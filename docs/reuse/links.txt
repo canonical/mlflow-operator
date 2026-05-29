@@ -4,7 +4,7 @@
 .. _change log: https://github.com/canonical/sphinx-docs-starter-pack/wiki/Change-log
 .. _Code of conduct: https://ubuntu.com/community/ethos/code-of-conduct
 .. _configured: https://rclone.org/s3/#configuration
-.. _Create a backup: https://charmhub.io/mysql-k8s/docs/h-create-backup
+.. _Create a backup: https://documentation.ubuntu.com/charmed-mysql/8.0/how-to/back-up-and-restore/create-a-backup/
 .. _Diátaxis: https://diataxis.fr/
 .. _Example product documentation: https://canonical-example-product-documentation.readthedocs-hosted.com/
 .. _Example product documentation repository: https://github.com/canonical/example-product-documentation
