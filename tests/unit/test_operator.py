@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
+from charms.istio_ingress_k8s.v0.istio_ingress_route import ProtocolType
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.pebble import ChangeError, Service
 from ops.testing import Harness
@@ -826,3 +827,58 @@ class TestCharm:
             assert first_and_only_httproute.backends[0].port == EXPECTED_K8S_SERVICE_HTTP_PORT
 
             assert isinstance(harness.charm.model.unit.status, expected_status)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_interfaces")
+    @patch("charm.ServiceMeshConsumer")
+    @pytest.mark.parametrize(
+        "tls_enabled, expected_port", [(False, 80), (True, 443)], ids=["no-tls", "tls"]
+    )
+    def test_ambient_mode_ingress_listener_port(
+        self,
+        _: MagicMock,
+        __: MagicMock,
+        ___: MagicMock,
+        ____: MagicMock,
+        harness: Harness,
+        tls_enabled,
+        expected_port,
+    ):
+        """Test the ambient ingress listener uses port 443 when TLS is enabled, else 80."""
+        harness.begin()
+
+        with patch.object(
+            type(harness.charm.ambient_mode_ingress),
+            "tls_enabled",
+            new_callable=PropertyMock,
+            return_value=tls_enabled,
+        ), patch.object(harness.charm.ambient_mode_ingress, "submit_config") as submit_config:
+            # adding the ambient-mode ingress relation:
+            relation_id, _ = add_relation(
+                harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
+            )
+
+            # triggering the ingress-ready event:
+            harness.charm.ambient_mode_ingress.on.ready.emit(
+                harness.charm.framework.model.get_relation(
+                    RELATION_ENDPOINT_FOR_SERVICE_MESH, relation_id
+                )
+            )
+
+            submit_config.assert_called_once()
+            submitted_config = submit_config.call_args.args[0]
+            assert len(submitted_config.listeners) == 1
+            assert submitted_config.listeners[0].port == expected_port
+            assert submitted_config.listeners[0].protocol == ProtocolType.HTTP
