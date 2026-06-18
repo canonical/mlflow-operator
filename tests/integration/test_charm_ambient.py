@@ -18,6 +18,8 @@ import requests
 import yaml
 from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
 from charmed_kubeflow_chisme.testing import (
+    ISTIO_INGRESS_K8S_APP,
+    ISTIO_INGRESS_ROUTE_ENDPOINT,
     assert_alert_rules,
     assert_grafana_dashboards,
     assert_logging,
@@ -63,8 +65,25 @@ SECRET_SUFFIX = "-minio-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
 PROFILE_FILE = "./tests/integration/profile.yaml"
 
+# A second istio-ingress-k8s instance used to verify multiple-ingress support.
+SECOND_INGRESS_APP = "istio-ingress-k8s-alt"
+INGRESS_CHANNEL = "2/stable"
+# Name of the HTTPRoute submitted by mlflow (see charm._ingress_config).
+INGRESS_ROUTE_NAME = "http-route"
+# Gateway listener section for cleartext HTTP on port 80.
+HTTP_SECTION_NAME = "http-80"
+# Path matched by the mlflow HTTPRoute.
+INGRESS_ROUTE_PATH = HTTP_PATH
+
 PodDefault = create_namespaced_resource("kubeflow.org", "v1alpha1", "PodDefault", "poddefaults")
 Profile = create_global_resource("kubeflow.org", "v1", "Profile", "profiles")
+# Gateway API generic resources, resolved at runtime via lightkube.
+HTTPROUTE_RESOURCE = create_namespaced_resource(
+    "gateway.networking.k8s.io", "v1", "HTTPRoute", "httproutes"
+)
+GATEWAY_RESOURCE = create_namespaced_resource(
+    "gateway.networking.k8s.io", "v1", "Gateway", "gateways"
+)
 
 
 def _safe_load_file_to_text(filename: str) -> str:
@@ -549,3 +568,89 @@ class TestCharm:
         for name in poddefaults_names:
             pod_default = lightkube_client.get(PodDefault, name, namespace=profile_namespace)
             assert pod_default is not None
+
+    @pytest.mark.abort_on_fail
+    async def test_deploy_and_relate_second_ingress(self, ops_test: OpsTest):
+        """Deploy a second istio-ingress-k8s and relate it to mlflow.
+
+        mlflow must accept more than one istio-ingress-route relation without
+        erroring, so it should remain active after the second ingress is related.
+        """
+        await ops_test.model.deploy(
+            ISTIO_INGRESS_K8S_APP,
+            application_name=SECOND_INGRESS_APP,
+            channel=INGRESS_CHANNEL,
+            trust=True,
+        )
+        await ops_test.model.wait_for_idle(
+            [SECOND_INGRESS_APP],
+            raise_on_blocked=False,
+            raise_on_error=False,
+            wait_for_active=True,
+            timeout=60 * 15,
+        )
+
+        await ops_test.model.integrate(
+            f"{SECOND_INGRESS_APP}:{ISTIO_INGRESS_ROUTE_ENDPOINT}",
+            f"{CHARM_NAME}:{ISTIO_INGRESS_ROUTE_ENDPOINT}",
+        )
+        await ops_test.model.wait_for_idle(
+            [CHARM_NAME, SECOND_INGRESS_APP],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=60 * 10,
+            idle_period=30,
+        )
+
+        assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+
+    @retry(stop=stop_after_delay(120), wait=wait_fixed(2), reraise=True)
+    @pytest.mark.abort_on_fail
+    async def test_httproute_attached_to_second_gateway(
+        self, ops_test: OpsTest, lightkube_client: lightkube.Client
+    ):
+        """Verify the HTTPRoute for the second ingress is created and bound to its Gateway.
+
+        The istio-ingress-k8s charm names each route
+        ``{source_app}-{route_name}-httproute-{section}-{ingress_app}`` and binds it to a
+        Gateway named after the ingress application via ``parentRefs``. We assert that the
+        route created for the second ingress is attached to the *second* Gateway (not the
+        first) and routes the mlflow path to the mlflow backend.
+        """
+        namespace = ops_test.model.name
+
+        expected_route_name = (
+            f"{CHARM_NAME}-{INGRESS_ROUTE_NAME}-httproute-{HTTP_SECTION_NAME}-{SECOND_INGRESS_APP}"
+        )
+
+        # The second Gateway should exist, named after the second ingress application.
+        lightkube_client.get(GATEWAY_RESOURCE, name=SECOND_INGRESS_APP, namespace=namespace)
+
+        httproute = lightkube_client.get(
+            HTTPROUTE_RESOURCE, name=expected_route_name, namespace=namespace
+        )
+
+        parent_refs = httproute.spec["parentRefs"]
+        assert len(parent_refs) == 1
+        # The route must be attached to the SECOND gateway, not the first.
+        assert parent_refs[0]["name"] == SECOND_INGRESS_APP
+        assert parent_refs[0]["sectionName"] == HTTP_SECTION_NAME
+
+        # And it must route the mlflow path to the mlflow backend.
+        rule = httproute.spec["rules"][0]
+        assert rule["matches"][0]["path"]["value"] == INGRESS_ROUTE_PATH
+        assert rule["backendRefs"][0]["name"] == CHARM_NAME
+
+    @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
+    @pytest.mark.abort_on_fail
+    async def test_ui_is_accessible_after_second_ingress(
+        self, lightkube_client, ops_test: OpsTest
+    ):
+        """Verify the UI is still accessible through the ingress after the second ingress."""
+        await assert_path_reachable_through_ingress(
+            http_path=HTTP_PATH,
+            namespace=ops_test.model.name,
+            expected_content_type="text/html",
+            expected_response_text="MLflow",
+        )

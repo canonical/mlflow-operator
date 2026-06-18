@@ -495,11 +495,15 @@ class MlflowCharm(CharmBase):
             raise ErrorWithStatus("Waiting for leadership", WaitingStatus)
 
     def _check_no_conflicting_ingress_relations(self) -> None:
-        """Check that ambient-mode and sidecar-mode ingress relations are not both set."""
-        ambient_relation = self.model.get_relation(INGRESS_MODES_TO_RELATION_NAMES["ambient"])
-        sidecar_relation = self.model.get_relation(INGRESS_MODES_TO_RELATION_NAMES["sidecar"])
+        """Check that ambient-mode and sidecar-mode ingress relations are not both set.
 
-        if ambient_relation and sidecar_relation:
+        Each endpoint may hold any number of relations, so this inspects the full list
+        of relations on each endpoint rather than assuming at most one.
+        """
+        ambient_relations = self.model.relations[INGRESS_MODES_TO_RELATION_NAMES["ambient"]]
+        sidecar_relations = self.model.relations[INGRESS_MODES_TO_RELATION_NAMES["sidecar"]]
+
+        if ambient_relations and sidecar_relations:
             self.logger.error(
                 f"Both '{INGRESS_MODES_TO_RELATION_NAMES["ambient"]}' and "
                 f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations are present."
@@ -660,6 +664,8 @@ class MlflowCharm(CharmBase):
 
     def _on_ambient_mode_ingress_ready(self, _):
         """Configure the ingess for ambient mode."""
+        # submit_config publishes this same config to every istio-ingress-route
+        # relation, so all related ingress providers are (re)configured at once.
         if self.unit.is_leader():
 
             try:

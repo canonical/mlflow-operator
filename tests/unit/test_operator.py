@@ -749,6 +749,26 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    def test_multiple_ambient_ingress_relations(self, harness: Harness):
+        """Test that multiple istio-ingress-route relations are handled without erroring."""
+        harness.begin()
+
+        # Add more than one relation on the ambient ingress endpoint
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE)
+        second_app = f"app-for-{RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE}-2"
+        second_relation_id = harness.add_relation(
+            RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE, second_app
+        )
+        harness.add_relation_unit(second_relation_id, f"{second_app}/0")
+
+        # Inspecting the full list of relations per endpoint must not raise even
+        # though there is more than one relation on a single endpoint.
+        harness.charm._check_no_conflicting_ingress_relations()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
     @patch(
         "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
     )
