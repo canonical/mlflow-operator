@@ -110,6 +110,16 @@ def deploy_k8s_resources(template_files: str):
     k8s_resource_handler.apply()
 
 
+async def assert_ui_is_accessible(ops_test: OpsTest):
+    """Verify that UI is accessible through the ingress gateway."""
+    await assert_path_reachable_through_ingress(
+        http_path=HTTP_PATH,
+        namespace=ops_test.model.name,
+        expected_content_type="text/html",
+        expected_response_text="MLflow",
+    )
+
+
 @pytest.fixture(scope="module")
 async def profile_namespace(ops_test: OpsTest, lightkube_client: lightkube.Client) -> str:
     """Ensure a kubeflow profile namespace exists for tests and clean it up afterwards."""
@@ -435,12 +445,7 @@ class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_ui_is_accessible(self, lightkube_client, ops_test: OpsTest):
         """Verify that UI is accessible through the ingress gateway."""
-        await assert_path_reachable_through_ingress(
-            http_path=HTTP_PATH,
-            namespace=ops_test.model.name,
-            expected_content_type="text/html",
-            expected_response_text="MLflow",
-        )
+        await assert_ui_is_accessible(ops_test)
 
     @retry(
         stop=stop_after_delay(300),
@@ -648,9 +653,4 @@ class TestCharm:
         self, lightkube_client, ops_test: OpsTest
     ):
         """Verify the UI is still accessible through the ingress after the second ingress."""
-        await assert_path_reachable_through_ingress(
-            http_path=HTTP_PATH,
-            namespace=ops_test.model.name,
-            expected_content_type="text/html",
-            expected_response_text="MLflow",
-        )
+        await assert_ui_is_accessible(ops_test)
