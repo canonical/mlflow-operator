@@ -13,7 +13,7 @@ providers:
       load-balancer:
         enabled: true
         l2-mode: true
-        cidrs: 10.64.140.43/32
+        cidrs: 10.64.140.42/31  # NOTE: at least two IPs required for integration tests: one for each of the two Istio ingress gateways
     bootstrap-constraints:
       root-disk: 2G
 

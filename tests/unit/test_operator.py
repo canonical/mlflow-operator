@@ -7,7 +7,11 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
-from charms.istio_ingress_k8s.v0.istio_ingress_route import ProtocolType
+from charms.istio_ingress_k8s.v0.istio_ingress_route import (
+    HTTPPathMatchType,
+    IstioIngressRouteConfig,
+    ProtocolType,
+)
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.pebble import ChangeError, Service
 from ops.testing import Harness
@@ -744,6 +748,109 @@ class TestCharm:
 
             else:
                 assert isinstance(status, ActiveStatus)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_interfaces")
+    @patch("charm.ServiceMeshConsumer")
+    def test_multiple_ambient_ingress_relations(
+        self,
+        _: MagicMock,
+        __: MagicMock,
+        ___: MagicMock,
+        ____: MagicMock,
+        harness: Harness,
+    ):
+        """Test the charm reconciles to active with more than one istio-ingress-route relation."""
+        harness.begin()
+
+        # Add more than one relation on the ambient ingress endpoint
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE)
+        second_app = f"app-for-{RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE}-2"
+        second_relation_id = harness.add_relation(
+            RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE, second_app
+        )
+        harness.add_relation_unit(second_relation_id, f"{second_app}/0")
+
+        # adding the relation is what triggers the charm to reconcile
+        harness.charm.on[RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE].relation_changed.emit(
+            harness.charm.framework.model.get_relation(
+                RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE, second_relation_id
+            )
+        )
+
+        # More than one relation on the istio-ingress-route endpoint must not block
+        # the charm; it should reconcile all the way to active.
+        assert isinstance(harness.charm.model.unit.status, ActiveStatus)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_interfaces")
+    @patch("charm.ServiceMeshConsumer")
+    def test_each_istio_ingress_route_relation_receives_config(
+        self,
+        _: MagicMock,
+        __: MagicMock,
+        ___: MagicMock,
+        ____: MagicMock,
+        harness: Harness,
+    ):
+        """Test that every istio-ingress-route relation databag receives a valid config."""
+        harness.begin()
+
+        # add more than one relation on the ambient ingress endpoint
+        first_relation_id, _ = add_relation(
+            harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
+        )
+        second_app = f"app-for-{RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE}-2"
+        second_relation_id = harness.add_relation(
+            RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE, second_app
+        )
+        harness.add_relation_unit(second_relation_id, f"{second_app}/0")
+
+        # trigger the ingress-ready event so the real requirer publishes the same
+        # config to every istio-ingress-route relation databag
+        harness.charm.ambient_mode_ingress.on.ready.emit(
+            harness.charm.framework.model.get_relation(
+                RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE, first_relation_id
+            )
+        )
+
+        # assert each relation databag holds a valid HTTPRoute config
+        for relation_id in (first_relation_id, second_relation_id):
+            app_data = harness.get_relation_data(relation_id, harness.charm.app.name)
+            assert "config" in app_data
+            config = IstioIngressRouteConfig.model_validate_json(app_data["config"])
+
+            assert len(config.http_routes) == 1
+            http_route = config.http_routes[0]
+            assert http_route.matches[0].path.type == HTTPPathMatchType.PathPrefix
+            assert http_route.matches[0].path.value == EXPECTED_INGRESS_PATH_MATCHED_PREFIX
+            assert http_route.backends[0].service == DEFAULT_JUJU_APP_NAME
+            assert http_route.backends[0].port == EXPECTED_K8S_SERVICE_HTTP_PORT
+            assert config.listeners[0].name == "http-80"
 
     @patch(
         "charm.KubernetesServicePatch",
