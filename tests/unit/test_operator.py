@@ -48,7 +48,7 @@ EXPECTED_ENVIRONMENT = {
     "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{BUCKET_NAME}",
     "MLFLOW_EXPOSE_PROMETHEUS": "/metrics",
     "MLFLOW_HOST": "0.0.0.0",
-    "MLFLOW_PORT": "5000",
+    "MLFLOW_PORT": 5000,
 }
 EXPECTED_SERVICE = {
     "mlflow-server": Service(
