@@ -298,7 +298,7 @@ class MlflowCharm(CharmBase):
 
     def _get_mlflow_serve_env_vars(self, relational_db_data, bucket_name):
         """Return environment variables for the `mflow serve` command.
-        
+
         See here how such environment variables provide defaults for `mlflow serve` CLI options:
         https://mlflow.org/docs/2.22.1/api_reference/cli.html#mlflow-server
         """
