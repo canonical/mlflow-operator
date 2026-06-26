@@ -296,21 +296,21 @@ class MlflowCharm(CharmBase):
             refresh_event=self.on.config_changed,
         )
 
-    def _get_env_vars(self, relational_db_data, object_storage_data):
-        """Return environment variables based on model configuration."""
-
-        ret_env_vars = {
-            "MLFLOW_S3_ENDPOINT_URL": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
-            "AWS_ENDPOINT_URL": f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:{object_storage_data['port']}",  # noqa: E501
-            "AWS_ACCESS_KEY_ID": object_storage_data["access-key"],
-            "AWS_SECRET_ACCESS_KEY": object_storage_data["secret-key"],
-            "USE_SSL": str(object_storage_data["secure"]).lower(),
-            "DB_ROOT_PASSWORD": relational_db_data["password"],
-            "MLFLOW_TRACKING_URI": f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}",  # noqa: E501
+    def _get_mlflow_serve_env_vars(self, relational_db_data, bucket_name):
+        """Return environment variables for the `mflow serve` command.
+        
+        See here how such environment variables provide defaults for `mlflow serve` CLI options:
+        https://mlflow.org/docs/2.22.1/api_reference/cli.html#mlflow-server
+        """
+        return {
+            "MLFLOW_BACKEND_STORE_URI": f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}",  # noqa: E501
+            "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{bucket_name}",
+            "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
+            "MLFLOW_HOST": "0.0.0.0",
+            "MLFLOW_PORT": self._mlflow_port,
         }
-        return ret_env_vars
 
-    def _charmed_mlflow_layer(self, env_vars, default_artifact_root) -> Layer:
+    def _charmed_mlflow_layer(self, env_vars) -> Layer:
         """Create and return Pebble framework layer."""
 
         layer_config = {
@@ -320,22 +320,9 @@ class MlflowCharm(CharmBase):
                 self._container_name: {
                     "override": "replace",
                     "summary": "Entrypoint of mlflow-server image",
-                    "command": (
-                        "mlflow "
-                        "server "
-                        "--host "
-                        "0.0.0.0 "
-                        "--port "
-                        f"{self._mlflow_port} "
-                        "--backend-store-uri "
-                        f"{env_vars['MLFLOW_TRACKING_URI']} "
-                        "--default-artifact-root "
-                        f"s3://{default_artifact_root}/ "
-                        "--expose-prometheus "
-                        f"{METRICS_PATH}"
-                    ),
+                    "command": "mlflow server",
                     "startup": "enabled",
-                    "environment": env_vars,
+                    "environment": env_vars,  # defaults for `mlflow server` CLI option passed here
                 }
             },
         }
@@ -595,7 +582,6 @@ class MlflowCharm(CharmBase):
             interfaces = self._get_interfaces()
             object_storage_data = self._get_object_storage_data(interfaces)
             relational_db_data = self._get_relational_db_data()
-            envs = self._get_env_vars(relational_db_data, object_storage_data)
 
             self._check_no_conflicting_ingress_relations()
 
@@ -611,13 +597,15 @@ class MlflowCharm(CharmBase):
             ):
                 self._create_default_s3_bucket(s3_wrapper, bucket_name)
 
+            mlflow_serve_envs = self._get_mlflow_serve_env_vars(relational_db_data, bucket_name)
+
             if not self.container.can_connect():
                 raise ErrorWithStatus(
                     f"Container {self._container_name} is not ready", WaitingStatus
                 )
             self._reconcile_policy_resource_manager()
             self._update_layer(
-                self.container, self._container_name, self._charmed_mlflow_layer(envs, bucket_name)
+                self.container, self._container_name, self._charmed_mlflow_layer(mlflow_serve_envs)
             )
             if not self.exporter_container.can_connect():
                 raise ErrorWithStatus(
