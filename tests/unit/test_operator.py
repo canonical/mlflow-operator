@@ -19,7 +19,6 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import MeshType, MlflowCharm
 
-
 BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
 DEFAULT_JUJU_APP_NAME = CHARM_NAME
@@ -436,7 +435,7 @@ class TestCharm:
         harness.charm._update_layer(
             harness.charm.container,
             harness.charm._container_name,
-            harness.charm._charmed_mlflow_layer({"MLFLOW_TRACKING_URI": "test"}, ""),
+            harness.charm._charmed_mlflow_layer(EXPECTED_ENVIRONMENT),
         )
         assert harness.charm.container.get_plan().services == EXPECTED_SERVICE
 
@@ -444,12 +443,12 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_env_vars(
+    def test_get_mlflow_serve_env_vars(
         self,
         harness: Harness,
     ):
         harness.begin()
-        envs = harness.charm._get_env_vars(RELATIONAL_DB_DATA, BUCKET_NAME)
+        envs = harness.charm._get_mlflow_serve_env_vars(RELATIONAL_DB_DATA, BUCKET_NAME)
         assert envs == EXPECTED_ENVIRONMENT
 
     @patch(
