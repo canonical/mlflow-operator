@@ -19,18 +19,6 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import MeshType, MlflowCharm
 
-EXPECTED_SERVICE = {
-    "mlflow-server": Service(
-        "mlflow-server",
-        raw={
-            "summary": "Entrypoint of mlflow-server image",
-            "startup": "enabled",
-            "override": "replace",
-            "command": "mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri test --default-artifact-root s3:/// --expose-prometheus /metrics",  # noqa: E501
-            "environment": {"MLFLOW_TRACKING_URI": "test"},
-        },
-    )
-}
 BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
 DEFAULT_JUJU_APP_NAME = CHARM_NAME
@@ -53,18 +41,27 @@ RELATIONAL_DB_DATA = {
     "port": "port",
 }
 
-EXPECTED_ENVIRONMENT = {
-    "AWS_ACCESS_KEY_ID": "minio-access-key",
-    "AWS_ENDPOINT_URL": "http://service.namespace:1234",
-    "AWS_SECRET_ACCESS_KEY": "minio-super-secret-key",
-    "DB_ROOT_PASSWORD": "lorem-ipsum",
-    "MLFLOW_S3_ENDPOINT_URL": "http://service.namespace:1234",
-    "MLFLOW_TRACKING_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
-    "USE_SSL": "true",
-}
-
 SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 
+EXPECTED_ENVIRONMENT = {
+    "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
+    "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{BUCKET_NAME}",
+    "MLFLOW_EXPOSE_PROMETHEUS": "/metrics",
+    "MLFLOW_HOST": "0.0.0.0",
+    "MLFLOW_PORT": 5000,
+}
+EXPECTED_SERVICE = {
+    "mlflow-server": Service(
+        "mlflow-server",
+        raw={
+            "summary": "Entrypoint of mlflow-server image",
+            "startup": "enabled",
+            "override": "replace",
+            "command": "mlflow server",
+            "environment": EXPECTED_ENVIRONMENT,
+        },
+    )
+}
 EXPECTED_INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
 EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX = "/"
 EXPECTED_K8S_SERVICE_HTTP_PORT = 5000
@@ -438,7 +435,7 @@ class TestCharm:
         harness.charm._update_layer(
             harness.charm.container,
             harness.charm._container_name,
-            harness.charm._charmed_mlflow_layer({"MLFLOW_TRACKING_URI": "test"}, ""),
+            harness.charm._charmed_mlflow_layer(EXPECTED_ENVIRONMENT),
         )
         assert harness.charm.container.get_plan().services == EXPECTED_SERVICE
 
@@ -446,12 +443,12 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_env_vars(
+    def test_get_mlflow_serve_env_vars(
         self,
         harness: Harness,
     ):
         harness.begin()
-        envs = harness.charm._get_env_vars(RELATIONAL_DB_DATA, OBJECT_STORAGE_DATA)
+        envs = harness.charm._get_mlflow_serve_env_vars(RELATIONAL_DB_DATA, BUCKET_NAME)
         assert envs == EXPECTED_ENVIRONMENT
 
     @patch(
