@@ -5,7 +5,7 @@ Get started with Charmed MLflow
 
 This guide describes how you can get started with Charmed MLflow, from deploying to accessing it. It is intended for system administrators and end users.
 
-Charmed MLflow is a `charm bundle <https://canonical-juju.readthedocs-hosted.com/en/latest/user/reference/bundle/>`_ that facilitates a quick deployment of 
+Charmed MLflow is a `charm bundle <https://canonical-juju.readthedocs-hosted.com/latest/reference/bundle>`_ that facilitates a quick deployment of 
 `MLflow <https://mlflow.org/>`_, an open-source platform, used for managing machine learning workflows,
 including experiment tracking, model registry, model management and code reproducibility.
 
