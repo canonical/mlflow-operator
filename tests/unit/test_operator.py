@@ -7,6 +7,11 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
+from charms.istio_ingress_k8s.v0.istio_ingress_route import (
+    HTTPPathMatchType,
+    IstioIngressRouteConfig,
+    ProtocolType,
+)
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.pebble import ChangeError, Service
 from ops.testing import Harness
@@ -14,18 +19,6 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import MeshType, MlflowCharm
 
-EXPECTED_SERVICE = {
-    "mlflow-server": Service(
-        "mlflow-server",
-        raw={
-            "summary": "Entrypoint of mlflow-server image",
-            "startup": "enabled",
-            "override": "replace",
-            "command": "mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri test --default-artifact-root s3:/// --expose-prometheus /metrics",  # noqa: E501
-            "environment": {"MLFLOW_TRACKING_URI": "test"},
-        },
-    )
-}
 BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
 DEFAULT_JUJU_APP_NAME = CHARM_NAME
@@ -48,18 +41,27 @@ RELATIONAL_DB_DATA = {
     "port": "port",
 }
 
-EXPECTED_ENVIRONMENT = {
-    "AWS_ACCESS_KEY_ID": "minio-access-key",
-    "AWS_ENDPOINT_URL": "http://service.namespace:1234",
-    "AWS_SECRET_ACCESS_KEY": "minio-super-secret-key",
-    "DB_ROOT_PASSWORD": "lorem-ipsum",
-    "MLFLOW_S3_ENDPOINT_URL": "http://service.namespace:1234",
-    "MLFLOW_TRACKING_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
-    "USE_SSL": "true",
-}
-
 SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 
+EXPECTED_ENVIRONMENT = {
+    "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
+    "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{BUCKET_NAME}",
+    "MLFLOW_EXPOSE_PROMETHEUS": "/metrics",
+    "MLFLOW_HOST": "0.0.0.0",
+    "MLFLOW_PORT": 5000,
+}
+EXPECTED_SERVICE = {
+    "mlflow-server": Service(
+        "mlflow-server",
+        raw={
+            "summary": "Entrypoint of mlflow-server image",
+            "startup": "enabled",
+            "override": "replace",
+            "command": "mlflow server",
+            "environment": EXPECTED_ENVIRONMENT,
+        },
+    )
+}
 EXPECTED_INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
 EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX = "/"
 EXPECTED_K8S_SERVICE_HTTP_PORT = 5000
@@ -433,7 +435,7 @@ class TestCharm:
         harness.charm._update_layer(
             harness.charm.container,
             harness.charm._container_name,
-            harness.charm._charmed_mlflow_layer({"MLFLOW_TRACKING_URI": "test"}, ""),
+            harness.charm._charmed_mlflow_layer(EXPECTED_ENVIRONMENT),
         )
         assert harness.charm.container.get_plan().services == EXPECTED_SERVICE
 
@@ -441,12 +443,12 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_env_vars(
+    def test_get_mlflow_serve_env_vars(
         self,
         harness: Harness,
     ):
         harness.begin()
-        envs = harness.charm._get_env_vars(RELATIONAL_DB_DATA, OBJECT_STORAGE_DATA)
+        envs = harness.charm._get_mlflow_serve_env_vars(RELATIONAL_DB_DATA, BUCKET_NAME)
         assert envs == EXPECTED_ENVIRONMENT
 
     @patch(
@@ -759,6 +761,109 @@ class TestCharm:
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")
+    def test_multiple_ambient_ingress_relations(
+        self,
+        _: MagicMock,
+        __: MagicMock,
+        ___: MagicMock,
+        ____: MagicMock,
+        harness: Harness,
+    ):
+        """Test the charm reconciles to active with more than one istio-ingress-route relation."""
+        harness.begin()
+
+        # Add more than one relation on the ambient ingress endpoint
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE)
+        second_app = f"app-for-{RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE}-2"
+        second_relation_id = harness.add_relation(
+            RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE, second_app
+        )
+        harness.add_relation_unit(second_relation_id, f"{second_app}/0")
+
+        # adding the relation is what triggers the charm to reconcile
+        harness.charm.on[RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE].relation_changed.emit(
+            harness.charm.framework.model.get_relation(
+                RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE, second_relation_id
+            )
+        )
+
+        # More than one relation on the istio-ingress-route endpoint must not block
+        # the charm; it should reconcile all the way to active.
+        assert isinstance(harness.charm.model.unit.status, ActiveStatus)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_interfaces")
+    @patch("charm.ServiceMeshConsumer")
+    def test_each_istio_ingress_route_relation_receives_config(
+        self,
+        _: MagicMock,
+        __: MagicMock,
+        ___: MagicMock,
+        ____: MagicMock,
+        harness: Harness,
+    ):
+        """Test that every istio-ingress-route relation databag receives a valid config."""
+        harness.begin()
+
+        # add more than one relation on the ambient ingress endpoint
+        first_relation_id, _ = add_relation(
+            harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
+        )
+        second_app = f"app-for-{RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE}-2"
+        second_relation_id = harness.add_relation(
+            RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE, second_app
+        )
+        harness.add_relation_unit(second_relation_id, f"{second_app}/0")
+
+        # trigger the ingress-ready event so the real requirer publishes the same
+        # config to every istio-ingress-route relation databag
+        harness.charm.ambient_mode_ingress.on.ready.emit(
+            harness.charm.framework.model.get_relation(
+                RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE, first_relation_id
+            )
+        )
+
+        # assert each relation databag holds a valid HTTPRoute config
+        for relation_id in (first_relation_id, second_relation_id):
+            app_data = harness.get_relation_data(relation_id, harness.charm.app.name)
+            assert "config" in app_data
+            config = IstioIngressRouteConfig.model_validate_json(app_data["config"])
+
+            assert len(config.http_routes) == 1
+            http_route = config.http_routes[0]
+            assert http_route.matches[0].path.type == HTTPPathMatchType.PathPrefix
+            assert http_route.matches[0].path.value == EXPECTED_INGRESS_PATH_MATCHED_PREFIX
+            assert http_route.backends[0].service == DEFAULT_JUJU_APP_NAME
+            assert http_route.backends[0].port == EXPECTED_K8S_SERVICE_HTTP_PORT
+            assert config.listeners[0].name == "http-80"
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_interfaces")
+    @patch("charm.ServiceMeshConsumer")
     @pytest.mark.parametrize("config_submission_broken", [True, False], ids=["broken", "good"])
     def test_ambient_mode_ingress_configurations(
         self,
@@ -826,3 +931,58 @@ class TestCharm:
             assert first_and_only_httproute.backends[0].port == EXPECTED_K8S_SERVICE_HTTP_PORT
 
             assert isinstance(harness.charm.model.unit.status, expected_status)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
+    )
+    @patch(
+        "charm.S3BucketWrapper.__init__",
+        lambda *args, **kw: None,
+    )
+    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_interfaces")
+    @patch("charm.ServiceMeshConsumer")
+    @pytest.mark.parametrize(
+        "tls_enabled, expected_port", [(False, 80), (True, 443)], ids=["no-tls", "tls"]
+    )
+    def test_ambient_mode_ingress_listener_port(
+        self,
+        _: MagicMock,
+        __: MagicMock,
+        ___: MagicMock,
+        ____: MagicMock,
+        harness: Harness,
+        tls_enabled,
+        expected_port,
+    ):
+        """Test the ambient ingress listener uses port 443 when TLS is enabled, else 80."""
+        harness.begin()
+
+        with patch.object(
+            type(harness.charm.ambient_mode_ingress),
+            "tls_enabled",
+            new_callable=PropertyMock,
+            return_value=tls_enabled,
+        ), patch.object(harness.charm.ambient_mode_ingress, "submit_config") as submit_config:
+            # adding the ambient-mode ingress relation:
+            relation_id, _ = add_relation(
+                harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
+            )
+
+            # triggering the ingress-ready event:
+            harness.charm.ambient_mode_ingress.on.ready.emit(
+                harness.charm.framework.model.get_relation(
+                    RELATION_ENDPOINT_FOR_SERVICE_MESH, relation_id
+                )
+            )
+
+            submit_config.assert_called_once()
+            submitted_config = submit_config.call_args.args[0]
+            assert len(submitted_config.listeners) == 1
+            assert submitted_config.listeners[0].port == expected_port
+            assert submitted_config.listeners[0].protocol == ProtocolType.HTTP
