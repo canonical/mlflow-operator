@@ -129,6 +129,7 @@ jobs:
           - mlflow-server
         test-type:
           - integration
+          - integration-s3
           - integration-ambient
     runs-on: ubuntu-24.04
     steps:

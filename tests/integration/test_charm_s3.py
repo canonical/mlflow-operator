@@ -2,9 +2,8 @@
 # See LICENSE file for licensing details.
 #
 
-"""Integration tests for Seldon Core Operator/Charm."""
+"""Integration tests for MLflow Operator/Charm against the s3-credentials (s3) interface."""
 
-import base64
 import logging
 import subprocess
 import time
@@ -30,13 +29,14 @@ from charmed_kubeflow_chisme.testing import (
     get_grafana_dashboards,
     get_pod_names,
 )
+from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_integrator
 from charms_dependencies import (
     ISTIO_GATEWAY,
     ISTIO_PILOT,
     METACONTROLLER_OPERATOR,
-    MINIO,
     MYSQL_K8S,
     RESOURCE_DISPATCHER,
+    S3_INTEGRATOR,
 )
 from lightkube import codecs
 from lightkube.generic_resource import (
@@ -44,7 +44,6 @@ from lightkube.generic_resource import (
     load_in_cluster_generic_resources,
 )
 from lightkube.resources.core_v1 import Secret, Service
-from minio import Minio
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, stop_after_delay, wait_fixed
@@ -77,12 +76,11 @@ def delete_all_from_yaml(yaml_text: str, lightkube_client: lightkube.Client = No
     """Deletes all k8s resources listed in a YAML file via lightkube.
 
     Args:
-        yaml_file (str or Path): Either a string filename or a string of valid YAML.  Will attempt
-                                 to open a filename at this path, failing back to interpreting the
-                                 string directly as YAML.
+        yaml_text (str): Either a string filename or a string of valid YAML.  Will attempt
+                         to open a filename at this path, failing back to interpreting the
+                         string directly as YAML.
         lightkube_client: Instantiated lightkube client or None
     """
-
     if lightkube_client is None:
         lightkube_client = lightkube.Client()
 
@@ -103,15 +101,6 @@ def deploy_k8s_resources(template_files: str):
     )
     load_in_cluster_generic_resources(lightkube_client)
     k8s_resource_handler.apply()
-
-
-async def fetch_url(url):
-    """Fetch provided URL and return JSON."""
-    result = None
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            result = await response.json()
-    return result
 
 
 @pytest.fixture(scope="session")
@@ -183,13 +172,10 @@ class TestCharm:
         return "".join(choices(ascii_lowercase, k=length))
 
     @pytest.mark.abort_on_fail
-    async def test_add_relational_db_with_relation_expect_active(self, ops_test: OpsTest):
+    async def test_add_s3_and_db_relation_expect_active(self, ops_test: OpsTest):
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
-        await ops_test.model.deploy(
-            MINIO.charm,
-            channel=MINIO.channel,
-            config=MINIO.config,
-            trust=MINIO.trust,
+        await deploy_and_assert_s3_integrator(
+            ops_test.model, s3_integrator=S3_INTEGRATOR, add_ca_chain=True
         )
         await ops_test.model.deploy(
             MYSQL_K8S.charm,
@@ -199,13 +185,15 @@ class TestCharm:
             trust=MYSQL_K8S.trust,
         )
         await ops_test.model.wait_for_idle(
-            apps=[MINIO.charm, MYSQL_K8S.charm],
+            apps=[MYSQL_K8S.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
         )
-        await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
+        await ops_test.model.integrate(
+            f"{S3_INTEGRATOR.charm}:s3-credentials", f"{CHARM_NAME}:s3-credentials"
+        )
         await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
 
         await ops_test.model.wait_for_idle(
@@ -295,40 +283,6 @@ class TestCharm:
         assert 'mlflow_metric{metric_name="num_runs"} 0' in metrics_text
 
         mlflow_subprocess.terminate()
-
-    @pytest.mark.abort_on_fail
-    async def test_mlflow_bucket_exists(self, ops_test):
-        config = await ops_test.model.applications[CHARM_NAME].get_config()
-        default_bucket_name = config["default_artifact_root"]["value"]
-
-        access_key = MINIO.config["access-key"]
-        secret_key = MINIO.config["secret-key"]
-        port = MINIO.config["port"]
-
-        minio_subproces = subprocess.Popen(
-            [
-                "kubectl",
-                "-n",
-                f"{ops_test.model_name}",
-                "port-forward",
-                f"svc/{MINIO.charm}",
-                f"{port}:{port}",
-            ]
-        )
-        time.sleep(10)  # Must wait for port-forward
-
-        minio_client = Minio(
-            f"localhost:{port}",
-            access_key=access_key,
-            secret_key=secret_key,
-            region="us-east-1",  # Must be set otherwise it is not working
-            secure=False,  # Change to True if using HTTPS
-        )
-        # Check if the default_bucket_name bucket exists
-        found = minio_client.bucket_exists(bucket_name=default_bucket_name)
-        assert found, f"The '{default_bucket_name}' bucket does not exist"
-
-        minio_subproces.terminate()
 
     @pytest.mark.abort_on_fail
     async def test_can_create_experiment_with_mlflow_library(self, ops_test: OpsTest):
@@ -424,14 +378,9 @@ class TestCharm:
         time.sleep(30)  # sync can take up to 10 seconds for reconciliation loop to trigger
         secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
         secret = lightkube_client.get(Secret, secret_name, namespace=namespace)
-        assert secret.data == {
-            "AWS_ACCESS_KEY_ID": base64.b64encode(
-                MINIO.config["access-key"].encode("utf-8")
-            ).decode("utf-8"),
-            "AWS_SECRET_ACCESS_KEY": base64.b64encode(
-                MINIO.config["secret-key"].encode("utf-8")
-            ).decode("utf-8"),
-        }
+        assert secret.data is not None
+        assert "AWS_ACCESS_KEY_ID" in secret.data
+        assert "AWS_SECRET_ACCESS_KEY" in secret.data
         poddefaults_names = [f"{CHARM_NAME}{suffix}" for suffix in PODDEFAULTS_SUFFIXES]
         for name in poddefaults_names:
             pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)

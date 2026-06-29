@@ -4,8 +4,8 @@
 options:
   create_default_artifact_root_if_missing:
     description: |
-      If True, charm will try to create the default_artifact_root bucket in S3 if it does not 
-      exist.  If False and the bucket does not exist, the charm enter Blocked status
+      DEPRECATED: this option is no longer used and has no effect. The charm now always
+      creates the default artifact root bucket in S3 if it does not exist.
     type: boolean
     default: true
   default_artifact_root:

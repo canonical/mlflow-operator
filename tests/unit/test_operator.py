@@ -4,16 +4,18 @@
 import json
 from unittest.mock import MagicMock, PropertyMock, patch
 
+import botocore.exceptions
 import pytest
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
+from charmed_kubeflow_chisme.pebble import update_layer
 from charms.istio_ingress_k8s.v0.istio_ingress_route import (
     HTTPPathMatchType,
     IstioIngressRouteConfig,
     ProtocolType,
 )
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
-from ops.pebble import ChangeError, Service
+from ops.pebble import Service
 from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
@@ -31,6 +33,22 @@ OBJECT_STORAGE_DATA = {
     "secret-key": "minio-super-secret-key",
     "secure": True,
     "service": "service",
+    "host": "host",
+    "region": "region",
+    "bucket": "bucket",
+}
+
+# Normalized object storage data as returned by MlflowCharm._get_object_storage_data
+OBJECT_STORAGE_DATA_NORMALIZED = {
+    "access-key": "minio-access-key",
+    "secret-key": "minio-super-secret-key",
+    "host": "minio.namespace",
+    "port": 9000,
+    "secure": False,
+    "region": "",
+    "bucket": "relation-bucket",
+    "tls-ca-chain": None,
+    "is_s3": True,
 }
 
 RELATIONAL_DB_DATA = {
@@ -76,13 +94,6 @@ INGRESS_DATA = {
     "namespace": MODEL_NAME,
     "port": EXPECTED_K8S_SERVICE_HTTP_PORT,
 }
-
-
-class _FakeChangeError(ChangeError):
-    """Used to simulate a ChangeError during testing."""
-
-    def __init__(self, err, change):
-        super().__init__(err, change)
 
 
 @pytest.fixture(scope="function")
@@ -227,8 +238,9 @@ class TestCharm:
     ):
         _get_interfaces.return_value = {"object-storage": ""}
         harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == WaitingStatus(
-            "Waiting for object-storage relation data"
+        assert harness.charm.model.unit.status == BlockedStatus(
+            "Missing object storage relation. "
+            "Please relate to one of `object-storage` or `s3-credentials`."
         )
 
     @patch(
@@ -239,18 +251,22 @@ class TestCharm:
     def test_get_object_storage_data_failure_bad_storage_object(
         self, _get_interfaces: MagicMock, harness: Harness
     ):
+        add_object_storage_to_harness(harness)
         storage_object = MagicMock()
         storage_object.get_data.return_value = ["a"]
         _get_interfaces.return_value = {"object-storage": storage_object}
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
-            "Unexpected error unpacking object storage data - data format not as expected. "
-            "Caught exception: ''list' object has no attribute 'values''"
+            "Unexpected error with object-storage relation data - data not as expected"
         )
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._ensure_bucket_exists",
+        lambda *args, **kw: None,
     )
     def test_get_object_storage_data_success(self, harness: Harness):
         harness = add_object_storage_to_harness(harness)
@@ -324,118 +340,120 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.validate_s3_bucket_name")
-    def test_validate_default_s3_bucket_failure_invalid_bucket(
-        self, validate_s3_bucket_name: MagicMock, harness: Harness
+    def test_resolve_bucket_name_from_relation(self, harness: Harness):
+        """A bucket provided by the relation takes precedence over the config."""
+        harness.update_config({"default_artifact_root": "from-config"})
+        harness.begin()
+        obj = {"bucket": "from-relation", "is_s3": True}
+        assert harness.charm._resolve_bucket_name(obj) == "from-relation"
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_resolve_bucket_name_from_config(self, harness: Harness):
+        """When the relation provides no bucket, fall back to the config option."""
+        harness.update_config({"default_artifact_root": "from-config"})
+        harness.begin()
+        obj = {"bucket": "", "is_s3": True}
+        assert harness.charm._resolve_bucket_name(obj) == "from-config"
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_resolve_bucket_name_missing(self, harness: Harness):
+        """With no relation bucket and no config option, the charm blocks."""
+        harness.update_config({"default_artifact_root": ""})
+        harness.begin()
+        obj = {"bucket": "", "is_s3": False}
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._resolve_bucket_name(obj)
+        assert exc_info.value.status_type(BlockedStatus)
+        assert "No object storage bucket name available" in str(exc_info)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.S3BucketWrapper")
+    @patch(
+        "charm.MlflowCharm._get_object_storage_data",
+        return_value=OBJECT_STORAGE_DATA_NORMALIZED,
+    )
+    def test_ensure_bucket_exists_when_bucket_present(
+        self, _get_object_storage_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
     ):
-        validate_s3_bucket_name.return_value = False
+        """An existing, reachable bucket is not (re)created."""
+        s3_wrapper = s3_wrapper_cls.return_value
+        s3_wrapper.bucket_exists.return_value = True
+        harness.begin()
+        harness.charm._ensure_bucket_exists()
+        s3_wrapper.bucket_exists.assert_called_once_with("relation-bucket")
+        s3_wrapper.create_bucket.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.S3BucketWrapper")
+    @patch(
+        "charm.MlflowCharm._get_object_storage_data",
+        return_value=OBJECT_STORAGE_DATA_NORMALIZED,
+    )
+    def test_ensure_bucket_exists_creates_missing_bucket(
+        self, _get_object_storage_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+    ):
+        """A missing bucket is created."""
+        s3_wrapper = s3_wrapper_cls.return_value
+        s3_wrapper.bucket_exists.return_value = False
+        harness.begin()
+        harness.charm._ensure_bucket_exists()
+        s3_wrapper.create_bucket.assert_called_once_with("relation-bucket")
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.S3BucketWrapper")
+    @patch(
+        "charm.MlflowCharm._get_object_storage_data",
+        return_value=OBJECT_STORAGE_DATA_NORMALIZED,
+    )
+    def test_ensure_bucket_exists_connection_error_waiting(
+        self, _get_object_storage_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+    ):
+        """A connectivity error puts the charm in a waiting state."""
+        s3_wrapper = s3_wrapper_cls.return_value
+        s3_wrapper.bucket_exists.side_effect = botocore.exceptions.EndpointConnectionError(
+            endpoint_url="http://minio.namespace:9000"
+        )
         harness.begin()
         with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._validate_default_s3_bucket_name_and_access(BUCKET_NAME, None)
-        assert "Invalid value for config default_artifact_root" in str(exc_info)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    @patch("charm.validate_s3_bucket_name")
-    def test_validate_default_s3_bucket_success_bucket_not_accessible(
-        self,
-        validate_s3_bucket_name: MagicMock,
-        harness: Harness,
-    ):
-        s3_wrapper = MagicMock()
-        s3_wrapper.check_if_bucket_accessible.return_value = False
-        validate_s3_bucket_name.return_value = True
-        harness.begin()
-        value = harness.charm._validate_default_s3_bucket_name_and_access(BUCKET_NAME, s3_wrapper)
-        assert not value
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    @patch("charm.validate_s3_bucket_name")
-    def test_validate_default_s3_bucket_success_bucket_accessible(
-        self,
-        validate_s3_bucket_name: MagicMock,
-        harness: Harness,
-    ):
-        s3_wrapper = MagicMock()
-        s3_wrapper.check_if_bucket_accessible.return_value = True
-        validate_s3_bucket_name.return_value = True
-        harness.begin()
-        value = harness.charm._validate_default_s3_bucket_name_and_access(BUCKET_NAME, s3_wrapper)
-        assert value
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    @patch("charm.validate_s3_bucket_name")
-    def test_validate_default_s3_bucket_failure_wrong_name(
-        self, validate_s3_bucket_name: MagicMock, harness: Harness
-    ):
-        validate_s3_bucket_name.return_value = False
-        harness.begin()
-        with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._validate_default_s3_bucket_name_and_access(BUCKET_NAME, None)
+            harness.charm._ensure_bucket_exists()
         assert exc_info.value.status_type(WaitingStatus)
-        assert "Invalid value for config default_artifact_root" in str(exc_info)
+        assert "Waiting for object storage to become accessible" in str(exc_info)
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_validate_default_s3_bucket_failure_bucket_creation_not_allowed(
-        self,
-        harness: Harness,
-    ):
-        harness.update_config({"create_default_artifact_root_if_missing": False})
-        s3_wrapper = MagicMock()
-        check_if_bucket_accessible = MagicMock()
-        check_if_bucket_accessible.return_value = False
-        s3_wrapper.check_if_bucket_accessible = check_if_bucket_accessible
-        harness.begin()
-        with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._validate_default_s3_bucket_name_and_access(BUCKET_NAME, s3_wrapper)
-
-        assert exc_info.value.status_type(BlockedStatus)
-        assert "Error with default S3 artifact store - " in str(exc_info)
-
     @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    @patch("charm.MlflowCharm.container")
-    def test_update_layer_failure_container_problem(
-        self,
-        container: MagicMock,
-        harness: Harness,
-    ):
-        change = MagicMock()
-        change.tasks = []
-        container.replan.side_effect = _FakeChangeError("Fake problem during layer update", change)
-        harness.begin()
-        with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._update_layer(container, harness.charm._container_name, MagicMock())
-
-        assert exc_info.value.status_type(BlockedStatus)
-        assert "Failed to replan with error: " in str(exc_info)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
+        "charm.MlflowCharm.service_environment",
+        new_callable=PropertyMock,
+        return_value=EXPECTED_ENVIRONMENT,
     )
     def test_update_layer_success(
         self,
+        _: MagicMock,
         harness: Harness,
     ):
         harness.begin()
-        harness.charm._update_layer(
-            harness.charm.container,
+        update_layer(
             harness.charm._container_name,
-            harness.charm._charmed_mlflow_layer(EXPECTED_ENVIRONMENT),
+            harness.charm.container,
+            harness.charm._mlflow_server_layer,
+            harness.charm.logger,
         )
         assert harness.charm.container.get_plan().services == EXPECTED_SERVICE
 
@@ -443,12 +461,20 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_mlflow_serve_env_vars(
+    @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
+    @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_object_storage_data")
+    def test_generate_environment(
         self,
+        mock_get_object_storage_data,
         harness: Harness,
     ):
+        mock_get_object_storage_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "bucket": "",
+        }
         harness.begin()
-        envs = harness.charm._get_mlflow_serve_env_vars(RELATIONAL_DB_DATA, BUCKET_NAME)
+        envs = harness.charm._generate_environment()
         assert envs == EXPECTED_ENVIRONMENT
 
     @patch(
@@ -489,15 +515,12 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch(
-        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
-    )
-    @patch(
-        "charm.S3BucketWrapper.__init__",
+        "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
-    def test_on_event_wainting_for_exporter(
+    def test_on_event_waiting_for_exporter(
         self,
         _: MagicMock,
         __: MagicMock,
@@ -515,10 +538,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch(
-        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
-    )
-    @patch(
-        "charm.S3BucketWrapper.__init__",
+        "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
@@ -667,10 +687,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch(
-        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
-    )
-    @patch(
-        "charm.S3BucketWrapper.__init__",
+        "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
@@ -751,10 +768,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch(
-        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
-    )
-    @patch(
-        "charm.S3BucketWrapper.__init__",
+        "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
@@ -796,10 +810,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch(
-        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
-    )
-    @patch(
-        "charm.S3BucketWrapper.__init__",
+        "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
@@ -854,10 +865,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch(
-        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
-    )
-    @patch(
-        "charm.S3BucketWrapper.__init__",
+        "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
@@ -937,10 +945,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch(
-        "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
-    )
-    @patch(
-        "charm.S3BucketWrapper.__init__",
+        "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)

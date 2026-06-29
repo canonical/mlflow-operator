@@ -5,9 +5,11 @@
 
 import logging
 from pathlib import Path
+from urllib.parse import urlparse
 
 import botocore.exceptions
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
+from charmed_kubeflow_chisme.pebble import update_layer
 from charmed_kubeflow_chisme.service_mesh import generate_allow_all_authorization_policy
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
@@ -44,13 +46,20 @@ from charms.resource_dispatcher.v0.kubernetes_manifests import (
 from jinja2 import Template
 from lightkube import Client
 from lightkube.models.core_v1 import ServicePort
-from ops import main
+from object_storage import S3Requirer
+from ops import ActionEvent, main
 from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
-from ops.pebble import ChangeError, Layer
-from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, get_interfaces
+from ops.pebble import Layer
+from serialized_data_interface import (
+    NoCompatibleVersions,
+    NoVersionsListed,
+    SerializedDataInterface,
+    get_interfaces,
+)
+from serialized_data_interface.errors import RelationDataError
 
-from services.s3 import S3BucketWrapper, validate_s3_bucket_name
+from services.s3 import S3BucketWrapper
 
 INGRESS_MODES_TO_RELATION_NAMES = {
     "ambient": "istio-ingress-route",
@@ -67,7 +76,6 @@ PODDEFAULTS_FILES = [
 ]
 SECRETS_FILES = [
     "src/secrets/mlflow-minio-artifact.j2",
-    "src/secrets/mlflow-seldon-rclone-secret.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
 
@@ -181,6 +189,13 @@ class MlflowCharm(CharmBase):
         self.framework.observe(
             self.ambient_mode_ingress.on.ready, self._on_ambient_mode_ingress_ready
         )
+
+        self.framework.observe(self.on["object-storage"].relation_changed, self._on_event)
+        self.framework.observe(self.on["object-storage"].relation_broken, self._on_event)
+        self.framework.observe(self.on["s3-credentials"].relation_changed, self._on_event)
+        self.framework.observe(self.on["s3-credentials"].relation_broken, self._on_event)
+
+        self.s3 = S3Requirer(self, relation_name="s3-credentials")
 
     @property
     def container(self):
@@ -296,21 +311,13 @@ class MlflowCharm(CharmBase):
             refresh_event=self.on.config_changed,
         )
 
-    def _get_mlflow_serve_env_vars(self, relational_db_data, bucket_name):
-        """Return environment variables for the `mlflow server` command.
+    @property
+    def service_environment(self):
+        """Return environment variables based on model configuration."""
+        return self._generate_environment()
 
-        See here how such environment variables provide defaults for `mlflow server` CLI options:
-        https://mlflow.org/docs/2.22.1/api_reference/cli.html#mlflow-server
-        """
-        return {
-            "MLFLOW_BACKEND_STORE_URI": f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}",  # noqa: E501
-            "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{bucket_name}",
-            "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
-            "MLFLOW_HOST": "0.0.0.0",
-            "MLFLOW_PORT": self._mlflow_port,
-        }
-
-    def _charmed_mlflow_layer(self, env_vars) -> Layer:
+    @property
+    def _mlflow_server_layer(self) -> Layer:
         """Create and return Pebble framework layer."""
 
         layer_config = {
@@ -322,13 +329,14 @@ class MlflowCharm(CharmBase):
                     "summary": "Entrypoint of mlflow-server image",
                     "command": "mlflow server",
                     "startup": "enabled",
-                    "environment": env_vars,  # defaults for `mlflow server` CLI option passed here
+                    "environment": self.service_environment,  # defaults `mlflow server` CLI options
                 }
             },
         }
 
         return Layer(layer_config)
 
+    @property
     def _mlflow_exporter_layer(self) -> Layer:
         """Create and return Pebble framework layer."""
 
@@ -351,6 +359,35 @@ class MlflowCharm(CharmBase):
         }
 
         return Layer(layer_config)
+
+    @property
+    def secrets_context(self) -> dict:
+        try:
+            interfaces = self._get_interfaces()
+            object_storage = self._get_object_storage_data(interfaces)
+        except ErrorWithStatus as error:
+            self.logger.error("Failed to generate container configuration.")
+            raise error
+        scheme = "https" if object_storage["secure"] else "http"
+        secrets_context = {
+            "app_name": self.app.name,
+            "s3_endpoint": f"{scheme}://{object_storage['host']}:{object_storage['port']}",
+            "access_key": object_storage["access-key"],
+            "secret_access_key": object_storage["secret-key"],
+        }
+        return secrets_context
+
+    @property
+    def poddefaults_context(self) -> dict:
+        poddefaults_context = {
+            "app_name": self.app.name,
+            "s3_endpoint": self.secrets_context["s3_endpoint"],
+            "mlflow_endpoint": (
+                f"http://{self.app.name}.{self._namespace}.svc.cluster.local:"
+                f"{self._mlflow_port}"
+            ),
+        }
+        return poddefaults_context
 
     def _get_interfaces(self):
         """Retrieve interface object."""
@@ -389,32 +426,187 @@ class MlflowCharm(CharmBase):
             return db_data
         raise ErrorWithStatus("Waiting for relational-db relation data", WaitingStatus)
 
-    def _get_object_storage_data(self, interfaces):
-        """Unpacks and returns the object-storage relation data.
+    def _validate_sdi_interface(self, interfaces: dict, relation_name: str, default_return=None):
+        """Validates data received from SerializedDataInterface, returning the data if valid.
 
-        Raises CheckFailedError if an anticipated error occurs.
+        Optionally can return a default_return value when no relation is established
+
+        Raises:
+            ErrorWithStatus(..., Blocked) when no relation established (unless default_return set)
+            ErrorWithStatus(..., Blocked) if interface is not using SDI
+            ErrorWithStatus(..., Blocked) if data in interface fails schema check
+            ErrorWithStatus(..., Waiting) if we have a relation established but no data passed
+
+        Params:
+            interfaces:
+
+        Returns:
+              (dict) interface data
         """
-        if not (
-            (obj_storage := interfaces[OBJECT_STORAGE_RELATION_NAME]) and obj_storage.get_data()
-        ):
-            raise ErrorWithStatus("Waiting for object-storage relation data", WaitingStatus)
+        # If nothing is related to this relation, return a default value or raise an error
+        if relation_name not in interfaces or interfaces[relation_name] is None:
+            if default_return is not None:
+                return default_return
+            else:
+                raise ErrorWithStatus(
+                    f"Please add required relation {relation_name}", BlockedStatus
+                )
 
-        try:
-            obj_storage = list(obj_storage.get_data().values())[0]
-        except Exception as e:
+        relations = interfaces[relation_name]
+        if not isinstance(relations, SerializedDataInterface):
             raise ErrorWithStatus(
-                f"Unexpected error unpacking object storage data - data format not "
-                f"as expected. Caught exception: '{str(e)}'",
+                f"Unexpected error with {relation_name} relation data - data not as expected",
                 BlockedStatus,
             )
 
-        return obj_storage
+        # Get and validate data from the relation
+        try:
+            # relations is a dict of {(ops.model.Relation, ops.model.Application): data}
+            unpacked_relation_data = relations.get_data()
+        except RelationDataError as val_error:
+            # Validation in .get_data() ensures if data is populated, it matches the schema and is
+            # not incomplete
+            self.logger.error(val_error)
+            raise ErrorWithStatus(
+                f"Found incomplete/incorrect relation data for {relation_name}. See logs",
+                BlockedStatus,
+            )
 
-    def _on_get_minio_credentials(self, event):
+        # Check if we have an established relation with no data exchanged
+        if len(unpacked_relation_data) == 0:
+            raise ErrorWithStatus(f"Waiting for {relation_name} relation data", WaitingStatus)
+
+        # Unpack data (we care only about the first element)
+        data_dict = list(unpacked_relation_data.values())[0]
+
+        # Catch if empty data dict is received (JSONSchema ValidationError above does not raise
+        # when this happens)
+        # Remove once addressed in:
+        # https://github.com/canonical/serialized-data-interface/issues/28
+        if len(data_dict) == 0:
+            raise ErrorWithStatus(
+                f"Found empty relation data for {relation_name}",
+                BlockedStatus,
+            )
+
+        return data_dict
+
+    def _get_object_storage(self, interfaces):
+        """Retrieve object-storage relation data."""
+        relation_name = "object-storage"
+        return self._validate_sdi_interface(interfaces, relation_name)
+
+    def _get_s3_data(self) -> dict:
+        """Retrieve and validate data from the s3-credentials relation.
+
+        Raises:
+            ErrorWithStatus(..., Waiting) if the relation exists but required data
+                (access-key, secret-key, endpoint) is not yet available.
+        """
+        relation = self.model.get_relation("s3-credentials")
+        info = self.s3.get_storage_connection_info(relation)
+        required_fields = ("access-key", "secret-key", "endpoint")
+        if not info:
+            raise ErrorWithStatus("Waiting for s3-credentials relation data", WaitingStatus)
+        missing = [field for field in required_fields if not info.get(field)]
+        if missing:
+            raise ErrorWithStatus(
+                f"Waiting for s3-credentials relation data, missing fields: {', '.join(missing)}",
+                WaitingStatus,
+            )
+        return info
+
+    def _get_object_storage_data(self, interfaces=None) -> dict:
+        """Return normalized object storage data from the active storage relation.
+
+        Supports both the `object-storage` and `s3` interfaces, returning a common dict with
+        keys: access-key, secret-key, host, port, secure, region, bucket, tls-ca-chain, is_s3.
+
+        Exactly one of the `object-storage` or `s3-credentials` relations is expected.
+
+        Raises:
+            ErrorWithStatus(..., Blocked) if both relations are established at once.
+            ErrorWithStatus(..., Blocked) if neither relation is established.
+            ErrorWithStatus(..., Waiting) if the active relation has no data yet.
+        """
+        has_object_storage = self.model.relations["object-storage"]
+        has_s3 = self.model.relations["s3-credentials"]
+
+        if has_object_storage and has_s3:
+            raise ErrorWithStatus(
+                "Too many object storage relations. Please relate to only one of "
+                "`object-storage` or `s3-credentials`.",
+                BlockedStatus,
+            )
+
+        if not has_object_storage and not has_s3:
+            raise ErrorWithStatus(
+                "Missing object storage relation. Please relate to one of "
+                "`object-storage` or `s3-credentials`.",
+                BlockedStatus,
+            )
+
+        if has_s3:
+            data = self._get_s3_data()
+            host, port, secure = self._parse_s3_endpoint(data["endpoint"])
+            if not host:
+                raise ErrorWithStatus(
+                    f"Invalid s3 endpoint: {data['endpoint']!r}",
+                    BlockedStatus,
+                )
+            return {
+                "access-key": data["access-key"],
+                "secret-key": data["secret-key"],
+                "host": host,
+                "port": port,
+                "secure": secure,
+                "region": data.get("region", ""),
+                "bucket": data.get("bucket", ""),
+                "tls-ca-chain": data.get("tls-ca-chain"),
+                "is_s3": True,
+            }
+
+        if interfaces is None:
+            interfaces = self._get_interfaces()
+        obj = self._get_object_storage(interfaces)
+        return {
+            "access-key": obj["access-key"],
+            "secret-key": obj["secret-key"],
+            "host": f"{obj['service']}.{obj['namespace']}",
+            "port": obj["port"],
+            "secure": obj["secure"],
+            "region": "",
+            "bucket": "",
+            "tls-ca-chain": None,
+            "is_s3": False,
+        }
+
+    @staticmethod
+    def _parse_s3_endpoint(endpoint: str) -> tuple:
+        """Parse an s3 endpoint into a (host, port, secure) tuple.
+
+        The endpoint may be a full URL (e.g. "https://s3.example.com:443") or a bare
+        "host[:port]". kfp expects the host, port and TLS flag as separate values.
+
+        When a URL scheme is present it determines TLS and the default port.
+        When only a bare host[:port] is given, TLS is inferred from the port:
+          - 443 -> HTTPs
+          - Otherwise -> HTTP
+        """
+        parsed_endpoint = urlparse(endpoint if "://" in endpoint else f"//{endpoint}")
+        if parsed_endpoint.scheme:
+            secure = True if parsed_endpoint.scheme == "https" else False
+            port = parsed_endpoint.port or (443 if secure else 80)
+        else:
+            # bare host[:port]: infer TLS from port
+            port = parsed_endpoint.port or 80
+            secure = True if port == 443 else False
+        return parsed_endpoint.hostname, port, secure
+
+    def _on_get_minio_credentials(self, event: ActionEvent):
         """Returns the credentials for minio as an action response."""
         try:
-            interfaces = self._get_interfaces()
-            object_storage_data = self._get_object_storage_data(interfaces)
+            object_storage_data = self._get_object_storage_data()
             event.set_results(
                 {
                     "access-key": object_storage_data["access-key"],
@@ -424,56 +616,74 @@ class MlflowCharm(CharmBase):
         except ErrorWithStatus:
             event.fail("Minio is not reachable yet. Please try again in a few minutes.")
 
-    def _create_default_s3_bucket(self, s3_wrapper: S3BucketWrapper, bucket_name: str) -> None:
-        """Creates an s3 bucket using the default_artifact_root config value.
+    def _resolve_bucket_name(self, obj: dict) -> str:
+        """Return the object storage bucket name from the relation or config.
+
+        The bucket name comes from the active object storage relation:
+        - For s3-credentials, either through the provider side (s3-integrator) or through the
+            `default_artifact_root` config option. Provider side takes precedence.
+        - For object-storage, through the `default_artifact_root` config option.
+
         Raises:
-        ErrorWithStatus: ...
+            ErrorWithStatus(..., Blocked) if no bucket name is available.
         """
+        if obj["bucket"]:
+            return obj["bucket"]
+
+        bucket_name = self.model.config["default_artifact_root"]
+        if bucket_name:
+            relation_name = "s3-credentials" if obj["is_s3"] else "object-storage"
+            self.logger.info(
+                f"{relation_name} relation doesn't provide a bucket; using the "
+                f"'default_artifact_root' config option: '{bucket_name}'."
+            )
+            return bucket_name
+
+        raise ErrorWithStatus(
+            "No object storage bucket name available. Set the 'default_artifact_root' "
+            "config option or provide a bucket through the s3-credentials relation.",
+            BlockedStatus,
+        )
+
+    def _ensure_bucket_exists(self) -> None:
+        """Ensure bucket on object storage exists by using a boto3 client."""
+        obj = self._get_object_storage_data()
+
+        s3_wrapper = S3BucketWrapper(
+            access_key=obj.get("access-key"),
+            secret_access_key=obj.get("secret-key"),
+            s3_service=obj["host"],
+            s3_port=obj["port"],
+            secure=obj["secure"],
+            region=obj["region"],
+            tls_ca_chain=obj.get("tls-ca-chain"),
+        )
+
+        bucket_name = self._resolve_bucket_name(obj)
         try:
+            self.unit.status = MaintenanceStatus(f"Checking if bucket {bucket_name} exists.")
+            # Check if bucket already exists
+            if s3_wrapper.bucket_exists(bucket_name):
+                return
+
+            # Create the bucket if missing
+            self.unit.status = MaintenanceStatus(f"Creating bucket {bucket_name}.")
             s3_wrapper.create_bucket(bucket_name)
-        except Exception as e:
-            raise ErrorWithStatus(
-                "Error with default S3 artifact store - bucket not accessible or "
-                f"cannot be created.  Caught error: '{str(e)}",
-                BlockedStatus,
-            )
+            return
 
-    def _validate_default_s3_bucket_name_and_access(
-        self, bucket_name: str, s3_wrapper: S3BucketWrapper
-    ) -> bool:
-        """Validates the default s3 bucket name is valid and the bucket is accessible.
-        If it is not accessible and the `create_default_artifact_root_if_missing` config value
-        is True, returns False; True otherwise.
-
-        Args:
-        bucket_name: ...
-        s3_wrapper: ...
-        Raises:
-        ErrorWithStatus ...
-
-        """
-        if not validate_s3_bucket_name(bucket_name):
-            msg = (
-                f"Invalid value for config default_artifact_root '{bucket_name}'"
-                f" - value must be a valid S3 bucket name"
-            )
+        except botocore.exceptions.SSLError as e:
+            msg = "Object storage TLS verification failed. Check CA chain configuration."
+            self.logger.error(f"{msg}: {e}")
             raise ErrorWithStatus(msg, BlockedStatus)
-
-        try:
-            is_bucket_accessible = s3_wrapper.check_if_bucket_accessible(bucket_name)
-        except botocore.exceptions.EndpointConnectionError:
-            raise ErrorWithStatus("Waiting for object-storage. Can't connect.", WaitingStatus)
-
-        if not is_bucket_accessible and not self.config["create_default_artifact_root_if_missing"]:
-            raise ErrorWithStatus(
-                "Error with default S3 artifact store - bucket not accessible or does not "
-                "exist. Set create_default_artifact_root_if_missing=True to automatically "
-                "create a missing default bucket",
-                BlockedStatus,
-            )
-        elif not is_bucket_accessible and self.config["create_default_artifact_root_if_missing"]:
-            return False
-        return True
+        except (
+            botocore.exceptions.ClientError,
+            botocore.exceptions.ConnectTimeoutError,
+            botocore.exceptions.ReadTimeoutError,
+            botocore.exceptions.EndpointConnectionError,
+        ) as e:
+            msg = "Waiting for object storage to become accessible."
+            self.logger.warning(f"{msg}: {e}")
+            raise ErrorWithStatus(msg, WaitingStatus)
 
     def _check_leader(self):
         """Check if this unit is a leader."""
@@ -504,6 +714,28 @@ class MlflowCharm(CharmBase):
                 BlockedStatus,
             )
 
+    def _generate_environment(self) -> dict:
+        """Return environment variables for the `mlflow server` command.
+
+        See here how such environment variables provide defaults for `mlflow server` CLI options:
+        https://mlflow.org/docs/2.22.1/api_reference/cli.html#mlflow-server
+        """
+        try:
+            interfaces = self._get_interfaces()
+            object_storage = self._get_object_storage_data(interfaces)
+            relational_db_data = self._get_relational_db_data()
+        except ErrorWithStatus as error:
+            self.logger.error("Failed to generate container configuration.")
+            raise error
+
+        return {
+            "MLFLOW_BACKEND_STORE_URI": f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}",  # noqa: E501
+            "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{self._resolve_bucket_name(object_storage)}",
+            "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
+            "MLFLOW_HOST": "0.0.0.0",
+            "MLFLOW_PORT": self._mlflow_port,
+        }
+
     def _reconcile_policy_resource_manager(self):
         if not self.unit.is_leader():
             return
@@ -518,19 +750,6 @@ class MlflowCharm(CharmBase):
         self._policy_resource_manager.reconcile(
             policies=[], mesh_type=MeshType.istio, raw_policies=[]
         )
-
-    def _update_layer(self, container, container_name, new_layer) -> None:
-        current_layer = self.container.get_plan()
-        if current_layer.services != new_layer.services:
-            self.unit.status = MaintenanceStatus("Applying new pebble layer")
-            container.add_layer(container_name, new_layer, combine=True)
-            try:
-                self.logger.info(
-                    f"Pebble plan updated with new configuration, replaning for {container_name}"
-                )
-                container.replan()
-            except ChangeError as err:
-                raise ErrorWithStatus(f"Failed to replan with error: {str(err)}", BlockedStatus)
 
     def _on_pebble_ready(self, _):
         """Configure started container."""
@@ -580,66 +799,37 @@ class MlflowCharm(CharmBase):
             self._check_leader()
 
             interfaces = self._get_interfaces()
-            object_storage_data = self._get_object_storage_data(interfaces)
-            relational_db_data = self._get_relational_db_data()
 
             self._check_no_conflicting_ingress_relations()
 
-            s3_wrapper = S3BucketWrapper(
-                access_key=object_storage_data["access-key"],
-                secret_access_key=object_storage_data["secret-key"],
-                s3_service=f"{object_storage_data['service']}.{object_storage_data['namespace']}",
-                s3_port=object_storage_data["port"],
-            )
-            bucket_name = self.config["default_artifact_root"]
-            if not self._validate_default_s3_bucket_name_and_access(
-                bucket_name=bucket_name, s3_wrapper=s3_wrapper
-            ):
-                self._create_default_s3_bucket(s3_wrapper, bucket_name)
+            self._ensure_bucket_exists()
 
-            mlflow_serve_envs = self._get_mlflow_serve_env_vars(relational_db_data, bucket_name)
+            update_layer(
+                self._container_name, self._container, self._mlflow_server_layer, self.logger
+            )
 
             if not self.container.can_connect():
                 raise ErrorWithStatus(
                     f"Container {self._container_name} is not ready", WaitingStatus
                 )
             self._reconcile_policy_resource_manager()
-            self._update_layer(
-                self.container, self._container_name, self._charmed_mlflow_layer(mlflow_serve_envs)
-            )
+
             if not self.exporter_container.can_connect():
                 raise ErrorWithStatus(
                     f"Container {self._exporter_container_name} is not ready", WaitingStatus
                 )
-            self._update_layer(
-                self.exporter_container,
+            update_layer(
                 self._exporter_container_name,
-                self._mlflow_exporter_layer(),
+                self.exporter_container,
+                self._mlflow_exporter_layer,
+                self.logger,
             )
 
-            secrets_context = {
-                "app_name": self.app.name,
-                "s3_endpoint": (
-                    f"http://{object_storage_data['service']}.{object_storage_data['namespace']}:"
-                    f"{object_storage_data['port']}"
-                ),
-                "s3_type": "s3",
-                "s3_provider": "minio",
-                "enable_env_auth": "false",
-                "access_key": object_storage_data["access-key"],
-                "secret_access_key": object_storage_data["secret-key"],
-            }
-            poddefaults_context = {
-                "app_name": self.app.name,
-                "s3_endpoint": secrets_context["s3_endpoint"],
-                "mlflow_endpoint": (
-                    f"http://{self.app.name}.{self._namespace}.svc.cluster.local:"
-                    f"{self._mlflow_port}"
-                ),
-            }
-            self._send_manifests(secrets_context, SECRETS_FILES, self.secrets_manifests_wrapper)
             self._send_manifests(
-                poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
+                self.secrets_context, SECRETS_FILES, self.secrets_manifests_wrapper
+            )
+            self._send_manifests(
+                self.poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
             )
             self._send_ingress_info(interfaces)
 

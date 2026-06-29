@@ -30,6 +30,7 @@ MYSQL_K8S = CharmSpec(
     charm="mysql-k8s", channel="8.0/stable", config={"profile": "testing"}, trust=True
 )
 RESOURCE_DISPATCHER = CharmSpec(charm="resource-dispatcher", channel="latest/edge", trust=True)
+S3_INTEGRATOR = CharmSpec(charm="s3-integrator", channel="2/edge", trust=False)
 KUBEFLOW_PROFILES = CharmSpec(
     charm="kubeflow-profiles",
     channel="latest/edge",
