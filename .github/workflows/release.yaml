@@ -12,6 +12,9 @@ jobs:
   ci-tests:
     uses: ./.github/workflows/ci.yaml
     secrets: inherit
+    permissions:
+      actions: read
+      contents: read
 
   release:
     strategy:
