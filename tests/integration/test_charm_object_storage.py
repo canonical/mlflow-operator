@@ -463,3 +463,23 @@ class TestCharm:
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME], status="active", raise_on_error=False, timeout=60 * 10
         )
+
+    @pytest.mark.abort_on_fail
+    async def test_new_user_namespace_has_manifests_after_migration(
+        self, ops_test: OpsTest, lightkube_client: lightkube.Client, namespace: str
+    ):
+        """After migrating to s3-integrator, the workload still dispatches user manifests.
+
+        The s3-integrator generates random credentials, so assert that the expected keys are
+        dispatched into the user namespace rather than their exact values.
+        """
+        time.sleep(30)  # sync can take up to 10 seconds for reconciliation loop to trigger
+        secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
+        secret = lightkube_client.get(Secret, secret_name, namespace=namespace)
+        assert set(secret.data.keys()) == {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
+        for value in secret.data.values():
+            assert value
+        poddefaults_names = [f"{CHARM_NAME}{suffix}" for suffix in PODDEFAULTS_SUFFIXES]
+        for name in poddefaults_names:
+            pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)
+            assert pod_default is not None

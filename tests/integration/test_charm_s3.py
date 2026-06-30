@@ -1,8 +1,14 @@
-# Copyright 2022 Canonical Ltd.
+# Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 #
 
-"""Integration tests for MLflow Operator/Charm against the s3-credentials (s3) interface."""
+"""Integration tests for MLflow against the s3-credentials interface in ambient mode.
+
+This suite mirrors ``test_charm_ambient.py`` (the same service-mesh, ingress and
+kubeflow-profiles helpers/fixtures) but provides object storage through the
+``s3-integrator`` charm over the ``s3-credentials`` relation instead of MinIO over
+``object-storage``. This is the recommended setup for any new MLflow deployments.
+"""
 
 import logging
 import subprocess
@@ -11,56 +17,59 @@ from pathlib import Path
 from random import choices
 from string import ascii_lowercase
 
-import aiohttp
 import lightkube
 import pytest
 import requests
 import yaml
 from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
 from charmed_kubeflow_chisme.testing import (
-    CharmSpec,
     assert_alert_rules,
     assert_grafana_dashboards,
     assert_logging,
     assert_metrics_endpoint,
+    assert_path_reachable_through_ingress,
     assert_security_context,
+    deploy_and_integrate_service_mesh_charms,
     generate_container_securitycontext_map,
     get_alert_rules,
     get_grafana_dashboards,
     get_pod_names,
+    integrate_with_service_mesh,
 )
 from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_integrator
 from charms_dependencies import (
-    ISTIO_GATEWAY,
-    ISTIO_PILOT,
+    KUBEFLOW_PROFILES,
     METACONTROLLER_OPERATOR,
     MYSQL_K8S,
     RESOURCE_DISPATCHER,
     S3_INTEGRATOR,
 )
 from lightkube import codecs
+from lightkube.core.exceptions import ApiError
 from lightkube.generic_resource import (
+    create_global_resource,
     create_namespaced_resource,
     load_in_cluster_generic_resources,
 )
-from lightkube.resources.core_v1 import Secret, Service
+from lightkube.resources.core_v1 import Namespace, Secret
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
-from tenacity import retry, stop_after_delay, wait_fixed
+from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_fixed
 
 logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 CHARM_NAME = METADATA["name"]
 CONTAINERS_SECURITY_CONTEXT_MAP = generate_container_securitycontext_map(METADATA)
-NAMESPACE_FILE = "./tests/integration/namespace.yaml"
+HTTP_PATH = "/mlflow/"
 PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
 PODDEFAULTS_SUFFIXES = ["-access-minio", "-minio"]
-TESTING_LABELS = ["user.kubeflow.org/enabled"]  # Might be more than one in the future
 SECRET_SUFFIX = "-minio-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
+PROFILE_FILE = "./tests/integration/profile.yaml"
 
 PodDefault = create_namespaced_resource("kubeflow.org", "v1alpha1", "PodDefault", "poddefaults")
+Profile = create_global_resource("kubeflow.org", "v1", "Profile", "profiles")
 
 
 def _safe_load_file_to_text(filename: str) -> str:
@@ -70,22 +79,6 @@ def _safe_load_file_to_text(filename: str) -> str:
     except FileNotFoundError:
         text = filename
     return text
-
-
-def delete_all_from_yaml(yaml_text: str, lightkube_client: lightkube.Client = None):
-    """Deletes all k8s resources listed in a YAML file via lightkube.
-
-    Args:
-        yaml_text (str): Either a string filename or a string of valid YAML.  Will attempt
-                         to open a filename at this path, failing back to interpreting the
-                         string directly as YAML.
-        lightkube_client: Instantiated lightkube client or None
-    """
-    if lightkube_client is None:
-        lightkube_client = lightkube.Client()
-
-    for obj in codecs.load_all_yaml(yaml_text):
-        lightkube_client.delete(type(obj), obj.metadata.name)
 
 
 @pytest.fixture(scope="session")
@@ -103,66 +96,55 @@ def deploy_k8s_resources(template_files: str):
     k8s_resource_handler.apply()
 
 
-@pytest.fixture(scope="session")
-def namespace(lightkube_client: lightkube.Client):
-    yaml_text = _safe_load_file_to_text(NAMESPACE_FILE)
-    yaml_rendered = yaml.safe_load(yaml_text)
-    for label in TESTING_LABELS:
-        yaml_rendered["metadata"]["labels"][label] = "true"
-    obj = codecs.from_dict(yaml_rendered)
-    lightkube_client.apply(obj)
-
-    yield obj.metadata.name
-
-    delete_all_from_yaml(yaml_text, lightkube_client)
-
-
-async def setup_istio(ops_test: OpsTest, istio_gateway: CharmSpec, istio_pilot: CharmSpec):
-    """Deploy Istio Ingress Gateway and Istio Pilot."""
-    await ops_test.model.deploy(
-        entity_url=istio_gateway.charm,
-        channel=istio_gateway.channel,
-        config=istio_gateway.config,
-        trust=istio_gateway.trust,
-    )
-    await ops_test.model.deploy(
-        istio_pilot.charm,
-        channel=istio_pilot.channel,
-        config=istio_pilot.config,
-        trust=istio_pilot.trust,
-    )
-    await ops_test.model.integrate(istio_pilot.charm, istio_gateway.charm)
-
-    await ops_test.model.wait_for_idle(
-        apps=[istio_pilot.charm, istio_gateway.charm],
-        status="active",
-        timeout=60 * 5,
-        raise_on_blocked=False,
-        raise_on_error=False,
+async def assert_ui_is_accessible(ops_test: OpsTest):
+    """Verify that UI is accessible through the ingress gateway."""
+    await assert_path_reachable_through_ingress(
+        http_path=HTTP_PATH,
+        namespace=ops_test.model.name,
+        expected_content_type="text/html",
+        expected_response_text="MLflow",
     )
 
 
-def get_ingress_url(lightkube_client: lightkube.Client, model_name: str):
-    gateway_svc = lightkube_client.get(
-        Service, "istio-ingressgateway-workload", namespace=model_name
-    )
-    ingress_record = gateway_svc.status.loadBalancer.ingress[0]
-    if ingress_record.ip:
-        public_url = f"http://{ingress_record.ip}.nip.io"
-    if ingress_record.hostname:
-        public_url = f"http://{ingress_record.hostname}"  # Use hostname (e.g. EKS)
-    return public_url
+@pytest.fixture(scope="module")
+async def profile_namespace(ops_test: OpsTest, lightkube_client: lightkube.Client) -> str:
+    """Ensure a kubeflow profile namespace exists for tests and clean it up afterwards."""
+    if KUBEFLOW_PROFILES.charm not in ops_test.model.applications:
+        pytest.fail("kubeflow-profiles must be deployed before creating a profile")
 
+    profile_manifest = yaml.safe_load(_safe_load_file_to_text(PROFILE_FILE))
+    profile_name = profile_manifest["metadata"]["name"]
+    profile_manifest["kind"] = Profile.__name__
 
-async def fetch_response(url, headers):
-    """Fetch provided URL and return pair - status and text (int, string)."""
-    result_status = 0
-    result_text = ""
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url=url, headers=headers) as response:
-            result_status = response.status
-            result_text = await response.text()
-    return result_status, str(result_text)
+    load_in_cluster_generic_resources(lightkube_client)
+    profile = codecs.from_dict(profile_manifest)
+    try:
+        lightkube_client.apply(profile)
+    except ApiError as err:
+        pytest.fail(f"Failed to apply Profile resource: {err}")
+
+    # Profile reconciliation is asynchronous; wait until the namespace is created.
+    for _ in range(18):
+        try:
+            namespace = lightkube_client.get(Namespace, profile_name)
+            assert namespace.metadata.name == profile_name
+            break
+        except ApiError:
+            time.sleep(5)
+    else:
+        pytest.fail(f"Timed out waiting for namespace '{profile_name}' to be created")
+
+    yield profile_name
+
+    try:
+        lightkube_client.delete(Profile, profile_name)
+    except ApiError:
+        pass
+
+    try:
+        lightkube_client.delete(Namespace, profile_name)
+    except ApiError:
+        pass
 
 
 class TestCharm:
@@ -175,7 +157,7 @@ class TestCharm:
     async def test_add_s3_and_db_relation_expect_active(self, ops_test: OpsTest):
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
         await deploy_and_assert_s3_integrator(
-            ops_test.model, s3_integrator=S3_INTEGRATOR, add_ca_chain=True
+            ops_test.model, add_ca_chain=True, s3_integrator=S3_INTEGRATOR
         )
         await ops_test.model.deploy(
             MYSQL_K8S.charm,
@@ -185,7 +167,7 @@ class TestCharm:
             trust=MYSQL_K8S.trust,
         )
         await ops_test.model.wait_for_idle(
-            apps=[MYSQL_K8S.charm],
+            apps=[S3_INTEGRATOR.charm, MYSQL_K8S.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
@@ -285,7 +267,10 @@ class TestCharm:
         mlflow_subprocess.terminate()
 
     @pytest.mark.abort_on_fail
-    async def test_can_create_experiment_with_mlflow_library(self, ops_test: OpsTest):
+    async def test_can_create_experiment_with_mlflow_library_via_port_forward(
+        self, ops_test: OpsTest
+    ):
+        """Create an experiment with the MLflow client through kubectl port-forward."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
         mlflow_subprocess = subprocess.Popen(
@@ -353,35 +338,181 @@ class TestCharm:
             timeout=1200,
         )
 
-    async def test_ingress_relation(self, ops_test: OpsTest):
-        """Setup Istio and relate it to the MLflow."""
-        await setup_istio(ops_test, ISTIO_GATEWAY, ISTIO_PILOT)
-
-        await ops_test.model.add_relation(f"{ISTIO_PILOT.charm}:ingress", f"{CHARM_NAME}:ingress")
-
-        await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
+    async def test_mesh_and_ingress_integrations(self, ops_test: OpsTest):
+        """Setup Istio in ambient mode to include MLflow in the mesh and provide ingress."""
+        # deploy charms providing the service mesh and the ingress while relating MLflow to them:
+        await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=600,
+        )
 
     @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
-    async def test_ingress_url(self, lightkube_client, ops_test: OpsTest):
-        ingress_url = get_ingress_url(lightkube_client, ops_test.model_name)
-        result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
+    async def test_deploy_kubeflow_profiles(self, ops_test: OpsTest):
+        """Deploy kubeflow-profiles in ambient mode and integrate it with the service mesh."""
+        ambient_config = KUBEFLOW_PROFILES.config | {
+            "istio-gateway-namespace": ops_test.model_name,
+        }
 
-        # verify that UI is accessible
-        assert result_status == 200
-        assert len(result_text) > 0
+        if KUBEFLOW_PROFILES.charm not in ops_test.model.applications:
+            await ops_test.model.deploy(
+                KUBEFLOW_PROFILES.charm,
+                channel=KUBEFLOW_PROFILES.channel,
+                config=ambient_config,
+                trust=KUBEFLOW_PROFILES.trust,
+            )
+
+        await ops_test.model.wait_for_idle(
+            apps=[KUBEFLOW_PROFILES.charm],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=900,
+        )
+
+        await integrate_with_service_mesh(
+            KUBEFLOW_PROFILES.charm,
+            ops_test.model,
+            relate_to_ingress_route_endpoint=False,
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[KUBEFLOW_PROFILES.charm],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=900,
+        )
+
+    @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
+    @pytest.mark.abort_on_fail
+    async def test_ui_is_accessible(self, lightkube_client, ops_test: OpsTest):
+        """Verify that UI is accessible through the ingress gateway."""
+        await assert_ui_is_accessible(ops_test)
+
+    @retry(
+        stop=stop_after_delay(300),
+        wait=wait_fixed(10),
+        retry=retry_if_exception_type(subprocess.CalledProcessError),
+        reraise=True,
+    )
+    @pytest.mark.abort_on_fail
+    async def test_can_create_experiment_from_user_namespace(
+        self, ops_test: OpsTest, profile_namespace: str
+    ):
+        """Create an experiment from a pod in a namespace created via kubeflow-profiles."""
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+
+        pod_name = f"mlflow-experimenter-{self.generate_random_string(6)}"
+        experiment_name = f"{TEST_EXPERIMENT_NAME}-{self.generate_random_string(6)}"
+        logs_result = None
+
+        try:
+            tracking_uri = (
+                f"http://{CHARM_NAME}.{ops_test.model_name}.svc.cluster.local:{mlflow_port}"
+            )
+            logger.info(
+                f"Creating experiment from namespace={profile_namespace} "
+                f"pod={pod_name} experiment={experiment_name} uri={tracking_uri}"
+            )
+            curl_script = (
+                "set -e; "
+                f'payload=\'{{"name":"{experiment_name}"}}\'; '
+                "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors "
+                f"-X POST '{tracking_uri}/api/2.0/mlflow/experiments/create' "
+                "-H 'Content-Type: application/json' -d \"$payload\" >/dev/null; "
+                "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors -G "
+                f"'{tracking_uri}/api/2.0/mlflow/experiments/get-by-name' "
+                f"--data-urlencode 'experiment_name={experiment_name}'"
+            )
+
+            subprocess.run(
+                [
+                    "kubectl",
+                    "-n",
+                    profile_namespace,
+                    "run",
+                    pod_name,
+                    "--image=curlimages/curl:8.8.0",
+                    "--restart=Never",
+                    "--command",
+                    "--",
+                    "sh",
+                    "-c",
+                    curl_script,
+                ],
+                check=True,
+            )
+            logger.info(f"Experimenter pod created: {pod_name} in namespace {profile_namespace}")
+
+            subprocess.run(
+                [
+                    "kubectl",
+                    "-n",
+                    profile_namespace,
+                    "wait",
+                    f"pod/{pod_name}",
+                    "--for=jsonpath={.status.phase}=Succeeded",
+                    "--timeout=180s",
+                ],
+                check=True,
+            )
+            logger.info(f"Experimenter pod succeeded: {pod_name}")
+            logs_result = subprocess.run(
+                ["kubectl", "-n", profile_namespace, "logs", pod_name],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            assert experiment_name in logs_result.stdout
+            logger.info(f"Experiment creation verified for: {experiment_name}")
+        finally:
+            if logs_result is None:
+                logs_result = subprocess.run(
+                    ["kubectl", "-n", profile_namespace, "logs", pod_name],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            logger.info(
+                f"Experimenter pod logs (return_code={logs_result.returncode}):\n"
+                f"{logs_result.stdout}"
+            )
+            if logs_result.stderr:
+                logger.info(f"Experimenter pod logs stderr:\n{logs_result.stderr}")
+            subprocess.run(
+                [
+                    "kubectl",
+                    "-n",
+                    profile_namespace,
+                    "delete",
+                    "pod",
+                    pod_name,
+                    "--ignore-not-found",
+                ],
+                check=False,
+            )
 
     @pytest.mark.abort_on_fail
     async def test_new_user_namespace_has_manifests(
-        self, ops_test: OpsTest, lightkube_client: lightkube.Client, namespace: str
+        self,
+        ops_test: OpsTest,
+        lightkube_client: lightkube.Client,
+        profile_namespace: str,
     ):
         time.sleep(30)  # sync can take up to 10 seconds for reconciliation loop to trigger
         secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
-        secret = lightkube_client.get(Secret, secret_name, namespace=namespace)
-        assert secret.data is not None
-        assert "AWS_ACCESS_KEY_ID" in secret.data
-        assert "AWS_SECRET_ACCESS_KEY" in secret.data
+        secret = lightkube_client.get(Secret, secret_name, namespace=profile_namespace)
+        # The s3-integrator generates random credentials, so assert the expected keys are
+        # dispatched into the user namespace rather than their exact values.
+        assert set(secret.data.keys()) == {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
+        for value in secret.data.values():
+            assert value
         poddefaults_names = [f"{CHARM_NAME}{suffix}" for suffix in PODDEFAULTS_SUFFIXES]
         for name in poddefaults_names:
-            pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)
+            pod_default = lightkube_client.get(PodDefault, name, namespace=profile_namespace)
             assert pod_default is not None
