@@ -38,16 +38,16 @@ OBJECT_STORAGE_DATA = {
     "bucket": "bucket",
 }
 
-# Normalized object storage data as returned by MlflowCharm._get_object_storage_data
+# Normalized artifact store data as returned by MlflowCharm._get_artifact_store_data
 OBJECT_STORAGE_DATA_NORMALIZED = {
-    "access-key": "minio-access-key",
-    "secret-key": "minio-super-secret-key",
+    "access_key": "minio-access-key",
+    "secret_key": "minio-super-secret-key",
     "host": "minio.namespace",
     "port": 9000,
     "secure": False,
     "region": "",
     "bucket": "relation-bucket",
-    "tls-ca-chain": None,
+    "tls_ca_chain": None,
     "is_s3": True,
 }
 
@@ -233,7 +233,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.MlflowCharm._get_interfaces")
-    def test_get_object_storage_data_failure_missing_storage_object(
+    def test_get_artifact_store_data_failure_missing_storage_object(
         self, _get_interfaces: MagicMock, harness: Harness
     ):
         _get_interfaces.return_value = {"object-storage": ""}
@@ -248,7 +248,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.MlflowCharm._get_interfaces")
-    def test_get_object_storage_data_failure_bad_storage_object(
+    def test_get_artifact_store_data_failure_bad_storage_object(
         self, _get_interfaces: MagicMock, harness: Harness
     ):
         add_object_storage_to_harness(harness)
@@ -268,7 +268,7 @@ class TestCharm:
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
-    def test_get_object_storage_data_success(self, harness: Harness):
+    def test_get_artifact_store_data_success(self, harness: Harness):
         harness = add_object_storage_to_harness(harness)
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
@@ -378,11 +378,11 @@ class TestCharm:
     )
     @patch("charm.S3BucketWrapper")
     @patch(
-        "charm.MlflowCharm._get_object_storage_data",
+        "charm.MlflowCharm._get_artifact_store_data",
         return_value=OBJECT_STORAGE_DATA_NORMALIZED,
     )
     def test_ensure_bucket_exists_when_bucket_present(
-        self, _get_object_storage_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+        self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
     ):
         """An existing, reachable bucket is not (re)created."""
         s3_wrapper = s3_wrapper_cls.return_value
@@ -398,11 +398,11 @@ class TestCharm:
     )
     @patch("charm.S3BucketWrapper")
     @patch(
-        "charm.MlflowCharm._get_object_storage_data",
+        "charm.MlflowCharm._get_artifact_store_data",
         return_value=OBJECT_STORAGE_DATA_NORMALIZED,
     )
     def test_ensure_bucket_exists_creates_missing_bucket(
-        self, _get_object_storage_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+        self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
     ):
         """A missing bucket is created."""
         s3_wrapper = s3_wrapper_cls.return_value
@@ -417,11 +417,11 @@ class TestCharm:
     )
     @patch("charm.S3BucketWrapper")
     @patch(
-        "charm.MlflowCharm._get_object_storage_data",
+        "charm.MlflowCharm._get_artifact_store_data",
         return_value=OBJECT_STORAGE_DATA_NORMALIZED,
     )
     def test_ensure_bucket_exists_connection_error_waiting(
-        self, _get_object_storage_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+        self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
     ):
         """A connectivity error puts the charm in a waiting state."""
         s3_wrapper = s3_wrapper_cls.return_value
@@ -440,11 +440,11 @@ class TestCharm:
     )
     @patch("charm.S3BucketWrapper")
     @patch(
-        "charm.MlflowCharm._get_object_storage_data",
+        "charm.MlflowCharm._get_artifact_store_data",
         return_value={**OBJECT_STORAGE_DATA_NORMALIZED, "bucket": ""},
     )
     def test_on_event_missing_bucket_sets_blocked_status(
-        self, _get_object_storage_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+        self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
     ):
         """A missing bucket name propagates to a BlockedStatus unit status via _on_event."""
         harness.update_config({"default_artifact_root": ""})
@@ -459,11 +459,11 @@ class TestCharm:
     )
     @patch("charm.S3BucketWrapper")
     @patch(
-        "charm.MlflowCharm._get_object_storage_data",
+        "charm.MlflowCharm._get_artifact_store_data",
         return_value=OBJECT_STORAGE_DATA_NORMALIZED,
     )
     def test_on_event_bucket_connection_error_sets_waiting_status(
-        self, _get_object_storage_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+        self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
     ):
         """A connectivity error while ensuring the bucket propagates to a WaitingStatus."""
         s3_wrapper = s3_wrapper_cls.return_value
@@ -507,13 +507,13 @@ class TestCharm:
     )
     @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
     @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
-    @patch("charm.MlflowCharm._get_object_storage_data")
+    @patch("charm.MlflowCharm._get_artifact_store_data")
     def test_generate_environment(
         self,
-        mock_get_object_storage_data,
+        mock_get_artifact_store_data,
         harness: Harness,
     ):
-        mock_get_object_storage_data.return_value = {
+        mock_get_artifact_store_data.return_value = {
             **OBJECT_STORAGE_DATA_NORMALIZED,
             "bucket": "",
         }
@@ -562,7 +562,9 @@ class TestCharm:
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
-    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
+    )
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     def test_on_event_waiting_for_exporter(
         self,
@@ -585,7 +587,9 @@ class TestCharm:
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
-    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
+    )
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     def test_on_event(
         self,
@@ -734,7 +738,9 @@ class TestCharm:
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
-    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
+    )
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")
@@ -815,7 +821,9 @@ class TestCharm:
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
-    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
+    )
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")
@@ -857,7 +865,9 @@ class TestCharm:
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
-    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
+    )
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")
@@ -912,7 +922,9 @@ class TestCharm:
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
-    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
+    )
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")
@@ -992,7 +1004,9 @@ class TestCharm:
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
-    @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
+    )
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")

@@ -5,6 +5,7 @@
 
 import logging
 from pathlib import Path
+from typing import List, Optional, TypedDict
 from urllib.parse import urlparse
 
 import botocore.exceptions
@@ -78,6 +79,20 @@ SECRETS_FILES = [
     "src/secrets/mlflow-minio-artifact.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
+
+
+# Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
+# both the `object-storage` and `s3` interfaces.
+class ArtifactStoreData(TypedDict):
+    access_key: str
+    secret_key: str
+    host: str
+    port: int
+    secure: bool
+    region: str
+    bucket: str
+    tls_ca_chain: Optional[List[str]]
+    is_s3: bool
 
 
 class MlflowCharm(CharmBase):
@@ -364,24 +379,30 @@ class MlflowCharm(CharmBase):
     def secrets_context(self) -> dict:
         try:
             interfaces = self._get_interfaces()
-            object_storage = self._get_object_storage_data(interfaces)
+            object_storage = self._get_artifact_store_data(interfaces)
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
-        scheme = "https" if object_storage["secure"] else "http"
         secrets_context = {
             "app_name": self.app.name,
-            "s3_endpoint": f"{scheme}://{object_storage['host']}:{object_storage['port']}",
-            "access_key": object_storage["access-key"],
-            "secret_access_key": object_storage["secret-key"],
+            "access_key": object_storage["access_key"],
+            "secret_access_key": object_storage["secret_key"],
         }
         return secrets_context
 
     @property
     def poddefaults_context(self) -> dict:
+        try:
+            interfaces = self._get_interfaces()
+            object_storage = self._get_artifact_store_data(interfaces)
+        except ErrorWithStatus as error:
+            self.logger.error("Failed to generate container configuration.")
+            raise error
+        scheme = "https" if object_storage["secure"] else "http"
+        s3_endpoint = f"{scheme}://{object_storage['host']}:{object_storage['port']}"
         poddefaults_context = {
             "app_name": self.app.name,
-            "s3_endpoint": self.secrets_context["s3_endpoint"],
+            "s3_endpoint": s3_endpoint,
             "mlflow_endpoint": (
                 f"http://{self.app.name}.{self._namespace}.svc.cluster.local:"
                 f"{self._mlflow_port}"
@@ -491,7 +512,7 @@ class MlflowCharm(CharmBase):
 
         return data_dict
 
-    def _get_object_storage(self, interfaces):
+    def _get_object_storage_data(self, interfaces):
         """Retrieve object-storage relation data."""
         relation_name = "object-storage"
         return self._validate_sdi_interface(interfaces, relation_name)
@@ -516,11 +537,11 @@ class MlflowCharm(CharmBase):
             )
         return info
 
-    def _get_object_storage_data(self, interfaces=None) -> dict:
-        """Return normalized object storage data from the active storage relation.
+    def _get_artifact_store_data(self, interfaces=None) -> ArtifactStoreData:
+        """Return normalized artifact store data from the active storage relation.
 
         Supports both the `object-storage` and `s3` interfaces, returning a common dict with
-        keys: access-key, secret-key, host, port, secure, region, bucket, tls-ca-chain, is_s3.
+        keys: access_key, secret_key, host, port, secure, region, bucket, tls_ca_chain, is_s3.
 
         Exactly one of the `object-storage` or `s3-credentials` relations is expected.
 
@@ -552,41 +573,44 @@ class MlflowCharm(CharmBase):
             if not host:
                 raise ErrorWithStatus(
                     f"Invalid s3 endpoint: {data['endpoint']!r}",
-                    BlockedStatus,
+                    WaitingStatus,
                 )
-            return {
-                "access-key": data["access-key"],
-                "secret-key": data["secret-key"],
-                "host": host,
-                "port": port,
-                "secure": secure,
-                "region": data.get("region", ""),
-                "bucket": data.get("bucket", ""),
-                "tls-ca-chain": data.get("tls-ca-chain"),
-                "is_s3": True,
-            }
+            access_key = data["access-key"]
+            secret_key = data["secret-key"]
+            region = data.get("region", "")
+            bucket = data.get("bucket", "")
+            tls_ca_chain = data.get("tls-ca-chain")
+        else:
+            if interfaces is None:
+                interfaces = self._get_interfaces()
+            obj = self._get_object_storage_data(interfaces)
+            access_key = obj["access-key"]
+            secret_key = obj["secret-key"]
+            host = f"{obj['service']}.{obj['namespace']}"
+            port = obj["port"]
+            secure = obj["secure"]
+            region = ""
+            bucket = ""
+            tls_ca_chain = None
 
-        if interfaces is None:
-            interfaces = self._get_interfaces()
-        obj = self._get_object_storage(interfaces)
-        return {
-            "access-key": obj["access-key"],
-            "secret-key": obj["secret-key"],
-            "host": f"{obj['service']}.{obj['namespace']}",
-            "port": obj["port"],
-            "secure": obj["secure"],
-            "region": "",
-            "bucket": "",
-            "tls-ca-chain": None,
-            "is_s3": False,
-        }
+        return ArtifactStoreData(
+            access_key=access_key,
+            secret_key=secret_key,
+            host=host,
+            port=port,
+            secure=secure,
+            region=region,
+            bucket=bucket,
+            tls_ca_chain=tls_ca_chain,
+            is_s3=bool(has_s3),
+        )
 
     @staticmethod
     def _parse_s3_endpoint(endpoint: str) -> tuple:
         """Parse an s3 endpoint into a (host, port, secure) tuple.
 
         The endpoint may be a full URL (e.g. "https://s3.example.com:443") or a bare
-        "host[:port]". kfp expects the host, port and TLS flag as separate values.
+        "host[:port]". The charm needs the host, port and TLS flag as separate values.
 
         When a URL scheme is present it determines TLS and the default port.
         When only a bare host[:port] is given, TLS is inferred from the port:
@@ -606,11 +630,11 @@ class MlflowCharm(CharmBase):
     def _on_get_minio_credentials(self, event: ActionEvent):
         """Returns the credentials for minio as an action response."""
         try:
-            object_storage_data = self._get_object_storage_data()
+            object_storage_data = self._get_artifact_store_data()
             event.set_results(
                 {
-                    "access-key": object_storage_data["access-key"],
-                    "secret-access-key": object_storage_data["secret-key"],
+                    "access-key": object_storage_data["access_key"],
+                    "secret-access-key": object_storage_data["secret_key"],
                 }
             )
         except ErrorWithStatus:
@@ -647,16 +671,16 @@ class MlflowCharm(CharmBase):
 
     def _ensure_bucket_exists(self) -> None:
         """Ensure bucket on object storage exists by using a boto3 client."""
-        obj = self._get_object_storage_data()
+        obj = self._get_artifact_store_data()
 
         s3_wrapper = S3BucketWrapper(
-            access_key=obj.get("access-key"),
-            secret_access_key=obj.get("secret-key"),
+            access_key=obj.get("access_key"),
+            secret_access_key=obj.get("secret_key"),
             s3_service=obj["host"],
             s3_port=obj["port"],
             secure=obj["secure"],
             region=obj["region"],
-            tls_ca_chain=obj.get("tls-ca-chain"),
+            tls_ca_chain=obj.get("tls_ca_chain"),
         )
 
         bucket_name = self._resolve_bucket_name(obj)
@@ -722,7 +746,7 @@ class MlflowCharm(CharmBase):
         """
         try:
             interfaces = self._get_interfaces()
-            object_storage = self._get_object_storage_data(interfaces)
+            object_storage = self._get_artifact_store_data(interfaces)
             relational_db_data = self._get_relational_db_data()
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
