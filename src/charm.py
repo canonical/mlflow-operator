@@ -190,9 +190,9 @@ class MlflowCharm(CharmBase):
             self.ambient_mode_ingress.on.ready, self._on_ambient_mode_ingress_ready
         )
 
-        self.framework.observe(self.on["object-storage"].relation_changed, self._on_event)
+        # object-storage and s3-credentials relation_changed events are already observed by the
+        # generic loop above; only their relation_broken events need to be observed here.
         self.framework.observe(self.on["object-storage"].relation_broken, self._on_event)
-        self.framework.observe(self.on["s3-credentials"].relation_changed, self._on_event)
         self.framework.observe(self.on["s3-credentials"].relation_broken, self._on_event)
 
         self.s3 = S3Requirer(self, relation_name="s3-credentials")

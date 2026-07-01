@@ -438,6 +438,50 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.S3BucketWrapper")
+    @patch(
+        "charm.MlflowCharm._get_object_storage_data",
+        return_value={**OBJECT_STORAGE_DATA_NORMALIZED, "bucket": ""},
+    )
+    def test_on_event_missing_bucket_sets_blocked_status(
+        self, _get_object_storage_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+    ):
+        """A missing bucket name propagates to a BlockedStatus unit status via _on_event."""
+        harness.update_config({"default_artifact_root": ""})
+        harness.begin()
+        harness.charm._on_event(None)
+        assert isinstance(harness.charm.model.unit.status, BlockedStatus)
+        assert "No object storage bucket name available" in harness.charm.model.unit.status.message
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.S3BucketWrapper")
+    @patch(
+        "charm.MlflowCharm._get_object_storage_data",
+        return_value=OBJECT_STORAGE_DATA_NORMALIZED,
+    )
+    def test_on_event_bucket_connection_error_sets_waiting_status(
+        self, _get_object_storage_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+    ):
+        """A connectivity error while ensuring the bucket propagates to a WaitingStatus."""
+        s3_wrapper = s3_wrapper_cls.return_value
+        s3_wrapper.bucket_exists.side_effect = botocore.exceptions.EndpointConnectionError(
+            endpoint_url="http://minio.namespace:9000"
+        )
+        harness.begin()
+        harness.charm._on_event(None)
+        assert isinstance(harness.charm.model.unit.status, WaitingStatus)
+        assert (
+            "Waiting for object storage to become accessible"
+            in harness.charm.model.unit.status.message
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
     @patch(
         "charm.MlflowCharm.service_environment",
         new_callable=PropertyMock,
