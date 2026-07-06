@@ -29,10 +29,8 @@ class TestDeployRunners:
             entity_url, resources=resources, application_name=CHARM_NAME, trust=True
         )
 
-        await ops_test.model.wait_for_idle(
-            apps=[CHARM_NAME], status="waiting", raise_on_blocked=True, timeout=300
-        )
-        assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "waiting"
+        await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="blocked", timeout=300)
+        assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "blocked"
 
         # Deploying grafana-agent-k8s and add all relations
         await deploy_and_assert_grafana_agent(

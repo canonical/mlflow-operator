@@ -30,6 +30,7 @@ from charmed_kubeflow_chisme.testing import (
     get_grafana_dashboards,
     get_pod_names,
 )
+from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_integrator
 from charms_dependencies import (
     ISTIO_GATEWAY,
     ISTIO_PILOT,
@@ -37,6 +38,7 @@ from charms_dependencies import (
     MINIO,
     MYSQL_K8S,
     RESOURCE_DISPATCHER,
+    S3_INTEGRATOR,
 )
 from lightkube import codecs
 from lightkube.generic_resource import (
@@ -432,6 +434,51 @@ class TestCharm:
                 MINIO.config["secret-key"].encode("utf-8")
             ).decode("utf-8"),
         }
+        poddefaults_names = [f"{CHARM_NAME}{suffix}" for suffix in PODDEFAULTS_SUFFIXES]
+        for name in poddefaults_names:
+            pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)
+            assert pod_default is not None
+
+    @pytest.mark.abort_on_fail
+    async def test_remove_object_storage_relation_expect_blocked(self, ops_test: OpsTest):
+        """Removing the object-storage relation should block the charm."""
+        await ops_test.juju(
+            "remove-relation",
+            f"{CHARM_NAME}:object-storage",
+            f"{MINIO.charm}:object-storage",
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME], status="blocked", raise_on_error=False, timeout=60 * 5
+        )
+
+    @pytest.mark.abort_on_fail
+    async def test_migrate_to_s3_integrator_expect_active(self, ops_test: OpsTest):
+        """Relating s3-integrator via s3-credentials should restore the charm to active."""
+        await deploy_and_assert_s3_integrator(
+            ops_test.model, s3_integrator=S3_INTEGRATOR, add_ca_chain=True
+        )
+        await ops_test.model.add_relation(
+            f"{CHARM_NAME}:s3-credentials", f"{S3_INTEGRATOR.charm}:s3-credentials"
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME], status="active", raise_on_error=False, timeout=60 * 10
+        )
+
+    @pytest.mark.abort_on_fail
+    async def test_new_user_namespace_has_manifests_after_migration(
+        self, ops_test: OpsTest, lightkube_client: lightkube.Client, namespace: str
+    ):
+        """After migrating to s3-integrator, the workload still dispatches user manifests.
+
+        The s3-integrator generates random credentials, so assert that the expected keys are
+        dispatched into the user namespace rather than their exact values.
+        """
+        time.sleep(30)  # sync can take up to 10 seconds for reconciliation loop to trigger
+        secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
+        secret = lightkube_client.get(Secret, secret_name, namespace=namespace)
+        assert set(secret.data.keys()) == {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
+        for value in secret.data.values():
+            assert value
         poddefaults_names = [f"{CHARM_NAME}{suffix}" for suffix in PODDEFAULTS_SUFFIXES]
         for name in poddefaults_names:
             pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)
