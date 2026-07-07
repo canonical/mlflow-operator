@@ -379,14 +379,15 @@ class MlflowCharm(CharmBase):
     def secrets_context(self) -> dict:
         try:
             interfaces = self._get_interfaces()
-            object_storage = self._get_artifact_store_data(interfaces)
+            artifact_store_data = self._get_artifact_store_data(interfaces)
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
         secrets_context = {
             "app_name": self.app.name,
-            "access_key": object_storage["access_key"],
-            "secret_access_key": object_storage["secret_key"],
+            "access_key": artifact_store_data["access_key"],
+            "secret_access_key": artifact_store_data["secret_key"],
+            "is_proxy_mode_enabled": self.proxy_mode,
         }
         return secrets_context
 
@@ -394,21 +395,25 @@ class MlflowCharm(CharmBase):
     def poddefaults_context(self) -> dict:
         try:
             interfaces = self._get_interfaces()
-            object_storage = self._get_artifact_store_data(interfaces)
+            artifact_store_data = self._get_artifact_store_data(interfaces)
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
-        scheme = "https" if object_storage["secure"] else "http"
-        s3_endpoint = f"{scheme}://{object_storage['host']}:{object_storage['port']}"
         poddefaults_context = {
             "app_name": self.app.name,
-            "s3_endpoint": s3_endpoint,
+            "s3_endpoint": self.extract_s3_endpoint(artifact_store_data),
             "mlflow_endpoint": (
                 f"http://{self.app.name}.{self._namespace}.svc.cluster.local:"
                 f"{self._mlflow_port}"
             ),
+            "is_proxy_mode_enabled": self.proxy_mode,
         }
         return poddefaults_context
+
+    @property
+    def proxy_mode(self) -> bool:
+        """Return whether the tracking server acts as a proxy to the artifact store."""
+        return self.model.config["serve_artifacts"]
 
     def _get_interfaces(self):
         """Retrieve interface object."""
@@ -606,6 +611,12 @@ class MlflowCharm(CharmBase):
         )
 
     @staticmethod
+    def _extract_s3_endpoint(artifact_store_data: ArtifactStoreData) -> str:
+        """Extract the s3 endpoint URL from the artifact store data."""
+        scheme = "https" if artifact_store_data["secure"] else "http"
+        return f"{scheme}://{artifact_store_data['host']}:{artifact_store_data['port']}"
+
+    @staticmethod
     def _parse_s3_endpoint(endpoint: str) -> tuple:
         """Parse an s3 endpoint into a (host, port, secure) tuple.
 
@@ -630,11 +641,11 @@ class MlflowCharm(CharmBase):
     def _on_get_minio_credentials(self, event: ActionEvent):
         """Returns the credentials for minio as an action response."""
         try:
-            object_storage_data = self._get_artifact_store_data()
+            artifact_store_data = self._get_artifact_store_data()
             event.set_results(
                 {
-                    "access-key": object_storage_data["access_key"],
-                    "secret-access-key": object_storage_data["secret_key"],
+                    "access-key": artifact_store_data["access_key"],
+                    "secret-access-key": artifact_store_data["secret_key"],
                 }
             )
         except ErrorWithStatus:
@@ -671,19 +682,19 @@ class MlflowCharm(CharmBase):
 
     def _ensure_bucket_exists(self) -> None:
         """Ensure bucket on object storage exists by using a boto3 client."""
-        obj = self._get_artifact_store_data()
+        artifact_store_data = self._get_artifact_store_data()
 
         s3_wrapper = S3BucketWrapper(
-            access_key=obj.get("access_key"),
-            secret_access_key=obj.get("secret_key"),
-            s3_service=obj["host"],
-            s3_port=obj["port"],
-            secure=obj["secure"],
-            region=obj["region"],
-            tls_ca_chain=obj.get("tls_ca_chain"),
+            access_key=artifact_store_data.get("access_key"),
+            secret_access_key=artifact_store_data.get("secret_key"),
+            s3_service=artifact_store_data["host"],
+            s3_port=artifact_store_data["port"],
+            secure=artifact_store_data["secure"],
+            region=artifact_store_data["region"],
+            tls_ca_chain=artifact_store_data.get("tls_ca_chain"),
         )
 
-        bucket_name = self._resolve_bucket_name(obj)
+        bucket_name = self._resolve_bucket_name(artifact_store_data)
         try:
             self.unit.status = MaintenanceStatus(f"Checking if bucket {bucket_name} exists.")
             # Check if bucket already exists
@@ -746,20 +757,33 @@ class MlflowCharm(CharmBase):
         """
         try:
             interfaces = self._get_interfaces()
-            object_storage = self._get_artifact_store_data(interfaces)
+            artifact_store_data = self._get_artifact_store_data(interfaces)
             relational_db_data = self._get_relational_db_data()
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
 
-        return {
+        environment_variables = {
             "MLFLOW_BACKEND_STORE_URI": f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}",  # noqa: E501
-            "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{self._resolve_bucket_name(object_storage)}",
+            "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{self._resolve_bucket_name(artifact_store_data)}",
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
             "MLFLOW_PORT": self._mlflow_port,
             "MLFLOW_SERVE_ARTIFACTS": "False",
         }
+
+        if self.proxy_mode:
+            environment_variables.update(
+                {
+                    "AWS_ACCESS_KEY_ID": artifact_store_data["access_key"],
+                    "AWS_SECRET_ACCESS_KEY": artifact_store_data["secret_key"],
+                    "MLFLOW_S3_ENDPOINT_URL": self._extract_s3_endpoint(artifact_store_data),
+                    # TODO: how about artifact destination?
+                    "MLFLOW_SERVE_ARTIFACTS": "True",
+                }
+            )
+
+        return environment_variables
 
     def _reconcile_policy_resource_manager(self):
         if not self.unit.is_leader():
@@ -803,6 +827,10 @@ class MlflowCharm(CharmBase):
             template = Template(Path(file).read_text())
             rendered_template = template.render(**context)
             manifest = KubernetesManifest(rendered_template)
+            # skipping templates that render to an empty document, such as parametrized resources
+            # that are intentionally omitted when in proxy mode, so they are not sent as null:
+            if manifest.manifest is None:
+                continue
             manifests.append(manifest)
         return manifests
 

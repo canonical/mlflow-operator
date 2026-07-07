@@ -31,3 +31,11 @@ options:
     description: Deploy the NodePort service for MLFlow
     type: boolean
     default: true
+  serve_artifacts:
+    description: |
+      Whether to let the tracking server act as a proxy to interact with the artifact store on behalf of the client.
+
+      Analogous to:
+      https://mlflow.org/docs/latest/api_reference/cli.html#cmdoption-mlflow-server-serve-artifacts
+    type: boolean
+    default: false
