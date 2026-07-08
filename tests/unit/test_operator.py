@@ -14,17 +14,20 @@ from charms.istio_ingress_k8s.v0.istio_ingress_route import (
     IstioIngressRouteConfig,
     ProtocolType,
 )
+from charms.resource_dispatcher.v0.kubernetes_manifests import KUBERNETES_MANIFESTS_FIELD
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.pebble import Service
 from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
-from charm import MeshType, MlflowCharm
+from charm import PODDEFAULTS_FILES, SECRETS_FILES, MeshType, MlflowCharm
 
 BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
 DEFAULT_JUJU_APP_NAME = CHARM_NAME
 MODEL_NAME = "testing"
+
+CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS = "serve_artifacts"
 
 OBJECT_STORAGE_DATA = {
     "access-key": "minio-access-key",
@@ -61,32 +64,60 @@ RELATIONAL_DB_DATA = {
 
 SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 
-EXPECTED_ENVIRONMENT = {
+EXPECTED_SERVER_HOST = "0.0.0.0"
+EXPECTED_SERVER_METRICS_PATH = "/metrics"
+EXPECTED_SERVER_PORT = 5000
+EXPECTED_S3_ENDPOINT = (
+    f"{'https' if OBJECT_STORAGE_DATA_NORMALIZED['secure'] else 'http'}://"
+    f"{OBJECT_STORAGE_DATA_NORMALIZED['host']}:{OBJECT_STORAGE_DATA_NORMALIZED['port']}"
+)
+EXPECTED_S3_URI = f"s3://{BUCKET_NAME}"
+EXPECTED_ENVIRONMENT_NON_PROXY_MODE = {
     "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
-    "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{BUCKET_NAME}",
-    "MLFLOW_EXPOSE_PROMETHEUS": "/metrics",
-    "MLFLOW_HOST": "0.0.0.0",
-    "MLFLOW_PORT": 5000,
+    "MLFLOW_DEFAULT_ARTIFACT_ROOT": EXPECTED_S3_URI,
+    "MLFLOW_EXPOSE_PROMETHEUS": EXPECTED_SERVER_METRICS_PATH,
+    "MLFLOW_HOST": EXPECTED_SERVER_HOST,
+    "MLFLOW_PORT": EXPECTED_SERVER_PORT,
     "MLFLOW_SERVE_ARTIFACTS": "False",
 }
-EXPECTED_SERVICE = {
-    "mlflow-server": Service(
-        "mlflow-server",
-        raw={
-            "summary": "Entrypoint of mlflow-server image",
-            "startup": "enabled",
-            "override": "replace",
-            "command": "mlflow server",
-            "environment": EXPECTED_ENVIRONMENT,
-        },
-    )
+EXPECTED_ENVIRONMENT_PROXY_MODE = {
+    "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
+    "MLFLOW_EXPOSE_PROMETHEUS": EXPECTED_SERVER_METRICS_PATH,
+    "MLFLOW_HOST": EXPECTED_SERVER_HOST,
+    "MLFLOW_PORT": EXPECTED_SERVER_PORT,
+    "AWS_ACCESS_KEY_ID": OBJECT_STORAGE_DATA_NORMALIZED["access_key"],
+    "AWS_SECRET_ACCESS_KEY": OBJECT_STORAGE_DATA_NORMALIZED["secret_key"],
+    "MLFLOW_ARTIFACTS_DESTINATION": EXPECTED_S3_URI,
+    "MLFLOW_DEFAULT_ARTIFACT_ROOT": "mlflow-artifacts:/",
+    "MLFLOW_S3_ENDPOINT_URL": EXPECTED_S3_ENDPOINT,
+    "MLFLOW_SERVE_ARTIFACTS": "True",
 }
+
+
+def build_expected_pebble_service_plan(environment_variables: dict) -> dict:
+    """Build the expected pebble service plan for the given environment variables."""
+    return {
+        "mlflow-server": Service(
+            "mlflow-server",
+            raw={
+                "summary": "Entrypoint of mlflow-server image",
+                "startup": "enabled",
+                "override": "replace",
+                "command": "mlflow server",
+                "environment": environment_variables,
+            },
+        )
+    }
+
+
 EXPECTED_INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
 EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX = "/"
-EXPECTED_K8S_SERVICE_HTTP_PORT = 5000
+EXPECTED_K8S_SERVICE_HTTP_PORT = EXPECTED_SERVER_PORT
 RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE = "istio-ingress-route"
 RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE = "ingress"
 RELATION_ENDPOINT_FOR_SERVICE_MESH = "service-mesh"
+RELATION_ENDPOINT_FOR_SECRETS = "secrets"
+RELATION_ENDPOINT_FOR_PODDEFAULTS = "pod-defaults"
 
 INGRESS_DATA = {
     "prefix": EXPECTED_INGRESS_PATH_MATCHED_PREFIX,
@@ -95,6 +126,94 @@ INGRESS_DATA = {
     "namespace": MODEL_NAME,
     "port": EXPECTED_K8S_SERVICE_HTTP_PORT,
 }
+
+# Rendered manifests expected from the SECRETS_FILES and PODDEFAULTS_FILES templates:
+EXPECTED_MLFLOW_ENDPOINT = (
+    f"http://{CHARM_NAME}.{MODEL_NAME}.svc.cluster.local:{EXPECTED_K8S_SERVICE_HTTP_PORT}"
+)
+EXPECTED_SECRET_MANIFEST = {
+    "apiVersion": "v1",
+    "kind": "Secret",
+    "metadata": {"name": f"{CHARM_NAME}-minio-artifact"},
+    "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"},
+}
+EXPECTED_MINIO_PODDEFAULT_MANIFEST = {
+    "apiVersion": "kubeflow.org/v1alpha1",
+    "kind": "PodDefault",
+    "metadata": {"name": f"{CHARM_NAME}-access-minio"},
+    "spec": {
+        "desc": "Allow access to Minio",
+        "selector": {"matchLabels": {"access-minio": "true"}},
+        "env": [
+            {
+                "name": "AWS_ACCESS_KEY_ID",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": f"{CHARM_NAME}-minio-artifact",
+                        "key": "AWS_ACCESS_KEY_ID",
+                        "optional": False,
+                    }
+                },
+            },
+            {
+                "name": "AWS_SECRET_ACCESS_KEY",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": f"{CHARM_NAME}-minio-artifact",
+                        "key": "AWS_SECRET_ACCESS_KEY",
+                        "optional": False,
+                    }
+                },
+            },
+            {"name": "MINIO_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
+        ],
+    },
+}
+EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE = {
+    "apiVersion": "kubeflow.org/v1alpha1",
+    "kind": "PodDefault",
+    "metadata": {"name": f"{CHARM_NAME}-minio"},
+    "spec": {
+        "desc": "Allow access to MLFlow",
+        "env": [
+            {"name": "MLFLOW_S3_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
+            {"name": "MLFLOW_TRACKING_URI", "value": EXPECTED_MLFLOW_ENDPOINT},
+        ],
+        "selector": {"matchLabels": {"mlflow-server-minio": "true"}},
+    },
+}
+EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE = {
+    "apiVersion": "kubeflow.org/v1alpha1",
+    "kind": "PodDefault",
+    "metadata": {"name": f"{CHARM_NAME}-minio"},
+    "spec": {
+        "desc": "Allow access to MLFlow",
+        "env": [
+            {"name": "MLFLOW_TRACKING_URI", "value": EXPECTED_MLFLOW_ENDPOINT},
+        ],
+        "selector": {"matchLabels": {"mlflow-server-minio": "true"}},
+    },
+}
+
+
+def build_secrets_context(is_proxy_mode_enabled: bool) -> dict:
+    """Build a rendering context with only the keys the secrets templates require."""
+    return {
+        "app_name": CHARM_NAME,
+        "access_key": "a",
+        "secret_access_key": "s",
+        "is_proxy_mode_enabled": is_proxy_mode_enabled,
+    }
+
+
+def build_poddefaults_context(is_proxy_mode_enabled: bool) -> dict:
+    """Build a rendering context with only the keys the poddefaults templates require."""
+    return {
+        "app_name": CHARM_NAME,
+        "s3_endpoint": EXPECTED_S3_ENDPOINT,
+        "mlflow_endpoint": EXPECTED_MLFLOW_ENDPOINT,
+        "is_proxy_mode_enabled": is_proxy_mode_enabled,
+    }
 
 
 @pytest.fixture(scope="function")
@@ -113,7 +232,7 @@ def harness() -> Harness:
     return harness
 
 
-def add_relation(harness: harness, relation_endpoint: str) -> tuple[int, str]:
+def add_relation(harness: Harness, relation_endpoint: str) -> tuple[int, str]:
     """Add the given relation to the charm unit, using a random name for the remote application."""
     relation_provider_app_name = f"app-for-{relation_endpoint}"
 
@@ -486,13 +605,19 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm.service_environment",
         new_callable=PropertyMock,
-        return_value=EXPECTED_ENVIRONMENT,
+    )
+    @pytest.mark.parametrize(
+        "expected_environment",
+        [EXPECTED_ENVIRONMENT_PROXY_MODE, EXPECTED_ENVIRONMENT_NON_PROXY_MODE],
+        ids=["proxy-mode", "no-proxy-mode"],
     )
     def test_update_layer_success(
         self,
-        _: MagicMock,
+        mock_service_environment: PropertyMock,
         harness: Harness,
+        expected_environment,
     ):
+        mock_service_environment.return_value = expected_environment
         harness.begin()
         update_layer(
             harness.charm._container_name,
@@ -500,7 +625,9 @@ class TestCharm:
             harness.charm._mlflow_server_layer,
             harness.charm.logger,
         )
-        assert harness.charm.container.get_plan().services == EXPECTED_SERVICE
+        assert harness.charm.container.get_plan().services == build_expected_pebble_service_plan(
+            expected_environment
+        )
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -509,18 +636,106 @@ class TestCharm:
     @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
     @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_artifact_store_data")
+    @pytest.mark.parametrize(
+        "serve_artifacts, expected_environment",
+        [
+            # config option to serve artifacts not explicitly set -> default value -> no proxy mode:
+            (None, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
+            # config option to serve artifacts explicitly set to False -> no proxy mode:
+            (False, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
+            # config option to serve artifacts explicitly set to True -> proxy mode:
+            (True, EXPECTED_ENVIRONMENT_PROXY_MODE),
+        ],
+        ids=["default-no-proxy-mode", "no-proxy-mode", "proxy-mode"],
+    )
     def test_generate_environment(
         self,
         mock_get_artifact_store_data,
         harness: Harness,
+        serve_artifacts,
+        expected_environment,
     ):
         mock_get_artifact_store_data.return_value = {
             **OBJECT_STORAGE_DATA_NORMALIZED,
             "bucket": "",
         }
+        if serve_artifacts is not None:
+            harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
         harness.begin()
         envs = harness.charm._generate_environment()
-        assert envs == EXPECTED_ENVIRONMENT
+        assert envs == expected_environment
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
+    def test_proxy_mode(self, harness: Harness, serve_artifacts):
+        """Test that the proxy_mode property mirrors the serve_artifacts config option."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
+        harness.begin()
+        assert harness.charm.proxy_mode is serve_artifacts
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "secure, expected_scheme",
+        [(False, "http"), (True, "https")],
+        ids=["insecure", "secure"],
+    )
+    def test_extract_s3_endpoint(self, harness: Harness, secure, expected_scheme):
+        """Test that the S3 endpoint URL is correctly extracted from artifact store data."""
+        harness.begin()
+        artifact_store_data = {**OBJECT_STORAGE_DATA_NORMALIZED, "secure": secure}
+        endpoint = harness.charm._extract_s3_endpoint(artifact_store_data)
+        assert endpoint == (
+            f"{expected_scheme}://"
+            f"{OBJECT_STORAGE_DATA_NORMALIZED['host']}:{OBJECT_STORAGE_DATA_NORMALIZED['port']}"
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data",
+        return_value=OBJECT_STORAGE_DATA_NORMALIZED,
+    )
+    @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
+    def test_secrets_context(self, _: MagicMock, harness: Harness, serve_artifacts):
+        """Test that the context for secrets carries the expected data."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
+        harness.begin()
+        context = harness.charm.secrets_context
+        assert context["app_name"] == DEFAULT_JUJU_APP_NAME
+        assert context["access_key"] == OBJECT_STORAGE_DATA_NORMALIZED["access_key"]
+        assert context["secret_access_key"] == OBJECT_STORAGE_DATA_NORMALIZED["secret_key"]
+        assert context["is_proxy_mode_enabled"] is serve_artifacts
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data",
+        return_value=OBJECT_STORAGE_DATA_NORMALIZED,
+    )
+    @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
+    def test_poddefaults_context(self, _: MagicMock, harness: Harness, serve_artifacts):
+        """Test that the context for poddefaults carries the expected data."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
+        harness.begin()
+        context = harness.charm.poddefaults_context
+        assert context["app_name"] == DEFAULT_JUJU_APP_NAME
+        assert context["s3_endpoint"] == EXPECTED_S3_ENDPOINT
+        assert context["mlflow_endpoint"] == (
+            f"http://{CHARM_NAME}.{MODEL_NAME}.svc.cluster.local:{EXPECTED_K8S_SERVICE_HTTP_PORT}"
+        )
+        assert context["is_proxy_mode_enabled"] is serve_artifacts
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -543,6 +758,48 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @pytest.mark.parametrize(
+        "manifest_files, context, expected_manifests",
+        [
+            (
+                SECRETS_FILES,
+                build_secrets_context(is_proxy_mode_enabled=False),
+                [EXPECTED_SECRET_MANIFEST],
+            ),
+            (SECRETS_FILES, build_secrets_context(is_proxy_mode_enabled=True), []),
+            (
+                PODDEFAULTS_FILES,
+                build_poddefaults_context(is_proxy_mode_enabled=False),
+                [
+                    EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+                    EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
+                ],
+            ),
+            (
+                PODDEFAULTS_FILES,
+                build_poddefaults_context(is_proxy_mode_enabled=True),
+                [EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE],
+            ),
+        ],
+        ids=[
+            "secrets-proxy-disabled-renders-secret",
+            "secrets-proxy-enabled-skips-empty-document",
+            "poddefaults-proxy-disabled-renders-both",
+            "poddefaults-proxy-enabled-skips-minio-poddefault",
+        ],
+    )
+    def test_create_manifests_skips_empty_documents(
+        self, harness: Harness, manifest_files, context, expected_manifests
+    ):
+        """Test that templates rendering to empty documents are skipped."""
+        harness.begin()
+        manifests_items = harness.charm._create_manifests(manifest_files, context)
+        assert [item.manifest for item in manifests_items] == expected_manifests
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
     @patch("charm.MlflowCharm._create_manifests")
     @patch("charm.MlflowCharm.secrets_manifests_wrapper")
     def test_send_manifests(
@@ -554,6 +811,73 @@ class TestCharm:
         harness.begin()
         harness.charm._send_manifests({}, [""], secrets_manifests_wrapper)
         secrets_manifests_wrapper.send_data.assert_called_once()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "relation_endpoint, wrapper_attribute, manifest_files, context, expected_manifests",
+        [
+            (
+                RELATION_ENDPOINT_FOR_SECRETS,
+                "secrets_manifests_wrapper",
+                SECRETS_FILES,
+                build_secrets_context(is_proxy_mode_enabled=False),
+                [EXPECTED_SECRET_MANIFEST],
+            ),
+            (
+                RELATION_ENDPOINT_FOR_SECRETS,
+                "secrets_manifests_wrapper",
+                SECRETS_FILES,
+                build_secrets_context(is_proxy_mode_enabled=True),
+                [],
+            ),
+            (
+                RELATION_ENDPOINT_FOR_PODDEFAULTS,
+                "poddefaults_manifests_wrapper",
+                PODDEFAULTS_FILES,
+                build_poddefaults_context(is_proxy_mode_enabled=False),
+                [
+                    EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+                    EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
+                ],
+            ),
+            (
+                RELATION_ENDPOINT_FOR_PODDEFAULTS,
+                "poddefaults_manifests_wrapper",
+                PODDEFAULTS_FILES,
+                build_poddefaults_context(is_proxy_mode_enabled=True),
+                [EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE],
+            ),
+        ],
+        ids=[
+            "secrets-proxy-disabled-applies-secret",
+            "secrets-proxy-enabled-applies-nothing",
+            "poddefaults-proxy-disabled-applies-both",
+            "poddefaults-proxy-enabled-applies-mlflow-poddefault-only",
+        ],
+    )
+    def test_send_manifests_applies_rendered_manifests_to_relation(
+        self,
+        harness: Harness,
+        relation_endpoint,
+        wrapper_attribute,
+        manifest_files,
+        context,
+        expected_manifests,
+    ):
+        """Test that the rendered manifests are written verbatim to the relation databag."""
+        relation_id, _ = add_relation(harness, relation_endpoint=relation_endpoint)
+        harness.begin()
+
+        harness.charm._send_manifests(
+            context, manifest_files, getattr(harness.charm, wrapper_attribute)
+        )
+
+        application_databag = harness.get_relation_data(relation_id, harness.charm.app.name)
+        applied_manifests = json.loads(application_databag[KUBERNETES_MANIFESTS_FIELD])
+        assert applied_manifests == expected_manifests
 
     @patch(
         "charm.KubernetesServicePatch",
