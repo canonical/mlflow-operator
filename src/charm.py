@@ -308,6 +308,7 @@ class MlflowCharm(CharmBase):
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
             "MLFLOW_PORT": self._mlflow_port,
+            "MLFLOW_SERVE_ARTIFACTS": "False",
         }
 
     def _charmed_mlflow_layer(self, env_vars) -> Layer:
