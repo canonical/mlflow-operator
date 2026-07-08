@@ -401,7 +401,7 @@ class MlflowCharm(CharmBase):
             raise error
         poddefaults_context = {
             "app_name": self.app.name,
-            "s3_endpoint": self.extract_s3_endpoint(artifact_store_data),
+            "s3_endpoint": self._extract_s3_endpoint(artifact_store_data),
             "mlflow_endpoint": (
                 f"http://{self.app.name}.{self._namespace}.svc.cluster.local:"
                 f"{self._mlflow_port}"
