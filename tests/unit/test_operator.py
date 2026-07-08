@@ -67,6 +67,7 @@ EXPECTED_ENVIRONMENT = {
     "MLFLOW_EXPOSE_PROMETHEUS": "/metrics",
     "MLFLOW_HOST": "0.0.0.0",
     "MLFLOW_PORT": 5000,
+    "MLFLOW_SERVE_ARTIFACTS": "False",
 }
 EXPECTED_SERVICE = {
     "mlflow-server": Service(

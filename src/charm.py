@@ -758,6 +758,7 @@ class MlflowCharm(CharmBase):
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
             "MLFLOW_PORT": self._mlflow_port,
+            "MLFLOW_SERVE_ARTIFACTS": "False",
         }
 
     def _reconcile_policy_resource_manager(self):
