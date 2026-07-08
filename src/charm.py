@@ -763,23 +763,30 @@ class MlflowCharm(CharmBase):
             self.logger.error("Failed to generate container configuration.")
             raise error
 
+        s3_bucket_uri = f"s3://{self._resolve_bucket_name(artifact_store_data)}"
+
         environment_variables = {
             "MLFLOW_BACKEND_STORE_URI": f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}",  # noqa: E501
-            "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{self._resolve_bucket_name(artifact_store_data)}",
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
             "MLFLOW_PORT": self._mlflow_port,
-            "MLFLOW_SERVE_ARTIFACTS": "False",
         }
-
         if self.proxy_mode:
             environment_variables.update(
                 {
                     "AWS_ACCESS_KEY_ID": artifact_store_data["access_key"],
                     "AWS_SECRET_ACCESS_KEY": artifact_store_data["secret_key"],
+                    "MLFLOW_ARTIFACTS_DESTINATION": s3_bucket_uri,
+                    "MLFLOW_DEFAULT_ARTIFACT_ROOT": "mlflow-artifacts:/",
                     "MLFLOW_S3_ENDPOINT_URL": self._extract_s3_endpoint(artifact_store_data),
-                    # TODO: how about artifact destination?
                     "MLFLOW_SERVE_ARTIFACTS": "True",
+                }
+            )
+        else:
+            environment_variables.update(
+                {
+                    "MLFLOW_DEFAULT_ARTIFACT_ROOT": s3_bucket_uri,
+                    "MLFLOW_SERVE_ARTIFACTS": "False",
                 }
             )
 
