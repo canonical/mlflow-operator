@@ -731,10 +731,6 @@ class MlflowCharm(CharmBase):
         AWS_CA_BUNDLE environment variable set in `_generate_environment`. Non-proxy mode and
         stores without a CA chain need no bundle.
         """
-        if not self.container.can_connect():
-            raise ErrorWithStatus(
-                f"Container {self._container_name} is not ready", WaitingStatus
-            )
         tls_ca_chain = artifact_store_data["tls_ca_chain"]
         if self.proxy_mode and tls_ca_chain:
             self.container.push(
@@ -801,9 +797,6 @@ class MlflowCharm(CharmBase):
                 "MLFLOW_S3_ENDPOINT_URL": self._extract_s3_endpoint(artifact_store_data),
                 "MLFLOW_SERVE_ARTIFACTS": "True",
             }
-            # In proxy mode the server writes artifacts to the S3 store itself. For a TLS store
-            # with a custom CA, boto3 trusts it via the CA bundle that _reconcile_s3_ca_bundle
-            # pushes into the container, referenced here through AWS_CA_BUNDLE.
             if artifact_store_data["tls_ca_chain"]:
                 proxy_environment_variables["AWS_CA_BUNDLE"] = S3_CA_BUNDLE_CONTAINER_PATH
             environment_variables.update(proxy_environment_variables)
@@ -889,8 +882,6 @@ class MlflowCharm(CharmBase):
 
             self._ensure_bucket_exists()
 
-            self._reconcile_s3_ca_bundle(self._get_artifact_store_data(interfaces))
-
             update_layer(
                 self._container_name, self._container, self._mlflow_server_layer, self.logger
             )
@@ -899,6 +890,9 @@ class MlflowCharm(CharmBase):
                 raise ErrorWithStatus(
                     f"Container {self._container_name} is not ready", WaitingStatus
                 )
+
+            self._reconcile_s3_ca_bundle(self._get_artifact_store_data(interfaces))
+
             self._reconcile_policy_resource_manager()
 
             if not self.exporter_container.can_connect():
