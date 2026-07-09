@@ -79,6 +79,9 @@ SECRETS_FILES = [
     "src/secrets/mlflow-minio-artifact.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
+# Path inside the workload container where the artifact store's TLS CA bundle is written, so the
+# tracking server can trust the store while proxying artifact writes in proxy mode.
+S3_CA_BUNDLE_CONTAINER_PATH = "/etc/mlflow/s3-ca-bundle.pem"
 
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
@@ -720,6 +723,24 @@ class MlflowCharm(CharmBase):
             self.logger.warning(f"{msg}: {e}")
             raise ErrorWithStatus(msg, WaitingStatus)
 
+    def _reconcile_s3_ca_bundle(self, artifact_store_data: ArtifactStoreData) -> None:
+        """Push the artifact store's TLS CA bundle into the workload container when required.
+
+        In proxy mode the tracking server proxies artifact writes to the S3 store itself, so it
+        must trust the store's TLS CA. The bundle is written to the path referenced by the
+        AWS_CA_BUNDLE environment variable set in `_generate_environment`. Non-proxy mode and
+        stores without a CA chain need no bundle.
+        """
+        if not self.container.can_connect():
+            raise ErrorWithStatus(
+                f"Container {self._container_name} is not ready", WaitingStatus
+            )
+        tls_ca_chain = artifact_store_data["tls_ca_chain"]
+        if self.proxy_mode and tls_ca_chain:
+            self.container.push(
+                S3_CA_BUNDLE_CONTAINER_PATH, "\n".join(tls_ca_chain), make_dirs=True
+            )
+
     def _check_leader(self):
         """Check if this unit is a leader."""
         if not self.unit.is_leader():
@@ -772,16 +793,20 @@ class MlflowCharm(CharmBase):
             "MLFLOW_PORT": self._mlflow_port,
         }
         if self.proxy_mode:
-            environment_variables.update(
-                {
-                    "AWS_ACCESS_KEY_ID": artifact_store_data["access_key"],
-                    "AWS_SECRET_ACCESS_KEY": artifact_store_data["secret_key"],
-                    "MLFLOW_ARTIFACTS_DESTINATION": s3_bucket_uri,
-                    "MLFLOW_DEFAULT_ARTIFACT_ROOT": "mlflow-artifacts:/",
-                    "MLFLOW_S3_ENDPOINT_URL": self._extract_s3_endpoint(artifact_store_data),
-                    "MLFLOW_SERVE_ARTIFACTS": "True",
-                }
-            )
+            proxy_environment_variables = {
+                "AWS_ACCESS_KEY_ID": artifact_store_data["access_key"],
+                "AWS_SECRET_ACCESS_KEY": artifact_store_data["secret_key"],
+                "MLFLOW_ARTIFACTS_DESTINATION": s3_bucket_uri,
+                "MLFLOW_DEFAULT_ARTIFACT_ROOT": "mlflow-artifacts:/",
+                "MLFLOW_S3_ENDPOINT_URL": self._extract_s3_endpoint(artifact_store_data),
+                "MLFLOW_SERVE_ARTIFACTS": "True",
+            }
+            # In proxy mode the server writes artifacts to the S3 store itself. For a TLS store
+            # with a custom CA, boto3 trusts it via the CA bundle that _reconcile_s3_ca_bundle
+            # pushes into the container, referenced here through AWS_CA_BUNDLE.
+            if artifact_store_data["tls_ca_chain"]:
+                proxy_environment_variables["AWS_CA_BUNDLE"] = S3_CA_BUNDLE_CONTAINER_PATH
+            environment_variables.update(proxy_environment_variables)
         else:
             environment_variables.update(
                 {
@@ -863,6 +888,8 @@ class MlflowCharm(CharmBase):
             self._check_no_conflicting_ingress_relations()
 
             self._ensure_bucket_exists()
+
+            self._reconcile_s3_ca_bundle(self._get_artifact_store_data(interfaces))
 
             update_layer(
                 self._container_name, self._container, self._mlflow_server_layer, self.logger

@@ -20,7 +20,13 @@ from ops.pebble import Service
 from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
-from charm import PODDEFAULTS_FILES, SECRETS_FILES, MeshType, MlflowCharm
+from charm import (
+    PODDEFAULTS_FILES,
+    S3_CA_BUNDLE_CONTAINER_PATH,
+    SECRETS_FILES,
+    MeshType,
+    MlflowCharm,
+)
 
 BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
@@ -53,6 +59,12 @@ OBJECT_STORAGE_DATA_NORMALIZED = {
     "tls_ca_chain": None,
     "is_s3": True,
 }
+
+# A sample TLS CA chain (list of PEM certificates) as delivered by an s3 store over the relation.
+S3_TLS_CA_CHAIN = [
+    "-----BEGIN CERTIFICATE-----\nZmFrZS1yb290LWNh\n-----END CERTIFICATE-----",
+    "-----BEGIN CERTIFICATE-----\nZmFrZS1pbnRlcm1lZGlhdGU=\n-----END CERTIFICATE-----",
+]
 
 RELATIONAL_DB_DATA = {
     "database": "database",
@@ -664,6 +676,94 @@ class TestCharm:
         harness.begin()
         envs = harness.charm._generate_environment()
         assert envs == expected_environment
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
+    @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_artifact_store_data")
+    def test_generate_environment_adds_ca_bundle_for_tls_store_in_proxy_mode(
+        self,
+        mock_get_artifact_store_data,
+        harness: Harness,
+    ):
+        """A TLS artifact store in proxy mode exposes its CA to the server via AWS_CA_BUNDLE."""
+        mock_get_artifact_store_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "bucket": "",
+            "tls_ca_chain": S3_TLS_CA_CHAIN,
+        }
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: True})
+        harness.begin()
+        envs = harness.charm._generate_environment()
+        assert envs == {
+            **EXPECTED_ENVIRONMENT_PROXY_MODE,
+            "AWS_CA_BUNDLE": S3_CA_BUNDLE_CONTAINER_PATH,
+        }
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_s3_ca_bundle_pushes_bundle_in_proxy_mode_with_tls(self, harness: Harness):
+        """A TLS store in proxy mode has its CA chain pushed to the workload container."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: True})
+        harness.begin()
+        harness.charm._container.push = MagicMock()
+
+        harness.charm._reconcile_s3_ca_bundle(
+            {**OBJECT_STORAGE_DATA_NORMALIZED, "tls_ca_chain": S3_TLS_CA_CHAIN}
+        )
+
+        harness.charm._container.push.assert_called_once_with(
+            S3_CA_BUNDLE_CONTAINER_PATH, "\n".join(S3_TLS_CA_CHAIN), make_dirs=True
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "serve_artifacts, tls_ca_chain",
+        [
+            (True, None),
+            (False, S3_TLS_CA_CHAIN),
+            (False, None),
+        ],
+        ids=["proxy-mode-without-tls", "tls-without-proxy-mode", "neither"],
+    )
+    def test_reconcile_s3_ca_bundle_skips_push_when_not_needed(
+        self, harness: Harness, serve_artifacts, tls_ca_chain
+    ):
+        """The CA bundle is only pushed in proxy mode against a TLS store."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
+        harness.begin()
+        harness.charm._container.push = MagicMock()
+
+        harness.charm._reconcile_s3_ca_bundle(
+            {**OBJECT_STORAGE_DATA_NORMALIZED, "tls_ca_chain": tls_ca_chain}
+        )
+
+        harness.charm._container.push.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_s3_ca_bundle_waits_when_container_not_ready(self, harness: Harness):
+        """When the workload container is unreachable the charm waits instead of pushing."""
+        harness.set_can_connect("mlflow-server", False)
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: True})
+        harness.begin()
+
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._reconcile_s3_ca_bundle(
+                {**OBJECT_STORAGE_DATA_NORMALIZED, "tls_ca_chain": S3_TLS_CA_CHAIN}
+            )
+
+        assert exc_info.value.status == WaitingStatus("Container mlflow-server is not ready")
 
     @patch(
         "charm.KubernetesServicePatch",
