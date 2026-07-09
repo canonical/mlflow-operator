@@ -80,8 +80,8 @@ SECRETS_FILES = [
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
 # Path inside the workload container where the artifact store's TLS CA bundle is written, so the
-# tracking server can trust the store while proxying artifact writes in proxy mode.
-S3_CA_BUNDLE_CONTAINER_PATH = "/etc/mlflow/s3-ca-bundle.pem"
+# NOTE: under the Pebble user's home directory, writable by the non-root user:
+S3_CA_BUNDLE_CONTAINER_PATH = "/var/lib/pebble/default/s3-ca-bundle.pem"
 
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
