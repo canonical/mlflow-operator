@@ -531,9 +531,7 @@ class TestCharm:
             PodDefault, f"{CHARM_NAME}-access-minio", namespace=namespace
         )
         spec = access_minio_poddefault.spec
-        ca_bundle_env = next(
-            (env for env in spec["env"] if env["name"] == "AWS_CA_BUNDLE"), None
-        )
+        ca_bundle_env = next((env for env in spec["env"] if env["name"] == "AWS_CA_BUNDLE"), None)
         assert ca_bundle_env is not None
         assert ca_bundle_env["value"] == "/etc/mlflow/certs/ca-bundle.pem"
         volume = next((vol for vol in spec["volumes"] if vol["name"] == "s3-ca-bundle"), None)

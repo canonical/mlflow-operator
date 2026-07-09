@@ -989,9 +989,7 @@ class TestCharm:
             ),
             (
                 PODDEFAULTS_FILES,
-                build_poddefaults_context(
-                    is_proxy_mode_enabled=False, s3_ca_bundle_present=True
-                ),
+                build_poddefaults_context(is_proxy_mode_enabled=False, s3_ca_bundle_present=True),
                 [
                     EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA,
                     EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,

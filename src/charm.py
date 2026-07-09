@@ -396,9 +396,7 @@ class MlflowCharm(CharmBase):
             # Base64-encoded S3 CA bundle so clients doing direct (non-proxy) object storage
             # I/O can mount it and trust the store's TLS certificate. Empty when there is none.
             "s3_ca_bundle_b64": (
-                base64.b64encode("\n".join(tls_ca_chain).encode()).decode()
-                if tls_ca_chain
-                else ""
+                base64.b64encode("\n".join(tls_ca_chain).encode()).decode() if tls_ca_chain else ""
             ),
         }
         return secrets_context
