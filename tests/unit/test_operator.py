@@ -649,27 +649,35 @@ class TestCharm:
     @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
-        "serve_artifacts, expected_environment",
+        "serve_artifacts, tls_ca_chain, expected_environment",
         [
             # config option to serve artifacts not explicitly set -> default value -> no proxy mode:
-            (None, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
+            (None, None, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
             # config option to serve artifacts explicitly set to False -> no proxy mode:
-            (False, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
+            (False, None, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
             # config option to serve artifacts explicitly set to True -> proxy mode:
-            (True, EXPECTED_ENVIRONMENT_PROXY_MODE),
+            (True, None, EXPECTED_ENVIRONMENT_PROXY_MODE),
+            # proxy mode against a TLS store -> CA exposed to the server via AWS_CA_BUNDLE:
+            (
+                True,
+                S3_TLS_CA_CHAIN,
+                {**EXPECTED_ENVIRONMENT_PROXY_MODE, "AWS_CA_BUNDLE": S3_CA_BUNDLE_CONTAINER_PATH},
+            ),
         ],
-        ids=["default-no-proxy-mode", "no-proxy-mode", "proxy-mode"],
+        ids=["default-no-proxy-mode", "no-proxy-mode", "proxy-mode", "proxy-mode-with-tls"],
     )
     def test_generate_environment(
         self,
         mock_get_artifact_store_data,
         harness: Harness,
         serve_artifacts,
+        tls_ca_chain,
         expected_environment,
     ):
         mock_get_artifact_store_data.return_value = {
             **OBJECT_STORAGE_DATA_NORMALIZED,
             "bucket": "",
+            "tls_ca_chain": tls_ca_chain,
         }
         if serve_artifacts is not None:
             harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
@@ -684,24 +692,33 @@ class TestCharm:
     @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
     @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_artifact_store_data")
-    def test_generate_environment_adds_ca_bundle_for_tls_store_in_proxy_mode(
+    @pytest.mark.parametrize(
+        "serve_artifacts, tls_ca_chain, expected_environment",
+        [
+            (True, None, EXPECTED_ENVIRONMENT_PROXY_MODE),
+            (False, S3_TLS_CA_CHAIN, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
+        ],
+        ids=["proxy-mode-without-tls", "tls-without-proxy-mode"],
+    )
+    def test_generate_environment_omits_ca_bundle_when_not_needed(
         self,
         mock_get_artifact_store_data,
         harness: Harness,
+        serve_artifacts,
+        tls_ca_chain,
+        expected_environment,
     ):
-        """A TLS artifact store in proxy mode exposes its CA to the server via AWS_CA_BUNDLE."""
+        """AWS_CA_BUNDLE is only exposed for a TLS artifact store in proxy mode."""
         mock_get_artifact_store_data.return_value = {
             **OBJECT_STORAGE_DATA_NORMALIZED,
             "bucket": "",
-            "tls_ca_chain": S3_TLS_CA_CHAIN,
+            "tls_ca_chain": tls_ca_chain,
         }
-        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: True})
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
         harness.begin()
         envs = harness.charm._generate_environment()
-        assert envs == {
-            **EXPECTED_ENVIRONMENT_PROXY_MODE,
-            "AWS_CA_BUNDLE": S3_CA_BUNDLE_CONTAINER_PATH,
-        }
+        assert "AWS_CA_BUNDLE" not in envs
+        assert envs == expected_environment
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -752,18 +769,24 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_reconcile_s3_ca_bundle_waits_when_container_not_ready(self, harness: Harness):
-        """When the workload container is unreachable the charm waits instead of pushing."""
+    @patch("charm.S3BucketWrapper")
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data",
+        return_value={**OBJECT_STORAGE_DATA_NORMALIZED, "tls_ca_chain": S3_TLS_CA_CHAIN},
+    )
+    def test_on_event_skips_ca_bundle_push_when_container_not_ready(
+        self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+    ):
+        """_on_event stops before pushing the CA bundle when the workload container is down."""
         harness.set_can_connect("mlflow-server", False)
         harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: True})
         harness.begin()
+        harness.charm._container.push = MagicMock()
 
-        with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._reconcile_s3_ca_bundle(
-                {**OBJECT_STORAGE_DATA_NORMALIZED, "tls_ca_chain": S3_TLS_CA_CHAIN}
-            )
+        harness.charm._on_event(None)
 
-        assert exc_info.value.status == WaitingStatus("Container mlflow-server is not ready")
+        harness.charm._container.push.assert_not_called()
+        assert not isinstance(harness.charm.model.unit.status, ActiveStatus)
 
     @patch(
         "charm.KubernetesServicePatch",
