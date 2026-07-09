@@ -3,6 +3,7 @@
 # See LICENSE file for licensing details.
 #
 
+import base64
 import logging
 from pathlib import Path
 from typing import List, Optional, TypedDict
@@ -386,11 +387,19 @@ class MlflowCharm(CharmBase):
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
+        tls_ca_chain = artifact_store_data["tls_ca_chain"]
         secrets_context = {
             "app_name": self.app.name,
             "access_key": artifact_store_data["access_key"],
             "secret_access_key": artifact_store_data["secret_key"],
             "is_proxy_mode_enabled": self.proxy_mode,
+            # Base64-encoded S3 CA bundle so clients doing direct (non-proxy) object storage
+            # I/O can mount it and trust the store's TLS certificate. Empty when there is none.
+            "s3_ca_bundle_b64": (
+                base64.b64encode("\n".join(tls_ca_chain).encode()).decode()
+                if tls_ca_chain
+                else ""
+            ),
         }
         return secrets_context
 
@@ -410,6 +419,9 @@ class MlflowCharm(CharmBase):
                 f"{self._mlflow_port}"
             ),
             "is_proxy_mode_enabled": self.proxy_mode,
+            # Whether to mount the S3 CA bundle into client pods and point AWS_CA_BUNDLE at it,
+            # so their direct (non-proxy) boto3 connections trust the store's TLS certificate.
+            "s3_ca_bundle_present": bool(artifact_store_data["tls_ca_chain"]),
         }
         return poddefaults_context
 

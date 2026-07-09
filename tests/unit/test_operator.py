@@ -1,6 +1,7 @@
 # Copyright 2021 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+import base64
 import json
 from unittest.mock import MagicMock, PropertyMock, patch
 
@@ -65,6 +66,9 @@ S3_TLS_CA_CHAIN = [
     "-----BEGIN CERTIFICATE-----\nZmFrZS1yb290LWNh\n-----END CERTIFICATE-----",
     "-----BEGIN CERTIFICATE-----\nZmFrZS1pbnRlcm1lZGlhdGU=\n-----END CERTIFICATE-----",
 ]
+
+# The same CA chain as embedded (joined + base64-encoded) into the artifact-store Secret's data.
+EXPECTED_S3_CA_BUNDLE_B64 = base64.b64encode("\n".join(S3_TLS_CA_CHAIN).encode()).decode()
 
 RELATIONAL_DB_DATA = {
     "database": "database",
@@ -149,6 +153,11 @@ EXPECTED_SECRET_MANIFEST = {
     "metadata": {"name": f"{CHARM_NAME}-minio-artifact"},
     "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"},
 }
+# Secret variant for a TLS artifact store: the CA bundle is embedded (base64) under `data`.
+EXPECTED_SECRET_MANIFEST_WITH_CA = {
+    **EXPECTED_SECRET_MANIFEST,
+    "data": {"ca-bundle.pem": EXPECTED_S3_CA_BUNDLE_B64},
+}
 EXPECTED_MINIO_PODDEFAULT_MANIFEST = {
     "apiVersion": "kubeflow.org/v1alpha1",
     "kind": "PodDefault",
@@ -181,6 +190,30 @@ EXPECTED_MINIO_PODDEFAULT_MANIFEST = {
         ],
     },
 }
+# access-minio PodDefault variant for a TLS artifact store: the CA bundle Secret key is mounted
+# read-only into client pods and AWS_CA_BUNDLE points boto3 at it.
+EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA = {
+    **EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+    "spec": {
+        **EXPECTED_MINIO_PODDEFAULT_MANIFEST["spec"],
+        "env": [
+            *EXPECTED_MINIO_PODDEFAULT_MANIFEST["spec"]["env"],
+            {"name": "AWS_CA_BUNDLE", "value": "/etc/mlflow/certs/ca-bundle.pem"},
+        ],
+        "volumeMounts": [
+            {"name": "s3-ca-bundle", "mountPath": "/etc/mlflow/certs", "readOnly": True},
+        ],
+        "volumes": [
+            {
+                "name": "s3-ca-bundle",
+                "secret": {
+                    "secretName": f"{CHARM_NAME}-minio-artifact",
+                    "items": [{"key": "ca-bundle.pem", "path": "ca-bundle.pem"}],
+                },
+            },
+        ],
+    },
+}
 EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE = {
     "apiVersion": "kubeflow.org/v1alpha1",
     "kind": "PodDefault",
@@ -208,23 +241,27 @@ EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE = {
 }
 
 
-def build_secrets_context(is_proxy_mode_enabled: bool) -> dict:
+def build_secrets_context(is_proxy_mode_enabled: bool, s3_ca_bundle_b64: str = "") -> dict:
     """Build a rendering context with only the keys the secrets templates require."""
     return {
         "app_name": CHARM_NAME,
         "access_key": "a",
         "secret_access_key": "s",
         "is_proxy_mode_enabled": is_proxy_mode_enabled,
+        "s3_ca_bundle_b64": s3_ca_bundle_b64,
     }
 
 
-def build_poddefaults_context(is_proxy_mode_enabled: bool) -> dict:
+def build_poddefaults_context(
+    is_proxy_mode_enabled: bool, s3_ca_bundle_present: bool = False
+) -> dict:
     """Build a rendering context with only the keys the poddefaults templates require."""
     return {
         "app_name": CHARM_NAME,
         "s3_endpoint": EXPECTED_S3_ENDPOINT,
         "mlflow_endpoint": EXPECTED_MLFLOW_ENDPOINT,
         "is_proxy_mode_enabled": is_proxy_mode_enabled,
+        "s3_ca_bundle_present": s3_ca_bundle_present,
     }
 
 
@@ -840,13 +877,26 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
-    @patch(
-        "charm.MlflowCharm._get_artifact_store_data",
-        return_value=OBJECT_STORAGE_DATA_NORMALIZED,
-    )
+    @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
-    def test_secrets_context(self, _: MagicMock, harness: Harness, serve_artifacts):
+    @pytest.mark.parametrize(
+        "tls_ca_chain, expected_ca_bundle_b64",
+        [(None, ""), (S3_TLS_CA_CHAIN, EXPECTED_S3_CA_BUNDLE_B64)],
+        ids=["without-tls", "with-tls"],
+    )
+    def test_secrets_context(
+        self,
+        mock_get_artifact_store_data: MagicMock,
+        harness: Harness,
+        serve_artifacts,
+        tls_ca_chain,
+        expected_ca_bundle_b64,
+    ):
         """Test that the context for secrets carries the expected data."""
+        mock_get_artifact_store_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "tls_ca_chain": tls_ca_chain,
+        }
         harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
         harness.begin()
         context = harness.charm.secrets_context
@@ -854,19 +904,33 @@ class TestCharm:
         assert context["access_key"] == OBJECT_STORAGE_DATA_NORMALIZED["access_key"]
         assert context["secret_access_key"] == OBJECT_STORAGE_DATA_NORMALIZED["secret_key"]
         assert context["is_proxy_mode_enabled"] is serve_artifacts
+        assert context["s3_ca_bundle_b64"] == expected_ca_bundle_b64
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
-    @patch(
-        "charm.MlflowCharm._get_artifact_store_data",
-        return_value=OBJECT_STORAGE_DATA_NORMALIZED,
-    )
+    @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
-    def test_poddefaults_context(self, _: MagicMock, harness: Harness, serve_artifacts):
+    @pytest.mark.parametrize(
+        "tls_ca_chain, expected_ca_bundle_present",
+        [(None, False), (S3_TLS_CA_CHAIN, True)],
+        ids=["without-tls", "with-tls"],
+    )
+    def test_poddefaults_context(
+        self,
+        mock_get_artifact_store_data: MagicMock,
+        harness: Harness,
+        serve_artifacts,
+        tls_ca_chain,
+        expected_ca_bundle_present,
+    ):
         """Test that the context for poddefaults carries the expected data."""
+        mock_get_artifact_store_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "tls_ca_chain": tls_ca_chain,
+        }
         harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
         harness.begin()
         context = harness.charm.poddefaults_context
@@ -876,6 +940,7 @@ class TestCharm:
             f"http://{CHARM_NAME}.{MODEL_NAME}.svc.cluster.local:{EXPECTED_K8S_SERVICE_HTTP_PORT}"
         )
         assert context["is_proxy_mode_enabled"] is serve_artifacts
+        assert context["s3_ca_bundle_present"] is expected_ca_bundle_present
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -906,6 +971,13 @@ class TestCharm:
                 build_secrets_context(is_proxy_mode_enabled=False),
                 [EXPECTED_SECRET_MANIFEST],
             ),
+            (
+                SECRETS_FILES,
+                build_secrets_context(
+                    is_proxy_mode_enabled=False, s3_ca_bundle_b64=EXPECTED_S3_CA_BUNDLE_B64
+                ),
+                [EXPECTED_SECRET_MANIFEST_WITH_CA],
+            ),
             (SECRETS_FILES, build_secrets_context(is_proxy_mode_enabled=True), []),
             (
                 PODDEFAULTS_FILES,
@@ -917,14 +989,26 @@ class TestCharm:
             ),
             (
                 PODDEFAULTS_FILES,
+                build_poddefaults_context(
+                    is_proxy_mode_enabled=False, s3_ca_bundle_present=True
+                ),
+                [
+                    EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA,
+                    EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
+                ],
+            ),
+            (
+                PODDEFAULTS_FILES,
                 build_poddefaults_context(is_proxy_mode_enabled=True),
                 [EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE],
             ),
         ],
         ids=[
             "secrets-proxy-disabled-renders-secret",
+            "secrets-proxy-disabled-with-tls-embeds-ca-bundle",
             "secrets-proxy-enabled-skips-empty-document",
             "poddefaults-proxy-disabled-renders-both",
+            "poddefaults-proxy-disabled-with-tls-mounts-ca-bundle",
             "poddefaults-proxy-enabled-skips-minio-poddefault",
         ],
     )

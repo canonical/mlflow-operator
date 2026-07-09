@@ -461,6 +461,18 @@ class TestCharm:
             pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)
             assert pod_default is not None
 
+        # MinIO is served over plain HTTP (no TLS CA), so no CA bundle must be embedded in the
+        # Secret nor wired into the access-minio PodDefault.
+        assert "ca-bundle.pem" not in secret.data
+        access_minio_poddefault = lightkube_client.get(
+            PodDefault, f"{CHARM_NAME}-access-minio", namespace=namespace
+        )
+        spec = access_minio_poddefault.spec
+        env_var_names = {env_var["name"] for env_var in spec["env"]}
+        assert "AWS_CA_BUNDLE" not in env_var_names
+        assert not spec.get("volumes")
+        assert not spec.get("volumeMounts")
+
     @pytest.mark.abort_on_fail
     async def test_remove_object_storage_relation_expect_blocked(self, ops_test: OpsTest):
         """Removing the object-storage relation should block the charm."""
@@ -498,13 +510,40 @@ class TestCharm:
         time.sleep(30)  # sync can take up to 10 seconds for reconciliation loop to trigger
         secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
         secret = lightkube_client.get(Secret, secret_name, namespace=namespace)
-        assert set(secret.data.keys()) == {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
+        # The migrated s3-integrator advertises a TLS CA chain, so the CA bundle is embedded
+        # alongside the (randomly generated) credentials for direct client I/O.
+        assert set(secret.data.keys()) == {
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "ca-bundle.pem",
+        }
         for value in secret.data.values():
             assert value
+        ca_bundle = base64.b64decode(secret.data["ca-bundle.pem"]).decode("utf-8")
+        assert "BEGIN CERTIFICATE" in ca_bundle
         poddefaults_names = [f"{CHARM_NAME}{suffix}" for suffix in PODDEFAULTS_SUFFIXES]
         for name in poddefaults_names:
             pod_default = lightkube_client.get(PodDefault, name, namespace=namespace)
             assert pod_default is not None
+
+        # The access-minio PodDefault must now wire the CA bundle into client pods.
+        access_minio_poddefault = lightkube_client.get(
+            PodDefault, f"{CHARM_NAME}-access-minio", namespace=namespace
+        )
+        spec = access_minio_poddefault.spec
+        ca_bundle_env = next(
+            (env for env in spec["env"] if env["name"] == "AWS_CA_BUNDLE"), None
+        )
+        assert ca_bundle_env is not None
+        assert ca_bundle_env["value"] == "/etc/mlflow/certs/ca-bundle.pem"
+        volume = next((vol for vol in spec["volumes"] if vol["name"] == "s3-ca-bundle"), None)
+        assert volume is not None
+        assert volume["secret"]["secretName"] == secret_name
+        volume_mount = next(
+            (vm for vm in spec["volumeMounts"] if vm["name"] == "s3-ca-bundle"), None
+        )
+        assert volume_mount is not None
+        assert volume_mount["mountPath"] == "/etc/mlflow/certs"
 
     @pytest.mark.abort_on_fail
     async def test_enable_proxy_mode_expect_active(self, ops_test: OpsTest):

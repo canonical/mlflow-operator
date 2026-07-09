@@ -10,6 +10,7 @@ kubeflow-profiles helpers/fixtures) but provides object storage through the
 ``object-storage``. This is the recommended setup for any new MLflow deployments.
 """
 
+import base64
 import logging
 import os
 import subprocess
@@ -548,14 +549,43 @@ class TestCharm:
         secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
         secret = lightkube_client.get(Secret, secret_name, namespace=profile_namespace)
         # The s3-integrator generates random credentials, so assert the expected keys are
-        # dispatched into the user namespace rather than their exact values.
-        assert set(secret.data.keys()) == {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
+        # dispatched into the user namespace rather than their exact values. Because this store
+        # advertises a TLS CA chain, the CA bundle is embedded too for direct client I/O.
+        assert set(secret.data.keys()) == {
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "ca-bundle.pem",
+        }
         for value in secret.data.values():
             assert value
+        # The embedded CA bundle must be a valid PEM certificate chain once base64-decoded.
+        ca_bundle = base64.b64decode(secret.data["ca-bundle.pem"]).decode("utf-8")
+        assert "BEGIN CERTIFICATE" in ca_bundle
+
         poddefaults_names = [f"{CHARM_NAME}{suffix}" for suffix in PODDEFAULTS_SUFFIXES]
         for name in poddefaults_names:
             pod_default = lightkube_client.get(PodDefault, name, namespace=profile_namespace)
             assert pod_default is not None
+
+        # The access-minio PodDefault must wire the CA bundle into client pods so their direct
+        # (non-proxy) boto3 connections trust the TLS artifact store.
+        access_minio_poddefault = lightkube_client.get(
+            PodDefault, f"{CHARM_NAME}-access-minio", namespace=profile_namespace
+        )
+        spec = access_minio_poddefault.spec
+        ca_bundle_env = next(
+            (env for env in spec["env"] if env["name"] == "AWS_CA_BUNDLE"), None
+        )
+        assert ca_bundle_env is not None
+        assert ca_bundle_env["value"] == "/etc/mlflow/certs/ca-bundle.pem"
+        volume = next((vol for vol in spec["volumes"] if vol["name"] == "s3-ca-bundle"), None)
+        assert volume is not None
+        assert volume["secret"]["secretName"] == secret_name
+        volume_mount = next(
+            (vm for vm in spec["volumeMounts"] if vm["name"] == "s3-ca-bundle"), None
+        )
+        assert volume_mount is not None
+        assert volume_mount["mountPath"] == "/etc/mlflow/certs"
 
     @pytest.mark.abort_on_fail
     async def test_deploy_and_relate_second_ingress(self, ops_test: OpsTest):
