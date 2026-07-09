@@ -649,22 +649,37 @@ class TestCharm:
     @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
-        "serve_artifacts, tls_ca_chain, expected_environment",
+        "serve_artifacts, tls_ca_chain, region, expected_environment",
         [
             # config option to serve artifacts not explicitly set -> default value -> no proxy mode:
-            (None, None, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
+            (None, None, "", EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
             # config option to serve artifacts explicitly set to False -> no proxy mode:
-            (False, None, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
+            (False, None, "", EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
             # config option to serve artifacts explicitly set to True -> proxy mode:
-            (True, None, EXPECTED_ENVIRONMENT_PROXY_MODE),
+            (True, None, "", EXPECTED_ENVIRONMENT_PROXY_MODE),
             # proxy mode against a TLS store -> CA exposed to the server via AWS_CA_BUNDLE:
             (
                 True,
                 S3_TLS_CA_CHAIN,
+                "",
                 {**EXPECTED_ENVIRONMENT_PROXY_MODE, "AWS_CA_BUNDLE": S3_CA_BUNDLE_CONTAINER_PATH},
             ),
+            # proxy mode against a store advertising a region -> region exposed to the server via
+            # AWS_DEFAULT_REGION:
+            (
+                True,
+                None,
+                "us-east-1",
+                {**EXPECTED_ENVIRONMENT_PROXY_MODE, "AWS_DEFAULT_REGION": "us-east-1"},
+            ),
         ],
-        ids=["default-no-proxy-mode", "no-proxy-mode", "proxy-mode", "proxy-mode-with-tls"],
+        ids=[
+            "default-no-proxy-mode",
+            "no-proxy-mode",
+            "proxy-mode",
+            "proxy-mode-with-tls",
+            "proxy-mode-with-region",
+        ],
     )
     def test_generate_environment(
         self,
@@ -672,12 +687,14 @@ class TestCharm:
         harness: Harness,
         serve_artifacts,
         tls_ca_chain,
+        region,
         expected_environment,
     ):
         mock_get_artifact_store_data.return_value = {
             **OBJECT_STORAGE_DATA_NORMALIZED,
             "bucket": "",
             "tls_ca_chain": tls_ca_chain,
+            "region": region,
         }
         if serve_artifacts is not None:
             harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})

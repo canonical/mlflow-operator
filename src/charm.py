@@ -799,6 +799,8 @@ class MlflowCharm(CharmBase):
             }
             if artifact_store_data["tls_ca_chain"]:
                 proxy_environment_variables["AWS_CA_BUNDLE"] = S3_CA_BUNDLE_CONTAINER_PATH
+            if artifact_store_data["region"]:
+                proxy_environment_variables["AWS_DEFAULT_REGION"] = artifact_store_data["region"]
             environment_variables.update(proxy_environment_variables)
         else:
             environment_variables.update(
