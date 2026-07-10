@@ -80,8 +80,9 @@ SECRETS_FILES = [
     "src/secrets/mlflow-minio-artifact.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
-# Path inside the workload container where the artifact store's TLS CA bundle is written, so the
-# NOTE: under the Pebble user's home directory, writable by the non-root user:
+# path inside the workload container where the artifact store's TLS CA bundle is written to be then
+# referenced by the AWS_CA_BUNDLE environment variable, so that the tracking server can trust the
+# store's TLS certificate - NOTE: under Pebble's home directory, writable by the non-root user:
 S3_CA_BUNDLE_CONTAINER_PATH = "/var/lib/pebble/default/s3-ca-bundle.pem"
 
 
@@ -393,8 +394,8 @@ class MlflowCharm(CharmBase):
             "access_key": artifact_store_data["access_key"],
             "secret_access_key": artifact_store_data["secret_key"],
             "is_proxy_mode_enabled": self.proxy_mode,
-            # Base64-encoded S3 CA bundle so clients doing direct (non-proxy) object storage
-            # I/O can mount it and trust the store's TLS certificate. Empty when there is none.
+            # base64-encoded S3 CA bundle for clients to directly trust the artifact store when in
+            # no proxy mode and when private TLS certificates are used:
             "s3_ca_bundle_b64": (
                 base64.b64encode("\n".join(tls_ca_chain).encode()).decode() if tls_ca_chain else ""
             ),
@@ -417,8 +418,8 @@ class MlflowCharm(CharmBase):
                 f"{self._mlflow_port}"
             ),
             "is_proxy_mode_enabled": self.proxy_mode,
-            # Whether to mount the S3 CA bundle into client pods and point AWS_CA_BUNDLE at it,
-            # so their direct (non-proxy) boto3 connections trust the store's TLS certificate.
+            # whether to mount the S3 CA bundle into client pods and point AWS_CA_BUNDLE at it, so
+            # their direct (no-proxy mode) connections trust the artifact store's TLS certificate:
             "s3_ca_bundle_present": bool(artifact_store_data["tls_ca_chain"]),
         }
         return poddefaults_context
@@ -736,10 +737,13 @@ class MlflowCharm(CharmBase):
     def _reconcile_s3_ca_bundle(self, artifact_store_data: ArtifactStoreData) -> None:
         """Push the artifact store's TLS CA bundle into the workload container when required.
 
-        In proxy mode the tracking server proxies artifact writes to the S3 store itself, so it
-        must trust the store's TLS CA. The bundle is written to the path referenced by the
-        AWS_CA_BUNDLE environment variable set in `_generate_environment`. Non-proxy mode and
-        stores without a CA chain need no bundle.
+        In proxy mode the tracking server directly accesses the S3 store, so it must trust the
+        store's TLS CA. The bundle is written to the path referenced by the AWS_CA_BUNDLE
+        environment variable set in `_generate_environment`, a variable that the boto3 client that
+        the tracking server relies on behind the scenes.
+
+        When the tracking server is not in proxy mode or when the artifact store does not have a
+        private CA chain, this is not necessary.
         """
         tls_ca_chain = artifact_store_data["tls_ca_chain"]
         if self.proxy_mode and tls_ca_chain:
