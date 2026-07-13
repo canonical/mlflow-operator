@@ -1540,7 +1540,6 @@ class TestCharm:
 
         harness.charm._reconcile_database_schema.assert_not_called()
 
-
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
