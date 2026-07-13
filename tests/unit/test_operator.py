@@ -1325,9 +1325,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_is_database_schema_out_of_date_true_marker_among_other_output(
-        self, harness: Harness
-    ):
+    def test_is_database_schema_out_of_date_true_marker_among_other_output(self, harness: Harness):
         """The marker is detected even when surrounded by other stdout (e.g. warnings)."""
         harness.begin()
         process = MagicMock()
@@ -1336,9 +1334,7 @@ class TestCharm:
             "",
         )
         harness.charm.container.exec = MagicMock(return_value=process)
-        assert harness.charm._is_database_schema_out_of_date(
-            "mysql+pymysql://u:p@h:3306/mlflow"
-        )
+        assert harness.charm._is_database_schema_out_of_date("mysql+pymysql://u:p@h:3306/mlflow")
 
     @patch(
         "charm.KubernetesServicePatch",
