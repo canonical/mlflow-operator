@@ -16,14 +16,16 @@ from charms.istio_ingress_k8s.v0.istio_ingress_route import (
     ProtocolType,
 )
 from charms.resource_dispatcher.v0.kubernetes_manifests import KUBERNETES_MANIFESTS_FIELD
-from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
-from ops.pebble import Service
+from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
+from ops.pebble import ExecError, Service
 from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import (
     PODDEFAULTS_FILES,
     S3_CA_BUNDLE_CONTAINER_PATH,
+    SCHEMA_CHECK_SNIPPET,
+    SCHEMA_OUT_OF_DATE_MARKER,
     SECRETS_FILES,
     MeshType,
     MlflowCharm,
@@ -1265,6 +1267,279 @@ class TestCharm:
                 "secret-access-key": OBJECT_STORAGE_DATA["secret-key"],
             }
         )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_run_database_migration_success(self, harness: Harness):
+        harness.begin()
+        backend_store_uri = "mysql+pymysql://username:password@host:port/mlflow"
+        process = MagicMock()
+        process.wait_output.return_value = ("migration output", "")
+        exec_mock = MagicMock(return_value=process)
+        harness.charm.container.exec = exec_mock
+        harness.charm._run_database_migration(backend_store_uri)
+        exec_mock.assert_called_once_with(["mlflow", "db", "upgrade", backend_store_uri])
+        # the command output is consumed so failures surface as an ExecError:
+        process.wait_output.assert_called_once_with()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_run_database_migration_failure(self, harness: Harness):
+        harness.begin()
+        process = MagicMock()
+        process.wait_output.side_effect = ExecError(
+            command=["mlflow", "db", "upgrade"], exit_code=1, stdout="", stderr="boom"
+        )
+        harness.charm.container.exec = MagicMock(return_value=process)
+        with pytest.raises(ErrorWithStatus) as e_info:
+            harness.charm._run_database_migration("mysql+pymysql://u:p@h:3306/mlflow")
+        assert e_info.value.status.__class__ is BlockedStatus
+        assert "Database schema migration failed" in str(e_info)
+        # the raw stderr (which can contain the backend store URI/credentials) is not leaked into
+        # the user-facing status message:
+        assert "boom" not in str(e_info.value.status.message)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_is_database_schema_out_of_date_true(self, harness: Harness):
+        harness.begin()
+        backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
+        process = MagicMock()
+        process.wait_output.return_value = (f"{SCHEMA_OUT_OF_DATE_MARKER}\n", "")
+        exec_mock = MagicMock(return_value=process)
+        harness.charm.container.exec = exec_mock
+        assert harness.charm._is_database_schema_out_of_date(backend_store_uri)
+        # the probe is read-only: it runs MLflow's own schema verification snippet and never
+        # invokes `mlflow db upgrade`:
+        exec_mock.assert_called_once_with(
+            ["python3", "-c", SCHEMA_CHECK_SNIPPET, backend_store_uri]
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_is_database_schema_out_of_date_true_marker_among_other_output(
+        self, harness: Harness
+    ):
+        """The marker is detected even when surrounded by other stdout (e.g. warnings)."""
+        harness.begin()
+        process = MagicMock()
+        process.wait_output.return_value = (
+            f"some warning line\n{SCHEMA_OUT_OF_DATE_MARKER}\ntrailing\n",
+            "",
+        )
+        harness.charm.container.exec = MagicMock(return_value=process)
+        assert harness.charm._is_database_schema_out_of_date(
+            "mysql+pymysql://u:p@h:3306/mlflow"
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_is_database_schema_out_of_date_false_when_up_to_date(self, harness: Harness):
+        harness.begin()
+        process = MagicMock()
+        process.wait_output.return_value = ("", "")
+        harness.charm.container.exec = MagicMock(return_value=process)
+        assert not harness.charm._is_database_schema_out_of_date(
+            "mysql+pymysql://u:p@h:3306/mlflow"
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_is_database_schema_out_of_date_raises_waiting_on_exec_error(self, harness: Harness):
+        """An undeterminable schema state raises Waiting so the caller can defer and retry."""
+        harness.begin()
+        process = MagicMock()
+        process.wait_output.side_effect = ExecError(
+            command=["python3"], exit_code=1, stdout="", stderr="unrelated failure"
+        )
+        harness.charm.container.exec = MagicMock(return_value=process)
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._is_database_schema_out_of_date("mysql+pymysql://u:p@h:3306/mlflow")
+        assert exc_info.value.status_type is WaitingStatus
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_database_schema_migrates_when_out_of_date(self, harness: Harness):
+        harness.begin()
+        backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
+        harness.charm._get_backend_store_uri = MagicMock(return_value=backend_store_uri)
+        harness.charm._is_database_schema_out_of_date = MagicMock(return_value=True)
+
+        # capture the unit status observed at the moment the migration is invoked, to assert the
+        # Maintenance status is set *before* the (potentially long-running) migration starts:
+        observed_status = {}
+
+        def _record_status(uri):
+            observed_status["value"] = harness.charm.unit.status
+
+        harness.charm._run_database_migration = MagicMock(side_effect=_record_status)
+        harness.charm._reconcile_database_schema()
+
+        harness.charm._is_database_schema_out_of_date.assert_called_once_with(backend_store_uri)
+        harness.charm._run_database_migration.assert_called_once_with(backend_store_uri)
+        assert isinstance(observed_status["value"], MaintenanceStatus)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_database_schema_noop_when_up_to_date(self, harness: Harness):
+        harness.begin()
+        harness.charm._get_backend_store_uri = MagicMock(
+            return_value="mysql+pymysql://u:p@h:3306/mlflow"
+        )
+        harness.charm._is_database_schema_out_of_date = MagicMock(return_value=False)
+        harness.charm._run_database_migration = MagicMock()
+        harness.charm._reconcile_database_schema()
+        harness.charm._run_database_migration.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_database_schema_propagates_migration_failure(self, harness: Harness):
+        """A migration failure bubbles up as an ErrorWithStatus for the reconcile handler."""
+        harness.begin()
+        harness.charm._get_backend_store_uri = MagicMock(
+            return_value="mysql+pymysql://u:p@h:3306/mlflow"
+        )
+        harness.charm._is_database_schema_out_of_date = MagicMock(return_value=True)
+        harness.charm._run_database_migration = MagicMock(
+            side_effect=ErrorWithStatus("boom", BlockedStatus)
+        )
+        with pytest.raises(ErrorWithStatus):
+            harness.charm._reconcile_database_schema()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_upgrade_charm_migrates_schema(self, harness: Harness):
+        """On the upgrade-charm (refresh) event the migration runs.
+
+        The workload replan and status reconcile are left to the `config-changed` handler that
+        Juju always fires right after `upgrade-charm`, so this handler must NOT call `_on_event`
+        itself; it only migrates the schema.
+        """
+        harness.set_leader(True)
+        harness.begin()
+        harness.charm._reconcile_database_schema = MagicMock()
+        harness.charm._on_event = MagicMock()
+        event = MagicMock()
+
+        with patch.object(harness.charm.container, "can_connect", return_value=True):
+            harness.charm._on_upgrade_charm(event)
+
+        harness.charm._reconcile_database_schema.assert_called_once()
+        harness.charm._on_event.assert_not_called()
+        event.defer.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_upgrade_charm_skips_migration_when_not_leader(self, harness: Harness):
+        """A non-leader unit does not run the migration and does not defer."""
+        harness.set_leader(False)
+        harness.begin()
+        harness.charm._reconcile_database_schema = MagicMock()
+        event = MagicMock()
+
+        with patch.object(harness.charm.container, "can_connect", return_value=True):
+            harness.charm._on_upgrade_charm(event)
+
+        harness.charm._reconcile_database_schema.assert_not_called()
+        event.defer.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_upgrade_charm_defers_when_container_not_ready(self, harness: Harness):
+        """When the container is unreachable the migration is skipped and the event is deferred."""
+        harness.set_leader(True)
+        harness.begin()
+        harness.charm._reconcile_database_schema = MagicMock()
+        event = MagicMock()
+
+        with patch.object(harness.charm.container, "can_connect", return_value=False):
+            harness.charm._on_upgrade_charm(event)
+
+        harness.charm._reconcile_database_schema.assert_not_called()
+        event.defer.assert_called_once()
+        assert harness.charm.model.unit.status.__class__ is WaitingStatus
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_upgrade_charm_defers_on_transient_schema_failure(self, harness: Harness):
+        """An undeterminable schema state (Waiting) defers the event so it is retried."""
+        harness.set_leader(True)
+        harness.begin()
+        harness.charm._reconcile_database_schema = MagicMock(
+            side_effect=ErrorWithStatus("cannot verify", WaitingStatus)
+        )
+        event = MagicMock()
+
+        with patch.object(harness.charm.container, "can_connect", return_value=True):
+            harness.charm._on_upgrade_charm(event)
+
+        event.defer.assert_called_once()
+        assert harness.charm.model.unit.status.__class__ is WaitingStatus
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_upgrade_charm_migration_failure_blocks_without_deferring(self, harness: Harness):
+        """A genuine migration failure (Blocked) sets the status and is NOT deferred."""
+        harness.set_leader(True)
+        harness.begin()
+        harness.charm._reconcile_database_schema = MagicMock(
+            side_effect=ErrorWithStatus("boom", BlockedStatus)
+        )
+        event = MagicMock()
+
+        with patch.object(harness.charm.container, "can_connect", return_value=True):
+            harness.charm._on_upgrade_charm(event)
+
+        assert harness.charm.model.unit.status.__class__ is BlockedStatus
+        event.defer.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_event_does_not_migrate_database_schema(self, harness: Harness):
+        """A regular reconcile must NOT migrate the schema; that is scoped to upgrade-charm."""
+        harness.begin()
+        harness.charm._check_leader = MagicMock()
+        harness.charm._get_interfaces = MagicMock(return_value={})
+        harness.charm._check_no_conflicting_ingress_relations = MagicMock()
+        harness.charm._ensure_bucket_exists = MagicMock()
+        harness.charm._reconcile_database_schema = MagicMock()
+
+        with patch("charm.update_layer", side_effect=ErrorWithStatus("stop", MaintenanceStatus)):
+            with patch.object(harness.charm.container, "can_connect", return_value=True):
+                harness.charm._on_event("some-event")
+
+        harness.charm._reconcile_database_schema.assert_not_called()
+
 
     @patch(
         "charm.KubernetesServicePatch",

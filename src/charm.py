@@ -52,7 +52,7 @@ from object_storage import S3Requirer
 from ops import ActionEvent, main
 from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
-from ops.pebble import Layer
+from ops.pebble import ExecError, Layer
 from serialized_data_interface import (
     NoCompatibleVersions,
     NoVersionsListed,
@@ -84,6 +84,31 @@ SERVICE_MESH_RELATION_NAME = "service-mesh"
 # referenced by the AWS_CA_BUNDLE environment variable, so that the tracking server can trust the
 # store's TLS certificate - NOTE: under Pebble's home directory, writable by the non-root user:
 S3_CA_BUNDLE_CONTAINER_PATH = "/var/lib/pebble/default/s3-ca-bundle.pem"
+# marker printed by the schema probe when MLflow reports an out-of-date tracking database:
+SCHEMA_OUT_OF_DATE_MARKER = "MLFLOW_SCHEMA_OUT_OF_DATE"
+# read-only snippet run in the workload container to detect whether the tracking database schema is
+# outdated with respect to the deployed MLflow version:
+# NOTE:
+# - it is and it has to be idempotent and read-only
+# - it relies on MLflow's own schema verification, which raises a stable error instructing to run
+#   `mlflow db upgrade` when the schema is out of date while treating any other outcome
+#   (up-to-date, empty/uninitialised or undeterminable state) as "not out of date"
+# - it is necessary as the `mlflow` CLI does not provide any read-only command to achieve the same
+#   result (`mlflow db upgrade` is not read-only)
+SCHEMA_CHECK_SNIPPET = f"""\
+import sys
+from mlflow.store.db.utils import _verify_schema, create_sqlalchemy_engine_with_retry
+
+engine = create_sqlalchemy_engine_with_retry(sys.argv[1])
+try:
+    _verify_schema(engine)
+except Exception as exc:
+    message = str(exc).lower()
+    if 'db upgrade' in message or 'out-of-date' in message or 'out of date' in message:
+        print('{SCHEMA_OUT_OF_DATE_MARKER}')
+        sys.exit(0)
+    raise
+"""
 
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
@@ -123,7 +148,7 @@ class MlflowCharm(CharmBase):
         self._secrets_manifests_wrapper = None
         self._poddefaults_manifests_wrapper = None
 
-        self.framework.observe(self.on.upgrade_charm, self._on_event)
+        self.framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
         self.framework.observe(self.on.config_changed, self._on_event)
         self.framework.observe(self.on.mlflow_server_pebble_ready, self._on_pebble_ready)
 
@@ -466,7 +491,88 @@ class MlflowCharm(CharmBase):
             return db_data
         raise ErrorWithStatus("Waiting for relational-db relation data", WaitingStatus)
 
-    def _validate_sdi_interface(self, interfaces: dict, relation_name: str, default_return=None):
+    def _get_backend_store_uri(self) -> str:
+        """Return the SQLAlchemy backend store URI for the `relational-db` MySQL backend.
+
+        Raises:
+            ErrorWithStatus if the `relational-db` relation or its data are not ready.
+        """
+        relational_db_data = self._get_relational_db_data()
+        return (
+            f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}"
+            f"@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}"
+        )
+
+    def _is_database_schema_out_of_date(self, backend_store_uri: str) -> bool:
+        """Return True only if MLflow reports the tracking DB schema as out of date.
+
+        Runs MLflow's own schema verification in the workload container. Any outcome other than a
+        positively detected out-of-date schema (up to date or empty/uninitialised DB) returns
+        False, so that genuine, unrelated failures are never misattributed to a required database
+        migration.
+
+        Raises:
+            ErrorWithStatus(..., Waiting) when the schema state cannot be determined (e.g. the
+            database is not yet reachable), so the caller can defer and retry rather than
+            proceeding on incomplete information.
+        """
+        try:
+            process = self.container.exec(
+                ["python3", "-c", SCHEMA_CHECK_SNIPPET, backend_store_uri]
+            )
+            stdout, _ = process.wait_output()
+        except ExecError as error:
+            self.logger.warning(
+                "Could not determine the database schema state: %s", error.stderr or error
+            )
+            raise ErrorWithStatus(
+                "Could not verify the database schema state; will retry.", WaitingStatus
+            )
+        return SCHEMA_OUT_OF_DATE_MARKER in stdout
+
+    def _run_database_migration(self, backend_store_uri: str) -> None:
+        """Run `mlflow db upgrade` in the workload container to migrate the tracking DB schema.
+
+        The `mlflow db upgrade` command is idempotent, so it is safe to run whenever the schema is
+        detected as out of date.
+
+        Raises:
+            ErrorWithStatus(..., Blocked) if the migration command fails, so the distinctive
+            failure is clearly attributable to the database migration rather than an unrelated
+            workload problem.
+        """
+        self.logger.info("Running 'mlflow db upgrade' database schema migration.")
+        try:
+            process = self.container.exec(["mlflow", "db", "upgrade", backend_store_uri])
+            process.wait_output()
+        except ExecError as error:
+            self.logger.error("Database schema migration failed: %s", error.stderr)
+            # Blocked (not Waiting) so the caller does not defer/retry: the container and database
+            # are already reachable and the schema was determinable, so a failing `mlflow db
+            # upgrade` is a non-transient problem (e.g. bad/partial schema, incompatible version
+            # jump, insufficient privileges) that needs operator intervention rather than a retry.
+            raise ErrorWithStatus(
+                "Database schema migration failed. Check the unit logs for details.",
+                BlockedStatus,
+            )
+        self.logger.info("Database schema migration completed successfully.")
+
+    def _reconcile_database_schema(self) -> None:
+        """Automatically migrate the tracking database schema when it is out of date.
+
+        Triggered as part of the reconcile logic, notably on the `upgrade-charm` (Juju refresh)
+        event, so that a charm refresh shipping an MLflow release with schema changes migrates the
+        database without manual intervention. A distinctive Maintenance status is set while the
+        migration runs.
+        """
+        backend_store_uri = self._get_backend_store_uri()
+        if self._is_database_schema_out_of_date(backend_store_uri):
+            self.unit.status = MaintenanceStatus(
+                "Database schema is out of date for the deployed MLflow version; migrating it."
+            )
+            self._run_database_migration(backend_store_uri)
+
+    def _validate_sdi_interface(self, interfaces, relation_name, default_return=None):
         """Validates data received from SerializedDataInterface, returning the data if valid.
 
         Optionally can return a default_return value when no relation is established
@@ -789,7 +895,7 @@ class MlflowCharm(CharmBase):
         try:
             interfaces = self._get_interfaces()
             artifact_store_data = self._get_artifact_store_data(interfaces)
-            relational_db_data = self._get_relational_db_data()
+            backend_store_uri = self._get_backend_store_uri()
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
@@ -797,7 +903,7 @@ class MlflowCharm(CharmBase):
         s3_bucket_uri = f"s3://{self._resolve_bucket_name(artifact_store_data)}"
 
         environment_variables = {
-            "MLFLOW_BACKEND_STORE_URI": f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}",  # noqa: E501
+            "MLFLOW_BACKEND_STORE_URI": backend_store_uri,
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
             "MLFLOW_PORT": self._mlflow_port,
@@ -840,6 +946,38 @@ class MlflowCharm(CharmBase):
         self._policy_resource_manager.reconcile(
             policies=[], mesh_type=MeshType.istio, raw_policies=[]
         )
+
+    def _on_upgrade_charm(self, event) -> None:
+        """Handle the charm-refresh (upgrade-charm) event.
+
+        Migrate an out-of-date tracking database schema so that a charm refresh shipping an MLflow
+        release with schema changes is applied automatically instead of leaving the workload to
+        crash-loop. A distinctive Maintenance status is set while the migration runs.
+
+        The workload is (re)planned and the unit status reconciled by the `config-changed` handler
+        (`_on_event`) that Juju always fires right after `upgrade-charm`, so this handler only needs
+        to migrate the schema first; it does not reconcile itself.
+
+        Transient failures (the workload container or the database not yet being reachable) surface
+        as a Waiting status and defer the event, so Juju re-emits it on a later hook and the
+        migration is retried. A genuine migration failure surfaces as a Blocked status and is not
+        deferred, as it needs manual intervention.
+        """
+        if not self.unit.is_leader():
+            self.logger.info("Not a leader, skipping database schema migration.")
+            return
+        try:
+            if not self.container.can_connect():
+                raise ErrorWithStatus(
+                    "Workload container is not ready; will retry the schema migration.",
+                    WaitingStatus,
+                )
+            self._reconcile_database_schema()
+        except ErrorWithStatus as err:
+            self.model.unit.status = err.status
+            self.logger.info(f"Event {event} stopped early with message: {str(err)}")
+            if isinstance(err.status, WaitingStatus):
+                event.defer()
 
     def _on_pebble_ready(self, _):
         """Configure started container."""
