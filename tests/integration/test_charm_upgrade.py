@@ -105,6 +105,46 @@ def _assert_tracking_server_reachable(url: str):
     assert response.status_code == 200
 
 
+async def _enable_trigger_creation_on_mysql(ops_test: OpsTest):
+    """Allow the scoped relation user to create triggers while binary logging is enabled.
+
+    The MLflow schema migration run on refresh issues a ``CREATE TRIGGER`` statement (the
+    immutability trigger added alongside the ``secrets`` table). With binary logging enabled (the
+    default on ``mysql-k8s``) MySQL rejects this for a user lacking the SUPER privilege unless the
+    global ``log_bin_trust_function_creators`` variable is set. The scoped user handed out over the
+    ``relational-db`` relation has neither, so we set the variable directly on the server using its
+    administrative (root) credentials, which does not alter the relation.
+
+    This works around the upstream MLflow bug tracked at
+    https://github.com/mlflow/mlflow/issues/19943, where the failing trigger creation leaves the
+    migration half-applied (tables created but ``alembic_version`` not advanced).
+    """
+    mysql_unit = ops_test.model.applications[MYSQL_K8S.charm].units[0]
+    action = await mysql_unit.run_action("get-password", username="root")
+    action = await action.wait()
+    root_password = action.results["password"]
+
+    mysql_pod = mysql_unit.name.replace("/", "-")
+    subprocess.run(
+        [
+            "kubectl",
+            "-n",
+            ops_test.model_name,
+            "exec",
+            mysql_pod,
+            "-c",
+            "mysql",
+            "--",
+            "mysql",
+            "-uroot",
+            f"-p{root_password}",
+            "-e",
+            "SET PERSIST log_bin_trust_function_creators = ON",
+        ],
+        check=True,
+    )
+
+
 class TestUpgrade:
     @pytest.mark.abort_on_fail
     async def test_deploy_old_revision(self, ops_test: OpsTest):
@@ -136,6 +176,7 @@ class TestUpgrade:
             raise_on_error=False,
             timeout=600,
         )
+        await _enable_trigger_creation_on_mysql(ops_test)
         await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
         await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
         await ops_test.model.wait_for_idle(
