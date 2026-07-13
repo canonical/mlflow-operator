@@ -131,6 +131,7 @@ jobs:
           - integration-object-storage
           - integration-s3
           - integration-ambient
+          - integration-upgrade
     runs-on: ubuntu-24.04
     steps:
       - name: Maximise GH runner space
