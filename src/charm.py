@@ -890,7 +890,7 @@ class MlflowCharm(CharmBase):
         """Return environment variables for the `mlflow server` command.
 
         See here how such environment variables provide defaults for `mlflow server` CLI options:
-        https://mlflow.org/docs/2.22.1/api_reference/cli.html#mlflow-server
+        https://mlflow.org/docs/3.14.0/api_reference/cli.html#mlflow-server
         """
         try:
             interfaces = self._get_interfaces()
@@ -907,6 +907,9 @@ class MlflowCharm(CharmBase):
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
             "MLFLOW_PORT": self._mlflow_port,
+            # NOTE: security middleware disable as already provided by the outer Istio layer:
+            # https://mlflow.org/docs/latest/self-hosting/security/network/#disable-security-middleware  # noqa: E501
+            "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
         }
         if self.proxy_mode:
             proxy_environment_variables = {
