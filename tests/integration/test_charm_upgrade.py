@@ -187,6 +187,11 @@ class TestUpgrade:
         await ops_test.model.applications[CHARM_NAME].remove_relation(
             "relational-db", f"{MYSQL_K8S.charm}:database"
         )
+        # TODO: settle the removal on both sides before re-adding. The charm should report the
+        # database is gone and mysql-k8s should finish deleting the old scoped user first; re-adding
+        # the relation before the previous user is torn down has been observed to leave the new user
+        # without the requested `charmed_dba` role, so the subsequent `SET PERSIST` fails (error
+        # 1227). A dedicated wait on CHARM_NAME reaching `blocked` may be needed here.
         await ops_test.model.wait_for_idle(
             apps=[MYSQL_K8S.charm],
             status="active",
@@ -199,6 +204,9 @@ class TestUpgrade:
         await ops_test.model.applications[CHARM_NAME].refresh(
             path=charm, resources=_charm_resources()
         )
+        # TODO: let the refreshed charm settle before re-establishing the relation so the new
+        # revision's `DatabaseRequires` (which requests `charmed_dba`) is the one that handles the
+        # relation-created event and writes `extra-user-roles` to the databag.
 
         await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
         await ops_test.model.wait_for_idle(

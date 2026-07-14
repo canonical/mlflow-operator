@@ -609,9 +609,22 @@ class MlflowCharm(CharmBase):
             )
             process.wait_output()
         except ExecError as error:
+            stderr = error.stderr or ""
             self.logger.warning(
-                "Could not enable trigger creation on the database: %s", error.stderr or error
+                "Could not enable trigger creation on the database: %s", stderr or error
             )
+            # MySQL error 1227 = the user lacks SUPER/SYSTEM_VARIABLES_ADMIN. This happens when the
+            # relation user was not created with the `charmed_dba` role - notably on an in-place
+            # upgrade from a revision that did not request it, since the data-platform provider only
+            # grants extra roles when the relation (and its user) is first created. Retrying will
+            # never succeed, so surface an actionable Blocked status instead of looping in Waiting.
+            if "1227" in stderr or "SYSTEM_VARIABLES_ADMIN" in stderr:
+                raise ErrorWithStatus(
+                    "Database user lacks the SYSTEM_VARIABLES_ADMIN privilege required to migrate "
+                    "the schema. Remove and re-add the 'relational-db' relation (or grant the "
+                    "'charmed_dba' role to the database user) so the charm can proceed.",
+                    BlockedStatus,
+                )
             raise ErrorWithStatus(
                 "Could not prepare the database for schema migration; will retry.", WaitingStatus
             )

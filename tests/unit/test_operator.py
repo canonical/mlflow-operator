@@ -1411,6 +1411,39 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    def test_ensure_trigger_creation_allowed_raises_blocked_on_privilege_error(
+        self, harness: Harness
+    ):
+        """A missing SYSTEM_VARIABLES_ADMIN privilege (error 1227) raises Blocked, not Waiting.
+
+        Retrying cannot succeed when the relation user was created without the `charmed_dba` role
+        (e.g. an in-place upgrade), so the charm must surface an actionable Blocked status instead
+        of looping in Waiting.
+        """
+        harness.begin()
+        process = MagicMock()
+        process.wait_output.side_effect = ExecError(
+            command=["python3"],
+            exit_code=1,
+            stdout="",
+            stderr=(
+                "pymysql.err.OperationalError: (1227, 'Access denied; you need (at least one "
+                "of) the SUPER or SYSTEM_VARIABLES_ADMIN privilege(s) for this operation')"
+            ),
+        )
+        harness.charm.container.exec = MagicMock(return_value=process)
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._ensure_trigger_creation_allowed("mysql+pymysql://u:p@h:3306/mlflow")
+        assert exc_info.value.status_type is BlockedStatus
+        # the actionable message tells the operator how to remediate:
+        assert "charmed_dba" in str(exc_info.value.status.message)
+        # the raw stderr (which can contain the backend store URI/credentials) is not leaked:
+        assert "Access denied" not in str(exc_info.value.status.message)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
     def test_reconcile_database_schema_migrates_when_out_of_date(self, harness: Harness):
         harness.begin()
         backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
