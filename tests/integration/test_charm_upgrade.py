@@ -105,46 +105,6 @@ def _assert_tracking_server_reachable(url: str):
     assert response.status_code == 200
 
 
-async def _enable_trigger_creation_on_mysql(ops_test: OpsTest):
-    """Allow the scoped relation user to create triggers while binary logging is enabled.
-
-    The MLflow schema migration run on refresh issues a ``CREATE TRIGGER`` statement (the
-    immutability trigger added alongside the ``secrets`` table). With binary logging enabled (the
-    default on ``mysql-k8s``) MySQL rejects this for a user lacking the SUPER privilege unless the
-    global ``log_bin_trust_function_creators`` variable is set. The scoped user handed out over the
-    ``relational-db`` relation has neither, so we set the variable directly on the server using its
-    administrative (root) credentials, which does not alter the relation.
-
-    This works around the upstream MLflow bug tracked at
-    https://github.com/mlflow/mlflow/issues/19943, where the failing trigger creation leaves the
-    migration half-applied (tables created but ``alembic_version`` not advanced).
-    """
-    mysql_unit = ops_test.model.applications[MYSQL_K8S.charm].units[0]
-    action = await mysql_unit.run_action("get-password", username="root")
-    action = await action.wait()
-    root_password = action.results["password"]
-
-    mysql_pod = mysql_unit.name.replace("/", "-")
-    subprocess.run(
-        [
-            "kubectl",
-            "-n",
-            ops_test.model_name,
-            "exec",
-            mysql_pod,
-            "-c",
-            "mysql",
-            "--",
-            "mysql",
-            "-uroot",
-            f"-p{root_password}",
-            "-e",
-            "SET PERSIST log_bin_trust_function_creators = ON",
-        ],
-        check=True,
-    )
-
-
 class TestUpgrade:
     @pytest.mark.abort_on_fail
     async def test_deploy_old_revision(self, ops_test: OpsTest):
@@ -176,7 +136,6 @@ class TestUpgrade:
             raise_on_error=False,
             timeout=600,
         )
-        await _enable_trigger_creation_on_mysql(ops_test)
         await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
         await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
         await ops_test.model.wait_for_idle(
@@ -213,13 +172,35 @@ class TestUpgrade:
         """Refresh to the locally built charm and assert it reconciles to active.
 
         The refresh triggers the `upgrade-charm` event, whose reconcile detects the out-of-date
-        schema and runs the migration automatically, so the unit must settle back to active
-        without any manual action.
+        schema and runs the migration automatically. That migration issues a ``CREATE TRIGGER``
+        statement (the immutability trigger added alongside the ``secrets`` table) which, with
+        binary logging enabled, MySQL rejects for a user lacking global privileges. The locally
+        built charm requests the ``charmed_dba`` role via ``extra_user_roles`` (granting
+        SYSTEM_VARIABLES_ADMIN and TRIGGER) and, using those relation credentials, persists
+        ``log_bin_trust_function_creators`` before the migration runs. The data-platform provider
+        only grants extra roles on the *first* ``database_requested`` event, which already fired
+        for the old revision without that role, so we remove the ``relational-db`` relation before
+        refreshing and re-add it afterwards so the request fires again for the new charm. The
+        pre-upgrade data is preserved because dropping the relation only deletes the scoped user,
+        not the database.
         """
+        await ops_test.model.applications[CHARM_NAME].remove_relation(
+            "relational-db", f"{MYSQL_K8S.charm}:database"
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[MYSQL_K8S.charm],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=600,
+        )
+
         charm = _built_charm(ops_test, request)
         await ops_test.model.applications[CHARM_NAME].refresh(
             path=charm, resources=_charm_resources()
         )
+
+        await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
             status="active",

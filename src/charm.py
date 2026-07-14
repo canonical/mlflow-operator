@@ -109,6 +109,23 @@ except Exception as exc:
         sys.exit(0)
     raise
 """
+# snippet run in the workload container to permit the relation user to create the immutability
+# trigger that MLflow's schema migration adds alongside the `secrets` table. With binary logging
+# enabled (the default on mysql-k8s), MySQL rejects `CREATE TRIGGER` for a user lacking the
+# SET_USER_ID/SUPER privilege (error 1419) unless the global `log_bin_trust_function_creators`
+# variable is set. The relation user requests the `charmed_dba` role, which grants
+# SYSTEM_VARIABLES_ADMIN, so the charm can itself persist that variable using the relation
+# credentials - no administrative (root) access to the database is required. `SET PERSIST` keeps
+# the setting across server restarts, and the statement is idempotent.
+# See the upstream MLflow bug: https://github.com/mlflow/mlflow/issues/19943
+ENABLE_TRIGGER_CREATION_SNIPPET = """\
+import sys
+from sqlalchemy import create_engine, text
+
+engine = create_engine(sys.argv[1])
+with engine.connect() as connection:
+    connection.execute(text('SET PERSIST log_bin_trust_function_creators = ON'))
+"""
 
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
@@ -142,7 +159,14 @@ class MlflowCharm(CharmBase):
         self._container = self.unit.get_container(self._container_name)
         self._exporter_container = self.unit.get_container(self._exporter_container_name)
         self.database = DatabaseRequires(
-            self, relation_name="relational-db", database_name=self._database_name
+            self,
+            relation_name="relational-db",
+            database_name=self._database_name,
+            # `charmed_dba` grants the relation user SYSTEM_VARIABLES_ADMIN (to persist
+            # `log_bin_trust_function_creators`) and TRIGGER, which together let MLflow's schema
+            # migration create the `secrets` immutability trigger under binary logging - see
+            # `_ensure_trigger_creation_allowed` and `ENABLE_TRIGGER_CREATION_SNIPPET`.
+            extra_user_roles="charmed_dba",
         )
 
         self._secrets_manifests_wrapper = None
@@ -557,6 +581,34 @@ class MlflowCharm(CharmBase):
             )
         self.logger.info("Database schema migration completed successfully.")
 
+    def _ensure_trigger_creation_allowed(self, backend_store_uri: str) -> None:
+        """Allow the relation user to create MLflow's `secrets` immutability trigger.
+
+        With binary logging enabled (the mysql-k8s default), MySQL rejects the `CREATE TRIGGER`
+        statement in MLflow's schema migration for a user without SET_USER_ID/SUPER (error 1419)
+        unless the global `log_bin_trust_function_creators` variable is set. The relation user is
+        granted the `charmed_dba` role (SYSTEM_VARIABLES_ADMIN), so the charm persists that
+        variable itself using the relation credentials - no root access to the database is needed.
+        The statement is idempotent and must run before the workload initialises or migrates the
+        schema.
+
+        Raises:
+            ErrorWithStatus(..., Waiting) when the variable cannot be set (e.g. the database is not
+            yet reachable), so the caller can defer and retry.
+        """
+        try:
+            process = self.container.exec(
+                ["python3", "-c", ENABLE_TRIGGER_CREATION_SNIPPET, backend_store_uri]
+            )
+            process.wait_output()
+        except ExecError as error:
+            self.logger.warning(
+                "Could not enable trigger creation on the database: %s", error.stderr or error
+            )
+            raise ErrorWithStatus(
+                "Could not prepare the database for schema migration; will retry.", WaitingStatus
+            )
+
     def _reconcile_database_schema(self) -> None:
         """Automatically migrate the tracking database schema when it is out of date.
 
@@ -566,6 +618,7 @@ class MlflowCharm(CharmBase):
         migration runs.
         """
         backend_store_uri = self._get_backend_store_uri()
+        self._ensure_trigger_creation_allowed(backend_store_uri)
         if self._is_database_schema_out_of_date(backend_store_uri):
             self.unit.status = MaintenanceStatus(
                 "Database schema is out of date for the deployed MLflow version; migrating it."
@@ -1038,6 +1091,10 @@ class MlflowCharm(CharmBase):
             self._check_no_conflicting_ingress_relations()
 
             self._ensure_bucket_exists()
+
+            # Permit the migration trigger before the workload starts and auto-initialises the
+            # schema on a fresh deployment (see `_ensure_trigger_creation_allowed`).
+            self._ensure_trigger_creation_allowed(self._get_backend_store_uri())
 
             update_layer(
                 self._container_name, self._container, self._mlflow_server_layer, self.logger

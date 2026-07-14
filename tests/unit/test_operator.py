@@ -22,6 +22,7 @@ from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import (
+    ENABLE_TRIGGER_CREATION_SNIPPET,
     PODDEFAULTS_FILES,
     S3_CA_BUNDLE_CONTAINER_PATH,
     SCHEMA_CHECK_SNIPPET,
@@ -1371,10 +1372,46 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    def test_ensure_trigger_creation_allowed_persists_variable(self, harness: Harness):
+        harness.begin()
+        backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
+        process = MagicMock()
+        process.wait_output.return_value = ("", "")
+        exec_mock = MagicMock(return_value=process)
+        harness.charm.container.exec = exec_mock
+        harness.charm._ensure_trigger_creation_allowed(backend_store_uri)
+        exec_mock.assert_called_once_with(
+            ["python3", "-c", ENABLE_TRIGGER_CREATION_SNIPPET, backend_store_uri]
+        )
+        process.wait_output.assert_called_once_with()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_ensure_trigger_creation_allowed_raises_waiting_on_exec_error(self, harness: Harness):
+        """An unreachable database raises Waiting so the caller can defer and retry."""
+        harness.begin()
+        process = MagicMock()
+        process.wait_output.side_effect = ExecError(
+            command=["python3"], exit_code=1, stdout="", stderr="cannot connect"
+        )
+        harness.charm.container.exec = MagicMock(return_value=process)
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._ensure_trigger_creation_allowed("mysql+pymysql://u:p@h:3306/mlflow")
+        assert exc_info.value.status_type is WaitingStatus
+        # the raw stderr (which can contain the backend store URI/credentials) is not leaked:
+        assert "cannot connect" not in str(exc_info.value.status.message)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
     def test_reconcile_database_schema_migrates_when_out_of_date(self, harness: Harness):
         harness.begin()
         backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
         harness.charm._get_backend_store_uri = MagicMock(return_value=backend_store_uri)
+        harness.charm._ensure_trigger_creation_allowed = MagicMock()
         harness.charm._is_database_schema_out_of_date = MagicMock(return_value=True)
 
         # capture the unit status observed at the moment the migration is invoked, to assert the
@@ -1387,6 +1424,8 @@ class TestCharm:
         harness.charm._run_database_migration = MagicMock(side_effect=_record_status)
         harness.charm._reconcile_database_schema()
 
+        # the migration trigger is permitted before the migration runs:
+        harness.charm._ensure_trigger_creation_allowed.assert_called_once_with(backend_store_uri)
         harness.charm._is_database_schema_out_of_date.assert_called_once_with(backend_store_uri)
         harness.charm._run_database_migration.assert_called_once_with(backend_store_uri)
         assert isinstance(observed_status["value"], MaintenanceStatus)
@@ -1400,6 +1439,7 @@ class TestCharm:
         harness.charm._get_backend_store_uri = MagicMock(
             return_value="mysql+pymysql://u:p@h:3306/mlflow"
         )
+        harness.charm._ensure_trigger_creation_allowed = MagicMock()
         harness.charm._is_database_schema_out_of_date = MagicMock(return_value=False)
         harness.charm._run_database_migration = MagicMock()
         harness.charm._reconcile_database_schema()
@@ -1415,6 +1455,7 @@ class TestCharm:
         harness.charm._get_backend_store_uri = MagicMock(
             return_value="mysql+pymysql://u:p@h:3306/mlflow"
         )
+        harness.charm._ensure_trigger_creation_allowed = MagicMock()
         harness.charm._is_database_schema_out_of_date = MagicMock(return_value=True)
         harness.charm._run_database_migration = MagicMock(
             side_effect=ErrorWithStatus("boom", BlockedStatus)
