@@ -191,9 +191,9 @@ class TestUpgrade:
         # database relation is gone (`blocked`) and, critically, mysql-k8s must finish deleting the
         # old scoped user and return to a stable `active`/idle state. Re-adding the relation while
         # mysql-k8s is still tearing down the previous user has been observed to leave the new user
-        # without an effective `charmed_dba` role (mysql-k8s logs "Failed to delete instance users"),
-        # so the charm's subsequent `SET PERSIST` fails with error 1227. `idle_period` ensures the
-        # provider has genuinely quiesced rather than momentarily passing through idle.
+        # without an effective `charmed_dba` role (mysql-k8s logs "Failed to delete instance
+        # users"), so the charm's subsequent `SET PERSIST` fails with error 1227. `idle_period`
+        # ensures the provider has genuinely quiesced rather than momentarily passing through idle.
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
             status="blocked",
