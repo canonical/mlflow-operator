@@ -182,8 +182,8 @@ async def fetch_response(url, headers):
     return result_status, str(result_text)
 
 
-def _assert_resource_pruned(lightkube_client, resource, name: str, namespace: str):
-    """Assert a namespaced resource has been pruned by the resource dispatcher.
+def _assert_resource_cleared(lightkube_client, resource, name: str, namespace: str):
+    """Assert a previously existing namespaced resource is cleared by resource-dispatcher.
 
     Raises a retryable AssertionError if the resource is still present, so callers can wrap this
     in a tenacity retry to give the reconciliation loop time to propagate the change.
@@ -196,7 +196,7 @@ def _assert_resource_pruned(lightkube_client, resource, name: str, namespace: st
         raise
     raise AssertionError(
         f"{resource.__name__} '{name}' still exists in namespace '{namespace}'; "
-        "expected it to be pruned in proxy mode"
+        "expected it to be cleared in proxy mode"
     )
 
 
@@ -574,14 +574,14 @@ class TestCharm:
         """In proxy mode the artifact-store credentials are no longer dispatched to users.
 
         The minio-artifact Secret and the access-minio PodDefault (which grant direct object
-        storage access) must be pruned, while the mlflow PodDefault must remain but expose only
+        storage access) must be cleared, while the mlflow PodDefault must remain but expose only
         the tracking URI, since artifacts now flow through the tracking server.
         """
         secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
-        _assert_resource_pruned(lightkube_client, Secret, secret_name, namespace)
+        _assert_resource_cleared(lightkube_client, Secret, secret_name, namespace)
 
         access_minio_poddefault_name = f"{CHARM_NAME}-access-minio"
-        _assert_resource_pruned(
+        _assert_resource_cleared(
             lightkube_client, PodDefault, access_minio_poddefault_name, namespace
         )
 
