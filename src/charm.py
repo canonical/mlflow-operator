@@ -1092,6 +1092,11 @@ class MlflowCharm(CharmBase):
 
             self._ensure_bucket_exists()
 
+            if not self.container.can_connect():
+                raise ErrorWithStatus(
+                    f"Container {self._container_name} is not ready", WaitingStatus
+                )
+
             # Permit the migration trigger before the workload starts and auto-initialises the
             # schema on a fresh deployment (see `_ensure_trigger_creation_allowed`).
             self._ensure_trigger_creation_allowed(self._get_backend_store_uri())
@@ -1099,11 +1104,6 @@ class MlflowCharm(CharmBase):
             update_layer(
                 self._container_name, self._container, self._mlflow_server_layer, self.logger
             )
-
-            if not self.container.can_connect():
-                raise ErrorWithStatus(
-                    f"Container {self._container_name} is not ready", WaitingStatus
-                )
 
             self._reconcile_s3_ca_bundle(self._get_artifact_store_data(interfaces))
 

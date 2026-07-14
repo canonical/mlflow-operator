@@ -283,6 +283,10 @@ def harness() -> Harness:
     harness.set_can_connect("mlflow-server", True)
     harness.set_can_connect("mlflow-prometheus-exporter", True)
 
+    # default no-op handler so reconcile paths that exec into the workload (e.g. enabling trigger
+    # creation on the database) succeed; tests that assert on exec override container.exec directly:
+    harness.handle_exec("mlflow-server", ["python3"], result=0)
+
     return harness
 
 
