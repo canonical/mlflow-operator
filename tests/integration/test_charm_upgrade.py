@@ -22,7 +22,8 @@ import pytest
 import requests
 import yaml
 from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
-from charms_dependencies import MINIO, MYSQL_K8S
+from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_integrator
+from charms_dependencies import MYSQL_K8S, S3_INTEGRATOR
 from lightkube.generic_resource import load_in_cluster_generic_resources
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
@@ -110,17 +111,14 @@ class TestUpgrade:
     async def test_deploy_old_revision(self, ops_test: OpsTest):
         """Deploy the older published charm revision with its database and object storage."""
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
+        await deploy_and_assert_s3_integrator(
+            ops_test.model, add_ca_chain=True, s3_integrator=S3_INTEGRATOR
+        )
         await ops_test.model.deploy(
             CHARM_NAME,
             channel=OLD_CHANNEL,
             application_name=CHARM_NAME,
             trust=True,
-        )
-        await ops_test.model.deploy(
-            MINIO.charm,
-            channel=MINIO.channel,
-            config=MINIO.config,
-            trust=MINIO.trust,
         )
         await ops_test.model.deploy(
             MYSQL_K8S.charm,
@@ -130,13 +128,15 @@ class TestUpgrade:
             trust=MYSQL_K8S.trust,
         )
         await ops_test.model.wait_for_idle(
-            apps=[MINIO.charm, MYSQL_K8S.charm],
+            apps=[S3_INTEGRATOR.charm, MYSQL_K8S.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
         )
-        await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
+        await ops_test.model.integrate(
+            f"{S3_INTEGRATOR.charm}:s3-credentials", f"{CHARM_NAME}:s3-credentials"
+        )
         await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
