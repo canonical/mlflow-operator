@@ -117,7 +117,12 @@ except Exception as exc:
 # SYSTEM_VARIABLES_ADMIN, so the charm can itself persist that variable using the relation
 # credentials - no administrative (root) access to the database is required. `SET PERSIST` keeps
 # the setting across server restarts, and the statement is idempotent.
-# See the upstream MLflow bug: https://github.com/mlflow/mlflow/issues/19943
+#
+# This is a workaround for an upstream MLflow bug: the migration unconditionally issues a
+# `CREATE TRIGGER` that cannot succeed under binary logging without elevated privileges. Once the
+# upstream fix lands and is shipped in the workload image, this snippet (and its callers,
+# `_ensure_trigger_creation_allowed`) can be removed together with the `charmed_dba` role request.
+# Upstream tracking issue: https://github.com/mlflow/mlflow/issues/19943
 ENABLE_TRIGGER_CREATION_SNIPPET = """\
 import sys
 from sqlalchemy import create_engine, text
@@ -584,13 +589,15 @@ class MlflowCharm(CharmBase):
     def _ensure_trigger_creation_allowed(self, backend_store_uri: str) -> None:
         """Allow the relation user to create MLflow's `secrets` immutability trigger.
 
-        With binary logging enabled (the mysql-k8s default), MySQL rejects the `CREATE TRIGGER`
-        statement in MLflow's schema migration for a user without SET_USER_ID/SUPER (error 1419)
-        unless the global `log_bin_trust_function_creators` variable is set. The relation user is
-        granted the `charmed_dba` role (SYSTEM_VARIABLES_ADMIN), so the charm persists that
-        variable itself using the relation credentials - no root access to the database is needed.
-        The statement is idempotent and must run before the workload initialises or migrates the
-        schema.
+        Workaround for upstream MLflow bug https://github.com/mlflow/mlflow/issues/19943: MLflow's
+        schema migration unconditionally issues a `CREATE TRIGGER` for the `secrets` table. With
+        binary logging enabled (the mysql-k8s default), MySQL rejects that statement for a user
+        without SET_USER_ID/SUPER (error 1419) unless the global `log_bin_trust_function_creators`
+        variable is set. The relation user is granted the `charmed_dba` role (SYSTEM_VARIABLES_
+        ADMIN), so the charm persists that variable itself using the relation credentials - no root
+        access to the database is needed. The statement is idempotent and must run before the
+        workload initialises or migrates the schema. Remove this method (and its callers) once the
+        upstream fix ships in the workload image.
 
         Raises:
             ErrorWithStatus(..., Waiting) when the variable cannot be set (e.g. the database is not
@@ -618,6 +625,9 @@ class MlflowCharm(CharmBase):
         migration runs.
         """
         backend_store_uri = self._get_backend_store_uri()
+        # Workaround for https://github.com/mlflow/mlflow/issues/19943: clear MySQL's binlog
+        # trigger-creation restriction before `mlflow db upgrade` runs the migration that issues
+        # the `secrets` immutability `CREATE TRIGGER`.
         self._ensure_trigger_creation_allowed(backend_store_uri)
         if self._is_database_schema_out_of_date(backend_store_uri):
             self.unit.status = MaintenanceStatus(
@@ -1097,8 +1107,9 @@ class MlflowCharm(CharmBase):
                     f"Container {self._container_name} is not ready", WaitingStatus
                 )
 
-            # Permit the migration trigger before the workload starts and auto-initialises the
-            # schema on a fresh deployment (see `_ensure_trigger_creation_allowed`).
+            # Workaround for https://github.com/mlflow/mlflow/issues/19943: clear MySQL's binlog
+            # trigger-creation restriction before the workload starts and auto-initialises the
+            # schema on a fresh deployment (issuing the `secrets` immutability `CREATE TRIGGER`).
             self._ensure_trigger_creation_allowed(self._get_backend_store_uri())
 
             update_layer(
