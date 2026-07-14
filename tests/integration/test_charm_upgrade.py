@@ -187,27 +187,18 @@ class TestUpgrade:
         await ops_test.model.applications[CHARM_NAME].remove_relation(
             "relational-db", f"{MYSQL_K8S.charm}:database"
         )
-        # Fully settle the removal on both sides before re-adding. The charm must report the
-        # database relation is gone (`blocked`) and, critically, mysql-k8s must finish deleting the
-        # old scoped user and return to a stable `active`/idle state. Re-adding the relation while
-        # mysql-k8s is still tearing down the previous user has been observed to leave the new user
-        # without an effective `charmed_dba` role (mysql-k8s logs "Failed to delete instance
-        # users"), so the charm's subsequent `SET PERSIST` fails with error 1227. `idle_period`
-        # ensures the provider has genuinely quiesced rather than momentarily passing through idle.
+        # Wait for the charm to observe the relation is gone (`blocked`) before refreshing. We do
+        # NOT wait for mysql-k8s to reach a stable idle here: on relation removal mysql-k8s can get
+        # stuck flapping `executing` while it repeatedly fails to delete the old scoped user (it
+        # logs "Failed to delete instance users"), so it may never satisfy an idle settle. That
+        # stuck teardown of the *old* user does not affect re-adding the relation, which creates a
+        # fresh scoped user (granted `charmed_dba` by the new revision's request).
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
             status="blocked",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[MYSQL_K8S.charm],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=600,
-            idle_period=60,
         )
 
         charm = _built_charm(ops_test, request)
