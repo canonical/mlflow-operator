@@ -1,3 +1,4 @@
+{%- if not is_proxy_mode_enabled %}
 apiVersion: kubeflow.org/v1alpha1
 kind: PodDefault
 metadata:
@@ -22,3 +23,21 @@ spec:
          optional: false
    - name: MINIO_ENDPOINT_URL
      value: {{ s3_endpoint }}
+   {%- if s3_ca_bundle_present %}
+   - name: AWS_CA_BUNDLE
+     value: /etc/mlflow/certs/ca-bundle.pem
+   {%- endif %}
+ {%- if s3_ca_bundle_present %}
+ volumeMounts:
+   - name: s3-ca-bundle
+     mountPath: /etc/mlflow/certs
+     readOnly: true
+ volumes:
+   - name: s3-ca-bundle
+     secret:
+       secretName: {{ app_name }}-minio-artifact
+       items:
+         - key: ca-bundle.pem
+           path: ca-bundle.pem
+ {%- endif %}
+{%- endif %}

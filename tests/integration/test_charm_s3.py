@@ -10,7 +10,9 @@ kubeflow-profiles helpers/fixtures) but provides object storage through the
 ``object-storage``. This is the recommended setup for any new MLflow deployments.
 """
 
+import base64
 import logging
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -18,6 +20,7 @@ from random import choices
 from string import ascii_lowercase
 
 import lightkube
+import mlflow
 import pytest
 import requests
 import yaml
@@ -54,6 +57,7 @@ from lightkube.generic_resource import (
     load_in_cluster_generic_resources,
 )
 from lightkube.resources.core_v1 import Namespace, Secret
+from mlflow.artifacts import download_artifacts
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_fixed
@@ -164,6 +168,24 @@ async def profile_namespace(ops_test: OpsTest, lightkube_client: lightkube.Clien
         lightkube_client.delete(Namespace, profile_name)
     except ApiError:
         pass
+
+
+def _assert_resource_cleared(lightkube_client, resource, name: str, namespace: str):
+    """Assert a previously existing namespaced resource is cleared by resource-dispatcher.
+
+    Raises a retryable AssertionError if the resource is still present, so callers can wrap this
+    in a tenacity retry to give the reconciliation loop time to propagate the change.
+    """
+    try:
+        lightkube_client.get(resource, name, namespace=namespace)
+    except ApiError as api_error:
+        if api_error.status.code == 404:
+            return
+        raise
+    raise AssertionError(
+        f"{resource.__name__} '{name}' still exists in namespace '{namespace}'; "
+        "expected it to be cleared in proxy mode"
+    )
 
 
 class TestCharm:
@@ -527,14 +549,41 @@ class TestCharm:
         secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
         secret = lightkube_client.get(Secret, secret_name, namespace=profile_namespace)
         # The s3-integrator generates random credentials, so assert the expected keys are
-        # dispatched into the user namespace rather than their exact values.
-        assert set(secret.data.keys()) == {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
+        # dispatched into the user namespace rather than their exact values. Because this store
+        # advertises a TLS CA chain, the CA bundle is embedded too for direct client I/O.
+        assert set(secret.data.keys()) == {
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "ca-bundle.pem",
+        }
         for value in secret.data.values():
             assert value
+        # The embedded CA bundle must be a valid PEM certificate chain once base64-decoded.
+        ca_bundle = base64.b64decode(secret.data["ca-bundle.pem"]).decode("utf-8")
+        assert "BEGIN CERTIFICATE" in ca_bundle
+
         poddefaults_names = [f"{CHARM_NAME}{suffix}" for suffix in PODDEFAULTS_SUFFIXES]
         for name in poddefaults_names:
             pod_default = lightkube_client.get(PodDefault, name, namespace=profile_namespace)
             assert pod_default is not None
+
+        # The access-minio PodDefault must wire the CA bundle into client pods so their direct
+        # (non-proxy) boto3 connections trust the TLS artifact store.
+        access_minio_poddefault = lightkube_client.get(
+            PodDefault, f"{CHARM_NAME}-access-minio", namespace=profile_namespace
+        )
+        spec = access_minio_poddefault.spec
+        ca_bundle_env = next((env for env in spec["env"] if env["name"] == "AWS_CA_BUNDLE"), None)
+        assert ca_bundle_env is not None
+        assert ca_bundle_env["value"] == "/etc/mlflow/certs/ca-bundle.pem"
+        volume = next((vol for vol in spec["volumes"] if vol["name"] == "s3-ca-bundle"), None)
+        assert volume is not None
+        assert volume["secret"]["secretName"] == secret_name
+        volume_mount = next(
+            (vm for vm in spec["volumeMounts"] if vm["name"] == "s3-ca-bundle"), None
+        )
+        assert volume_mount is not None
+        assert volume_mount["mountPath"] == "/etc/mlflow/certs"
 
     @pytest.mark.abort_on_fail
     async def test_deploy_and_relate_second_ingress(self, ops_test: OpsTest):
@@ -616,3 +665,107 @@ class TestCharm:
     ):
         """Verify the UI is still accessible through the ingress after the second ingress."""
         await assert_ui_is_accessible(ops_test)
+
+    @pytest.mark.abort_on_fail
+    async def test_enable_proxy_mode_expect_active(self, ops_test: OpsTest):
+        """Enabling serve_artifacts (proxy mode) must keep the charm active."""
+        await ops_test.model.applications[CHARM_NAME].set_config({"serve_artifacts": "true"})
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=60 * 10,
+            idle_period=60,
+        )
+        assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+
+    @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
+    @pytest.mark.abort_on_fail
+    async def test_ui_is_accessible_in_proxy_mode(self, lightkube_client, ops_test: OpsTest):
+        """The tracking server UI must remain reachable after switching to proxy mode."""
+        await assert_ui_is_accessible(ops_test)
+
+    @retry(stop=stop_after_delay(600), wait=wait_fixed(10), reraise=True)
+    @pytest.mark.abort_on_fail
+    async def test_proxy_mode_updates_dispatched_manifests(
+        self, ops_test: OpsTest, lightkube_client: lightkube.Client, profile_namespace: str
+    ):
+        """In proxy mode the artifact-store credentials are no longer dispatched to users.
+
+        The minio-artifact Secret and the access-minio PodDefault (which grant direct object
+        storage access) must be cleared, while the mlflow PodDefault must remain but expose only
+        the tracking URI, since artifacts now flow through the tracking server.
+        """
+        secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
+        _assert_resource_cleared(lightkube_client, Secret, secret_name, profile_namespace)
+
+        access_minio_poddefault_name = f"{CHARM_NAME}-access-minio"
+        _assert_resource_cleared(
+            lightkube_client, PodDefault, access_minio_poddefault_name, profile_namespace
+        )
+
+        mlflow_poddefault = lightkube_client.get(
+            PodDefault, f"{CHARM_NAME}-minio", namespace=profile_namespace
+        )
+        env_var_names = {env_var["name"] for env_var in mlflow_poddefault.spec["env"]}
+        assert "MLFLOW_TRACKING_URI" in env_var_names
+        assert "MLFLOW_S3_ENDPOINT_URL" not in env_var_names
+
+    @pytest.mark.abort_on_fail
+    async def test_client_logs_and_fetches_artifact_via_tracking_server(self, ops_test: OpsTest):
+        """A client without object-storage access must round-trip artifacts in proxy mode.
+
+        With serve_artifacts enabled, artifacts are proxied through the tracking server, so a
+        client that only knows the tracking URI (and has no S3 credentials) must be able to
+        complete a full artifact round-trip.
+        """
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        mlflow_subprocess = subprocess.Popen(
+            [
+                "kubectl",
+                "-n",
+                f"{ops_test.model_name}",
+                "port-forward",
+                f"svc/{CHARM_NAME}",
+                f"{mlflow_port}:{mlflow_port}",
+            ]
+        )
+        time.sleep(10)  # Must wait for port-forward
+
+        # Scrub any object-storage access from the environment so that a successful artifact
+        # round-trip can only be served by the tracking server acting as a proxy.
+        object_storage_env_vars = [
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "MLFLOW_S3_ENDPOINT_URL",
+            "MLFLOW_TRACKING_URI",
+        ]
+        saved_env_vars = {key: os.environ.pop(key, None) for key in object_storage_env_vars}
+        try:
+            tracking_uri = f"http://localhost:{mlflow_port}"
+            mlflow.set_tracking_uri(tracking_uri)
+
+            experiment_name = f"{TEST_EXPERIMENT_NAME}-proxy-{self.generate_random_string(6)}"
+            experiment_id = mlflow.create_experiment(experiment_name)
+            artifact_name = "proxied-artifact.txt"
+            artifact_content = f"proxied-{self.generate_random_string(8)}"
+
+            with mlflow.start_run(experiment_id=experiment_id) as run:
+                mlflow.log_text(artifact_content, artifact_name)
+                run_id = run.info.run_id
+
+            client = MlflowClient(tracking_uri=tracking_uri)
+            logged_artifacts = {artifact.path for artifact in client.list_artifacts(run_id)}
+            assert artifact_name in logged_artifacts
+
+            downloaded_path = download_artifacts(
+                run_id=run_id, artifact_path=artifact_name, tracking_uri=tracking_uri
+            )
+            assert Path(downloaded_path).read_text() == artifact_content
+        finally:
+            for key, value in saved_env_vars.items():
+                if value is not None:
+                    os.environ[key] = value
+            mlflow_subprocess.terminate()

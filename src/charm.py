@@ -3,6 +3,7 @@
 # See LICENSE file for licensing details.
 #
 
+import base64
 import logging
 from pathlib import Path
 from typing import List, Optional, TypedDict
@@ -79,6 +80,10 @@ SECRETS_FILES = [
     "src/secrets/mlflow-minio-artifact.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
+# path inside the workload container where the artifact store's TLS CA bundle is written to be then
+# referenced by the AWS_CA_BUNDLE environment variable, so that the tracking server can trust the
+# store's TLS certificate - NOTE: under Pebble's home directory, writable by the non-root user:
+S3_CA_BUNDLE_CONTAINER_PATH = "/var/lib/pebble/default/s3-ca-bundle.pem"
 
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
@@ -379,14 +384,21 @@ class MlflowCharm(CharmBase):
     def secrets_context(self) -> dict:
         try:
             interfaces = self._get_interfaces()
-            object_storage = self._get_artifact_store_data(interfaces)
+            artifact_store_data = self._get_artifact_store_data(interfaces)
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
+        tls_ca_chain = artifact_store_data["tls_ca_chain"]
         secrets_context = {
             "app_name": self.app.name,
-            "access_key": object_storage["access_key"],
-            "secret_access_key": object_storage["secret_key"],
+            "access_key": artifact_store_data["access_key"],
+            "secret_access_key": artifact_store_data["secret_key"],
+            "is_proxy_mode_enabled": self.proxy_mode,
+            # base64-encoded S3 CA bundle for clients to directly trust the artifact store when in
+            # no proxy mode and when private TLS certificates are used:
+            "s3_ca_bundle_b64": (
+                base64.b64encode("\n".join(tls_ca_chain).encode()).decode() if tls_ca_chain else ""
+            ),
         }
         return secrets_context
 
@@ -394,21 +406,28 @@ class MlflowCharm(CharmBase):
     def poddefaults_context(self) -> dict:
         try:
             interfaces = self._get_interfaces()
-            object_storage = self._get_artifact_store_data(interfaces)
+            artifact_store_data = self._get_artifact_store_data(interfaces)
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
-        scheme = "https" if object_storage["secure"] else "http"
-        s3_endpoint = f"{scheme}://{object_storage['host']}:{object_storage['port']}"
         poddefaults_context = {
             "app_name": self.app.name,
-            "s3_endpoint": s3_endpoint,
+            "s3_endpoint": self._extract_s3_endpoint(artifact_store_data),
             "mlflow_endpoint": (
                 f"http://{self.app.name}.{self._namespace}.svc.cluster.local:"
                 f"{self._mlflow_port}"
             ),
+            "is_proxy_mode_enabled": self.proxy_mode,
+            # whether to mount the S3 CA bundle into client pods and point AWS_CA_BUNDLE at it, so
+            # their direct (no-proxy mode) connections trust the artifact store's TLS certificate:
+            "s3_ca_bundle_present": bool(artifact_store_data["tls_ca_chain"]),
         }
         return poddefaults_context
+
+    @property
+    def proxy_mode(self) -> bool:
+        """Return whether the tracking server acts as a proxy to the artifact store."""
+        return self.model.config["serve_artifacts"]
 
     def _get_interfaces(self):
         """Retrieve interface object."""
@@ -606,6 +625,12 @@ class MlflowCharm(CharmBase):
         )
 
     @staticmethod
+    def _extract_s3_endpoint(artifact_store_data: ArtifactStoreData) -> str:
+        """Extract the s3 endpoint URL from the artifact store data."""
+        scheme = "https" if artifact_store_data["secure"] else "http"
+        return f"{scheme}://{artifact_store_data['host']}:{artifact_store_data['port']}"
+
+    @staticmethod
     def _parse_s3_endpoint(endpoint: str) -> tuple:
         """Parse an s3 endpoint into a (host, port, secure) tuple.
 
@@ -630,11 +655,11 @@ class MlflowCharm(CharmBase):
     def _on_get_minio_credentials(self, event: ActionEvent):
         """Returns the credentials for minio as an action response."""
         try:
-            object_storage_data = self._get_artifact_store_data()
+            artifact_store_data = self._get_artifact_store_data()
             event.set_results(
                 {
-                    "access-key": object_storage_data["access_key"],
-                    "secret-access-key": object_storage_data["secret_key"],
+                    "access-key": artifact_store_data["access_key"],
+                    "secret-access-key": artifact_store_data["secret_key"],
                 }
             )
         except ErrorWithStatus:
@@ -671,19 +696,19 @@ class MlflowCharm(CharmBase):
 
     def _ensure_bucket_exists(self) -> None:
         """Ensure bucket on object storage exists by using a boto3 client."""
-        obj = self._get_artifact_store_data()
+        artifact_store_data = self._get_artifact_store_data()
 
         s3_wrapper = S3BucketWrapper(
-            access_key=obj.get("access_key"),
-            secret_access_key=obj.get("secret_key"),
-            s3_service=obj["host"],
-            s3_port=obj["port"],
-            secure=obj["secure"],
-            region=obj["region"],
-            tls_ca_chain=obj.get("tls_ca_chain"),
+            access_key=artifact_store_data.get("access_key"),
+            secret_access_key=artifact_store_data.get("secret_key"),
+            s3_service=artifact_store_data["host"],
+            s3_port=artifact_store_data["port"],
+            secure=artifact_store_data["secure"],
+            region=artifact_store_data["region"],
+            tls_ca_chain=artifact_store_data.get("tls_ca_chain"),
         )
 
-        bucket_name = self._resolve_bucket_name(obj)
+        bucket_name = self._resolve_bucket_name(artifact_store_data)
         try:
             self.unit.status = MaintenanceStatus(f"Checking if bucket {bucket_name} exists.")
             # Check if bucket already exists
@@ -708,6 +733,23 @@ class MlflowCharm(CharmBase):
             msg = "Waiting for object storage to become accessible."
             self.logger.warning(f"{msg}: {e}")
             raise ErrorWithStatus(msg, WaitingStatus)
+
+    def _reconcile_s3_ca_bundle(self, artifact_store_data: ArtifactStoreData) -> None:
+        """Push the artifact store's TLS CA bundle into the workload container when required.
+
+        In proxy mode the tracking server directly accesses the S3 store, so it must trust the
+        store's TLS CA. The bundle is written to the path referenced by the AWS_CA_BUNDLE
+        environment variable set in `_generate_environment`, a variable that the boto3 client that
+        the tracking server relies on behind the scenes.
+
+        When the tracking server is not in proxy mode or when the artifact store does not have a
+        private CA chain, this is not necessary.
+        """
+        tls_ca_chain = artifact_store_data["tls_ca_chain"]
+        if self.proxy_mode and tls_ca_chain:
+            self.container.push(
+                S3_CA_BUNDLE_CONTAINER_PATH, "\n".join(tls_ca_chain), make_dirs=True
+            )
 
     def _check_leader(self):
         """Check if this unit is a leader."""
@@ -746,20 +788,43 @@ class MlflowCharm(CharmBase):
         """
         try:
             interfaces = self._get_interfaces()
-            object_storage = self._get_artifact_store_data(interfaces)
+            artifact_store_data = self._get_artifact_store_data(interfaces)
             relational_db_data = self._get_relational_db_data()
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
 
-        return {
+        s3_bucket_uri = f"s3://{self._resolve_bucket_name(artifact_store_data)}"
+
+        environment_variables = {
             "MLFLOW_BACKEND_STORE_URI": f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}",  # noqa: E501
-            "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{self._resolve_bucket_name(object_storage)}",
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
             "MLFLOW_PORT": self._mlflow_port,
-            "MLFLOW_SERVE_ARTIFACTS": "False",
         }
+        if self.proxy_mode:
+            proxy_environment_variables = {
+                "AWS_ACCESS_KEY_ID": artifact_store_data["access_key"],
+                "AWS_SECRET_ACCESS_KEY": artifact_store_data["secret_key"],
+                "MLFLOW_ARTIFACTS_DESTINATION": s3_bucket_uri,
+                "MLFLOW_DEFAULT_ARTIFACT_ROOT": "mlflow-artifacts:/",
+                "MLFLOW_S3_ENDPOINT_URL": self._extract_s3_endpoint(artifact_store_data),
+                "MLFLOW_SERVE_ARTIFACTS": "True",
+            }
+            if artifact_store_data["tls_ca_chain"]:
+                proxy_environment_variables["AWS_CA_BUNDLE"] = S3_CA_BUNDLE_CONTAINER_PATH
+            if artifact_store_data["region"]:
+                proxy_environment_variables["AWS_DEFAULT_REGION"] = artifact_store_data["region"]
+            environment_variables.update(proxy_environment_variables)
+        else:
+            environment_variables.update(
+                {
+                    "MLFLOW_DEFAULT_ARTIFACT_ROOT": s3_bucket_uri,
+                    "MLFLOW_SERVE_ARTIFACTS": "False",
+                }
+            )
+
+        return environment_variables
 
     def _reconcile_policy_resource_manager(self):
         if not self.unit.is_leader():
@@ -803,6 +868,10 @@ class MlflowCharm(CharmBase):
             template = Template(Path(file).read_text())
             rendered_template = template.render(**context)
             manifest = KubernetesManifest(rendered_template)
+            # skipping templates that render to an empty document, such as parametrized resources
+            # that are intentionally omitted when in proxy mode, so they are not sent as null:
+            if manifest.manifest is None:
+                continue
             manifests.append(manifest)
         return manifests
 
@@ -837,6 +906,9 @@ class MlflowCharm(CharmBase):
                 raise ErrorWithStatus(
                     f"Container {self._container_name} is not ready", WaitingStatus
                 )
+
+            self._reconcile_s3_ca_bundle(self._get_artifact_store_data(interfaces))
+
             self._reconcile_policy_resource_manager()
 
             if not self.exporter_container.can_connect():
