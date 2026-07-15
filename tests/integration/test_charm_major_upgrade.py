@@ -191,6 +191,17 @@ class TestUpgrade:
         are otherwise not picked up by the MySQL charm. This manual step is only necessary as long
         as the upstream bug that requires the MLflow charm to access the database with elevated
         privileges is open: https://github.com/mlflow/mlflow/issues/19943
+
+        NOTE: the migration automatically triggered by the charm refresh issues a `CREATE TRIGGER`
+        statement (the immutability trigger added alongside the `secrets` table of MLflow) which,
+        with binary logging enabled, MySQL rejects for a user lacking global privileges; the locally
+        built charm requests the `charmed_dba` role via `extra_user_roles` (granting
+        SYSTEM_VARIABLES_ADMIN and TRIGGER) and, using those relation credentials, persists
+        `log_bin_trust_function_creators` before the migration runs; the data-platform provider only
+        grants extra roles on the *first* `database_requested` event, which already fired for the
+        old version without that role, so we remove the `relational-db` relation before refreshing
+        and re-add it afterwards so the request fires again for the new charm; the pre-upgrade data
+        is preserved because dropping the relation only deletes the scoped user, not the database
         """
         # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
         # TODO: remove this block delimited by "- - -" once this issue is fixed:

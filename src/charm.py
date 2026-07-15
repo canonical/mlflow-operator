@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# Copyright 2023 Canonical Ltd.
+# Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
-#
 
 import base64
 import logging
@@ -84,10 +83,12 @@ SERVICE_MESH_RELATION_NAME = "service-mesh"
 # referenced by the AWS_CA_BUNDLE environment variable, so that the tracking server can trust the
 # store's TLS certificate - NOTE: under Pebble's home directory, writable by the non-root user:
 S3_CA_BUNDLE_CONTAINER_PATH = "/var/lib/pebble/default/s3-ca-bundle.pem"
-# marker printed by the schema probe when MLflow reports an out-of-date tracking database:
+
 SCHEMA_OUT_OF_DATE_MARKER = "MLFLOW_SCHEMA_OUT_OF_DATE"
 # read-only snippet run in the workload container to detect whether the tracking database schema is
-# outdated with respect to the deployed MLflow version:
+# outdated with respect to the deployed MLflow version, based on this exception being raised by
+# running `_verify_schema` directly:
+# https://github.com/mlflow/mlflow/blob/v3.14.0/mlflow/store/db/utils.py#L127-L134
 # NOTE:
 # - it is and it has to be idempotent and read-only
 # - it relies on MLflow's own schema verification, which raises a stable error instructing to run
@@ -104,25 +105,21 @@ try:
     _verify_schema(engine)
 except Exception as exc:
     message = str(exc).lower()
-    if 'db upgrade' in message or 'out-of-date' in message or 'out of date' in message:
+    if 'Detected out-of-date database schema' in message:
         print('{SCHEMA_OUT_OF_DATE_MARKER}')
         sys.exit(0)
     raise
 """
+
+# TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
 # snippet run in the workload container to permit the relation user to create the immutability
-# trigger that MLflow's schema migration adds alongside the `secrets` table. With binary logging
+# trigger that MLflow's schema migration adds alongside the `secrets` table, as with binary logging
 # enabled (the default on mysql-k8s), MySQL rejects `CREATE TRIGGER` for a user lacking the
 # SET_USER_ID/SUPER privilege (error 1419) unless the global `log_bin_trust_function_creators`
-# variable is set. The relation user requests the `charmed_dba` role, which grants
+# variable is set - the relation user requests the `charmed_dba` role, which grants
 # SYSTEM_VARIABLES_ADMIN, so the charm can itself persist that variable using the relation
-# credentials - no administrative (root) access to the database is required. `SET PERSIST` keeps
-# the setting across server restarts, and the statement is idempotent.
-#
-# This is a workaround for an upstream MLflow bug: the migration unconditionally issues a
-# `CREATE TRIGGER` that cannot succeed under binary logging without elevated privileges. Once the
-# upstream fix lands and is shipped in the workload image, this snippet (and its callers,
-# `_ensure_trigger_creation_allowed`) can be removed together with the `charmed_dba` role request.
-# Upstream tracking issue: https://github.com/mlflow/mlflow/issues/19943
+# credentials and no administrative (root) access to the database is required - notably,
+# `SET PERSIST` keeps the setting across server restarts, and the statement is idempotent:
 ENABLE_TRIGGER_CREATION_SNIPPET = """\
 import sys
 from sqlalchemy import create_engine, text
@@ -167,10 +164,10 @@ class MlflowCharm(CharmBase):
             self,
             relation_name="relational-db",
             database_name=self._database_name,
-            # `charmed_dba` grants the relation user SYSTEM_VARIABLES_ADMIN (to persist
+            # NOTE: `charmed_dba` grants the relation user SYSTEM_VARIABLES_ADMIN (to persist
             # `log_bin_trust_function_creators`) and TRIGGER, which together let MLflow's schema
-            # migration create the `secrets` immutability trigger under binary logging - see
-            # `_ensure_trigger_creation_allowed` and `ENABLE_TRIGGER_CREATION_SNIPPET`.
+            # migration create the `secrets` immutability trigger under binary logging
+            # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
             extra_user_roles="charmed_dba",
         )
 
@@ -535,10 +532,11 @@ class MlflowCharm(CharmBase):
     def _is_database_schema_out_of_date(self, backend_store_uri: str) -> bool:
         """Return True only if MLflow reports the tracking DB schema as out of date.
 
-        Runs MLflow's own schema verification in the workload container. Any outcome other than a
-        positively detected out-of-date schema (up to date or empty/uninitialised DB) returns
-        False, so that genuine, unrelated failures are never misattributed to a required database
-        migration.
+        Runs MLflow's own schema verification in the workload container via a custom Python code
+        snippet (necessary as the `mlflow` CLI does not provide any read-only command to achieve
+        the same result). Any outcome other than a positively detected out-of-date schema (up to
+        date or empty/uninitialised DB) returns False, so that unrelated failures are never
+        misattributed to a required database migration and the caller can defer and retry.
 
         Raises:
             ErrorWithStatus(..., Waiting) when the schema state cannot be determined (e.g. the
@@ -546,22 +544,22 @@ class MlflowCharm(CharmBase):
             proceeding on incomplete information.
         """
         try:
-            process = self.container.exec(
-                ["python3", "-c", SCHEMA_CHECK_SNIPPET, backend_store_uri]
-            )
-            stdout, _ = process.wait_output()
+            proc = self.container.exec(["python3", "-c", SCHEMA_CHECK_SNIPPET, backend_store_uri])
+            stdout, _ = proc.wait_output()
+
         except ExecError as error:
             self.logger.warning(
-                "Could not determine the database schema state: %s", error.stderr or error
+                f"Could not determine the database schema state: {error.stderr or error}",
             )
             raise ErrorWithStatus(
                 "Could not verify the database schema state; will retry.", WaitingStatus
             )
+
         return SCHEMA_OUT_OF_DATE_MARKER in stdout
 
     def _run_database_migration(self, backend_store_uri: str) -> None:
         """Run `mlflow db upgrade` in the workload container to migrate the tracking DB schema.
-
+        
         The `mlflow db upgrade` command is idempotent, so it is safe to run whenever the schema is
         detected as out of date.
 
@@ -569,25 +567,33 @@ class MlflowCharm(CharmBase):
             ErrorWithStatus(..., Blocked) if the migration command fails, so the distinctive
             failure is clearly attributable to the database migration rather than an unrelated
             workload problem.
+
+        Command reference:
+            https://mlflow.org/docs/latest/api_reference/cli.html#mlflow-db-upgrade
         """
         self.logger.info("Running 'mlflow db upgrade' database schema migration.")
+    
         try:
             process = self.container.exec(["mlflow", "db", "upgrade", backend_store_uri])
             process.wait_output()
+
         except ExecError as error:
             self.logger.error("Database schema migration failed: %s", error.stderr)
-            # Blocked (not Waiting) so the caller does not defer/retry: the container and database
-            # are already reachable and the schema was determinable, so a failing `mlflow db
-            # upgrade` is a non-transient problem (e.g. bad/partial schema, incompatible version
-            # jump, insufficient privileges) that needs operator intervention rather than a retry.
             raise ErrorWithStatus(
                 "Database schema migration failed. Check the unit logs for details.",
+                # NOTE: Blocked (not Waiting) so the caller does not defer/retry: the container and
+                # database are already reachable and the schema was determinable, so a failing
+                # `mlflow db upgrade` is a non-transient problem (e.g., bad/partial schema,
+                # incompatible version jump, insufficient privileges) that needs operator
+                # intervention rather than a retry:
                 BlockedStatus,
             )
+
         self.logger.info("Database schema migration completed successfully.")
 
+    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
     def _ensure_trigger_creation_allowed(self, backend_store_uri: str) -> None:
-        """Allow the relation user to create MLflow's `secrets` immutability trigger.
+        """Allow the MySQL relation user to create MLflow's `secrets` immutability trigger.
 
         Workaround for upstream MLflow bug https://github.com/mlflow/mlflow/issues/19943: MLflow's
         schema migration unconditionally issues a `CREATE TRIGGER` for the `secrets` table. With
@@ -596,23 +602,24 @@ class MlflowCharm(CharmBase):
         variable is set. The relation user is granted the `charmed_dba` role (SYSTEM_VARIABLES_
         ADMIN), so the charm persists that variable itself using the relation credentials - no root
         access to the database is needed. The statement is idempotent and must run before the
-        workload initialises or migrates the schema. Remove this method (and its callers) once the
-        upstream fix ships in the workload image.
+        workload initialises or migrates the schema.
 
         Raises:
-            ErrorWithStatus(..., Waiting) when the variable cannot be set (e.g. the database is not
+            ErrorWithStatus(..., Waiting) when the variable can't be set (e.g., the database is not
             yet reachable), so the caller can defer and retry.
         """
         try:
-            process = self.container.exec(
+            proc = self.container.exec(
                 ["python3", "-c", ENABLE_TRIGGER_CREATION_SNIPPET, backend_store_uri]
             )
-            process.wait_output()
+            proc.wait_output()
+
         except ExecError as error:
             stderr = error.stderr or ""
             self.logger.warning(
                 "Could not enable trigger creation on the database: %s", stderr or error
             )
+
             # MySQL error 1227 = the user lacks SUPER/SYSTEM_VARIABLES_ADMIN. This happens when the
             # relation user was not created with the `charmed_dba` role - notably on an in-place
             # upgrade from a revision that did not request it, since the data-platform provider only
@@ -625,6 +632,7 @@ class MlflowCharm(CharmBase):
                     "'charmed_dba' role to the database user) so the charm can proceed.",
                     BlockedStatus,
                 )
+
             raise ErrorWithStatus(
                 "Could not prepare the database for schema migration; will retry.", WaitingStatus
             )
@@ -638,10 +646,10 @@ class MlflowCharm(CharmBase):
         migration runs.
         """
         backend_store_uri = self._get_backend_store_uri()
-        # Workaround for https://github.com/mlflow/mlflow/issues/19943: clear MySQL's binlog
-        # trigger-creation restriction before `mlflow db upgrade` runs the migration that issues
-        # the `secrets` immutability `CREATE TRIGGER`.
+
+        # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
         self._ensure_trigger_creation_allowed(backend_store_uri)
+
         if self._is_database_schema_out_of_date(backend_store_uri):
             self.unit.status = MaintenanceStatus(
                 "Database schema is out of date for the deployed MLflow version; migrating it."
@@ -1027,7 +1035,7 @@ class MlflowCharm(CharmBase):
         )
 
     def _on_upgrade_charm(self, event) -> None:
-        """Handle the charm-refresh (upgrade-charm) event.
+        """Handle the upgrade-charm event by running migrations to possibly newer database schemas.
 
         Migrate an out-of-date tracking database schema so that a charm refresh shipping an MLflow
         release with schema changes is applied automatically instead of leaving the workload to
@@ -1035,7 +1043,7 @@ class MlflowCharm(CharmBase):
 
         The workload is (re)planned and the unit status reconciled by the `config-changed` handler
         (`_on_event`) that Juju always fires right after `upgrade-charm`, so this handler only needs
-        to migrate the schema first; it does not reconcile itself.
+        to migrate the schema before that and not to replan the workload or restore the status.
 
         Transient failures (the workload container or the database not yet being reachable) surface
         as a Waiting status and defer the event, so Juju re-emits it on a later hook and the
@@ -1045,16 +1053,23 @@ class MlflowCharm(CharmBase):
         if not self.unit.is_leader():
             self.logger.info("Not a leader, skipping database schema migration.")
             return
+
         try:
             if not self.container.can_connect():
                 raise ErrorWithStatus(
                     "Workload container is not ready; will retry the schema migration.",
                     WaitingStatus,
                 )
+
             self._reconcile_database_schema()
+
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
             self.logger.info(f"Event {event} stopped early with message: {str(err)}")
+
+            # NOTE: deferring only when waiting, so that a genuine migration failure (Blocked) is
+            # surfaced and not retried while the migration is instead retried when waiting for the
+            # workload to be ready or for something else:
             if isinstance(err.status, WaitingStatus):
                 event.defer()
 
@@ -1120,9 +1135,10 @@ class MlflowCharm(CharmBase):
                     f"Container {self._container_name} is not ready", WaitingStatus
                 )
 
-            # Workaround for https://github.com/mlflow/mlflow/issues/19943: clear MySQL's binlog
-            # trigger-creation restriction before the workload starts and auto-initialises the
-            # schema on a fresh deployment (issuing the `secrets` immutability `CREATE TRIGGER`).
+            # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
+            # clearing MySQL's binlog trigger-creation restriction before the workload starts and
+            # auto-initializes the database schema on a fresh deployment (an operation that indeed
+            # requires the privileges granted with this step):
             self._ensure_trigger_creation_allowed(self._get_backend_store_uri())
 
             update_layer(
