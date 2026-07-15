@@ -1,15 +1,21 @@
-# Copyright 2025 Canonical Ltd.
+# Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
 """Integration test for the charm-refresh (Juju upgrade) database-migration path.
 
-This suite verifies that refreshing the mlflow-server charm from an older published revision
+This suite verifies that refreshing the mlflow-server charm from an older published version
 (whose workload ships an older MLflow release with an older tracking-database schema) to the
 locally built charm automatically migrates the tracking database schema and preserves the
 previously stored experiment/run data, without manual intervention.
 
 It is kept in a dedicated file and tox environment because it deploys from a released channel and
 then refreshes in place, which is a different lifecycle from the other integration suites.
+
+Note: this suite uses MinIO (the ``object-storage`` relation) rather than s3-integrator (the
+``s3-credentials`` relation) for artifact storage on purpose. The old published revision deployed
+first (see ``OLD_CHANNEL``) predates s3-credentials support and only exposes ``object-storage``, so
+MinIO is the only artifact store it can integrate with. Artifact storage is merely a dependency for
+reaching ``active`` here; the behaviour under test is the tracking-database schema migration.
 """
 
 import logging
@@ -22,8 +28,7 @@ import pytest
 import requests
 import yaml
 from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
-from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_integrator
-from charms_dependencies import MYSQL_K8S, S3_INTEGRATOR
+from charms_dependencies import MINIO, MYSQL_K8S
 from lightkube.generic_resource import load_in_cluster_generic_resources
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
@@ -108,17 +113,25 @@ def _assert_tracking_server_reachable(url: str):
 
 class TestUpgrade:
     @pytest.mark.abort_on_fail
-    async def test_deploy_old_revision(self, ops_test: OpsTest):
-        """Deploy the older published charm revision with its database and object storage."""
+    async def test_deploy_old_version(self, ops_test: OpsTest):
+        """Deploy the older published charm version with its backend and artifact stores.
+
+        MinIO (the ``object-storage`` relation) is used rather than s3-integrator because the old
+        published revision deployed here predates ``s3-credentials`` support and can only integrate
+        artifact storage over ``object-storage``.
+        """
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
-        await deploy_and_assert_s3_integrator(
-            ops_test.model, add_ca_chain=True, s3_integrator=S3_INTEGRATOR
-        )
         await ops_test.model.deploy(
             CHARM_NAME,
             channel=OLD_CHANNEL,
             application_name=CHARM_NAME,
             trust=True,
+        )
+        await ops_test.model.deploy(
+            MINIO.charm,
+            channel=MINIO.channel,
+            config=MINIO.config,
+            trust=MINIO.trust,
         )
         await ops_test.model.deploy(
             MYSQL_K8S.charm,
@@ -128,15 +141,13 @@ class TestUpgrade:
             trust=MYSQL_K8S.trust,
         )
         await ops_test.model.wait_for_idle(
-            apps=[S3_INTEGRATOR.charm, MYSQL_K8S.charm],
+            apps=[MINIO.charm, MYSQL_K8S.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
         )
-        await ops_test.model.integrate(
-            f"{S3_INTEGRATOR.charm}:s3-credentials", f"{CHARM_NAME}:s3-credentials"
-        )
+        await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
         await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
@@ -149,7 +160,7 @@ class TestUpgrade:
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
     @pytest.mark.abort_on_fail
-    async def test_populate_data_on_old_revision(self, ops_test: OpsTest):
+    async def test_populate_data_on_old_version(self, ops_test: OpsTest):
         """Create an experiment and a run so the tracking database holds pre-upgrade data."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = int(config["mlflow_port"]["value"])
@@ -179,7 +190,7 @@ class TestUpgrade:
         SYSTEM_VARIABLES_ADMIN and TRIGGER) and, using those relation credentials, persists
         ``log_bin_trust_function_creators`` before the migration runs. The data-platform provider
         only grants extra roles on the *first* ``database_requested`` event, which already fired
-        for the old revision without that role, so we remove the ``relational-db`` relation before
+        for the old version without that role, so we remove the ``relational-db`` relation before
         refreshing and re-add it afterwards so the request fires again for the new charm. The
         pre-upgrade data is preserved because dropping the relation only deletes the scoped user,
         not the database.
@@ -192,7 +203,7 @@ class TestUpgrade:
         # stuck flapping `executing` while it repeatedly fails to delete the old scoped user (it
         # logs "Failed to delete instance users"), so it may never satisfy an idle settle. That
         # stuck teardown of the *old* user does not affect re-adding the relation, which creates a
-        # fresh scoped user (granted `charmed_dba` by the new revision's request).
+        # fresh scoped user (granted `charmed_dba` by the new version's request).
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
             status="blocked",
@@ -205,7 +216,7 @@ class TestUpgrade:
         await ops_test.model.applications[CHARM_NAME].refresh(
             path=charm, resources=_charm_resources()
         )
-        # Let the refreshed charm settle before re-establishing the relation so the new revision's
+        # Let the refreshed charm settle before re-establishing the relation so the new version's
         # `DatabaseRequires` (which requests `charmed_dba`) is the one that handles the
         # relation-created event and writes `extra-user-roles` to the databag.
         await ops_test.model.wait_for_idle(
