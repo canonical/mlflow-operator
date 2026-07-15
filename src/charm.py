@@ -559,7 +559,7 @@ class MlflowCharm(CharmBase):
 
     def _run_database_migration(self, backend_store_uri: str) -> None:
         """Run `mlflow db upgrade` in the workload container to migrate the tracking DB schema.
-        
+
         The `mlflow db upgrade` command is idempotent, so it is safe to run whenever the schema is
         detected as out of date.
 
@@ -572,7 +572,7 @@ class MlflowCharm(CharmBase):
             https://mlflow.org/docs/latest/api_reference/cli.html#mlflow-db-upgrade
         """
         self.logger.info("Running 'mlflow db upgrade' database schema migration.")
-    
+
         try:
             process = self.container.exec(["mlflow", "db", "upgrade", backend_store_uri])
             process.wait_output()
