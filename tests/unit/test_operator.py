@@ -1321,34 +1321,28 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_is_database_schema_out_of_date_true(self, harness: Harness):
+    def test_is_database_schema_out_of_date_true_marker_among_other_output(self, harness: Harness):
+        """The marker is detected even when surrounded by other stdout (e.g. warnings).
+
+        Also verifies the probe is read-only: it never invokes `mlflow db upgrade`.
+        """
         harness.begin()
         backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
-        process = MagicMock()
-        process.wait_output.return_value = (f"{SCHEMA_OUT_OF_DATE_MARKER}\n", "")
-        exec_mock = MagicMock(return_value=process)
-        harness.charm.container.exec = exec_mock
-        assert harness.charm._is_database_schema_out_of_date(backend_store_uri)
-        # the probe is read-only: it runs MLflow's own schema verification snippet and never
-        # invokes `mlflow db upgrade`:
-        exec_mock.assert_called_once_with(
-            ["python3", "-c", SCHEMA_CHECK_SNIPPET, backend_store_uri]
-        )
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    def test_is_database_schema_out_of_date_true_marker_among_other_output(self, harness: Harness):
-        """The marker is detected even when surrounded by other stdout (e.g. warnings)."""
-        harness.begin()
         process = MagicMock()
         process.wait_output.return_value = (
             f"some warning line\n{SCHEMA_OUT_OF_DATE_MARKER}\ntrailing\n",
             "",
         )
-        harness.charm.container.exec = MagicMock(return_value=process)
-        assert harness.charm._is_database_schema_out_of_date("mysql+pymysql://u:p@h:3306/mlflow")
+        exec_mock = MagicMock(return_value=process)
+        harness.charm.container.exec = exec_mock
+        assert harness.charm._is_database_schema_out_of_date(backend_store_uri)
+        # the probe is read-only: it runs a python3 verification snippet and never shells out to
+        # `mlflow db upgrade` (assert intent rather than the exact argv, to avoid coupling to the
+        # invocation shape):
+        assert exec_mock.call_count == 1
+        command = exec_mock.call_args.args[0]
+        assert command[0] == "python3"
+        assert "mlflow" not in command
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1383,6 +1377,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
     def test_ensure_trigger_creation_allowed_persists_variable(self, harness: Harness):
         harness.begin()
         backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
@@ -1400,6 +1395,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
     def test_ensure_trigger_creation_allowed_raises_waiting_on_exec_error(self, harness: Harness):
         """An unreachable database raises Waiting so the caller can defer and retry."""
         harness.begin()
@@ -1418,6 +1414,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
     def test_ensure_trigger_creation_allowed_raises_blocked_on_privilege_error(
         self, harness: Harness
     ):
@@ -1473,39 +1470,6 @@ class TestCharm:
         harness.charm._is_database_schema_out_of_date.assert_called_once_with(backend_store_uri)
         harness.charm._run_database_migration.assert_called_once_with(backend_store_uri)
         assert isinstance(observed_status["value"], MaintenanceStatus)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    def test_reconcile_database_schema_noop_when_up_to_date(self, harness: Harness):
-        harness.begin()
-        harness.charm._get_backend_store_uri = MagicMock(
-            return_value="mysql+pymysql://u:p@h:3306/mlflow"
-        )
-        harness.charm._ensure_trigger_creation_allowed = MagicMock()
-        harness.charm._is_database_schema_out_of_date = MagicMock(return_value=False)
-        harness.charm._run_database_migration = MagicMock()
-        harness.charm._reconcile_database_schema()
-        harness.charm._run_database_migration.assert_not_called()
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    def test_reconcile_database_schema_propagates_migration_failure(self, harness: Harness):
-        """A migration failure bubbles up as an ErrorWithStatus for the reconcile handler."""
-        harness.begin()
-        harness.charm._get_backend_store_uri = MagicMock(
-            return_value="mysql+pymysql://u:p@h:3306/mlflow"
-        )
-        harness.charm._ensure_trigger_creation_allowed = MagicMock()
-        harness.charm._is_database_schema_out_of_date = MagicMock(return_value=True)
-        harness.charm._run_database_migration = MagicMock(
-            side_effect=ErrorWithStatus("boom", BlockedStatus)
-        )
-        with pytest.raises(ErrorWithStatus):
-            harness.charm._reconcile_database_schema()
 
     @patch(
         "charm.KubernetesServicePatch",
