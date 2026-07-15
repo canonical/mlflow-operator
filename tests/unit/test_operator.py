@@ -283,9 +283,16 @@ def harness() -> Harness:
     harness.set_can_connect("mlflow-server", True)
     harness.set_can_connect("mlflow-prometheus-exporter", True)
 
-    # default no-op handler so reconcile paths that exec into the workload (e.g. enabling trigger
-    # creation on the database) succeed; tests that assert on exec override container.exec directly:
+    # registering a default no-op handler for any `python3 ...` command executed in the
+    # mlflow-server workload container:
     harness.handle_exec("mlflow-server", ["python3"], result=0)
+    # NOTE: several reconcile paths shell out some Python script execution on the workload via
+    # `container.exec(["python3", "-c", <snippet>, backend_store_uri])`, such as
+    # `_ensure_trigger_creation_allowed` and `_is_database_schema_out_of_date`, and without this
+    # registered handler, the Harness would raise on the first such exec, while this makes those
+    # paths succeed by default (exit code 0, empty stdout/stderr) - and then tests that need to
+    # assert on the exec call, or to simulate a failure, replace `harness.charm.container.exec`
+    # with their own MagicMock, which takes precedence over this handler
 
     return harness
 
