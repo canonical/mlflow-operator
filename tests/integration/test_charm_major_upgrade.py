@@ -1,21 +1,22 @@
 # Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Integration test for the charm-refresh (Juju upgrade) database-migration path.
+"""Integration tests for the major upgrade from 2.22 to 3.X.
 
-This suite verifies that refreshing the mlflow-server charm from an older published version
-(whose workload ships an older MLflow release with an older tracking-database schema) to the
-locally built charm automatically migrates the tracking database schema and preserves the
-previously stored experiment/run data, without manual intervention.
+This suite verifies that refreshing the tracking server from the latest stable version available
+for the old major, that is 2.22, to the current version available for the new major, that is 3.X,
+built from this source, keeps the server functional and preserves data from the previous version.
 
-It is kept in a dedicated file and tox environment because it deploys from a released channel and
-then refreshes in place, which is a different lifecycle from the other integration suites.
+NOTE: the new major of the charm automatically migrates the tracking database schema on charm
+upgrades, without manual intervention. Manual intervention is however required to recreate the
+integration with MySQL that provides the backend store, as permission changes are otherwise not
+picked up by the MySQL charm. This manual step is only necessary as long as the upstream bug that
+requires the MLflow charm to access the database with elevated privileges is open:
+https://github.com/mlflow/mlflow/issues/19943
 
-Note: this suite uses MinIO (the ``object-storage`` relation) rather than s3-integrator (the
-``s3-credentials`` relation) for artifact storage on purpose. The old published revision deployed
-first (see ``OLD_CHANNEL``) predates s3-credentials support and only exposes ``object-storage``, so
-MinIO is the only artifact store it can integrate with. Artifact storage is merely a dependency for
-reaching ``active`` here; the behaviour under test is the tracking-database schema migration.
+NOTE: for the artifact store, the older MinIO (`object-storage`) integration is used rather than
+the newer s3-integrator (`s3-credentials`) one as it is the only one supported by the older charm
+version.
 """
 
 import logging
@@ -41,16 +42,13 @@ CHARM_NAME = METADATA["name"]
 
 PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
 
-# Channel of the already-published charm to deploy first. Its workload ships an older MLflow
-# release (and therefore an older tracking-database schema) than the locally built charm, so the
-# subsequent refresh exercises the automatic schema migration.
 OLD_CHANNEL = "2.22/stable"
 
-TEST_EXPERIMENT_NAME = "upgrade-experiment"
-TEST_RUN_METRIC = "accuracy"
-TEST_RUN_METRIC_VALUE = 0.42
-TEST_RUN_PARAM = "epochs"
-TEST_RUN_PARAM_VALUE = "10"
+EXPERIMENT_NAME = "upgrade-experiment"
+RUN_METRIC = "accuracy"
+RUN_METRIC_VALUE = 0.42
+RUN_PARAM = "epochs"
+RUN_PARAM_VALUE = "10"
 
 
 def deploy_k8s_resources(template_files: str):
@@ -79,7 +77,7 @@ def _charm_resources() -> dict:
 
 
 class _PortForward:
-    """Context manager wrapping a `kubectl port-forward` to the mlflow-server service."""
+    """Context manager wrapping a `kubectl port-forward` to the tracking server's K8s Service."""
 
     def __init__(self, namespace: str, port: int):
         self._namespace = namespace
@@ -97,7 +95,7 @@ class _PortForward:
                 f"{self._port}:{self._port}",
             ]
         )
-        time.sleep(10)  # must wait for the port-forward to be established
+        time.sleep(10)  # waiting for the port-forwarding to be established
         return f"http://localhost:{self._port}"
 
     def __exit__(self, *exc):
@@ -114,13 +112,9 @@ def _assert_tracking_server_reachable(url: str):
 class TestUpgrade:
     @pytest.mark.abort_on_fail
     async def test_deploy_old_version(self, ops_test: OpsTest):
-        """Deploy the older published charm version with its backend and artifact stores.
-
-        MinIO (the ``object-storage`` relation) is used rather than s3-integrator because the old
-        published revision deployed here predates ``s3-credentials`` support and can only integrate
-        artifact storage over ``object-storage``.
-        """
+        """Deploy the older charm version with its backend and artifact stores."""
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
+
         await ops_test.model.deploy(
             CHARM_NAME,
             channel=OLD_CHANNEL,
@@ -140,6 +134,7 @@ class TestUpgrade:
             config=MYSQL_K8S.config,
             trust=MYSQL_K8S.trust,
         )
+
         await ops_test.model.wait_for_idle(
             apps=[MINIO.charm, MYSQL_K8S.charm],
             status="active",
@@ -147,8 +142,10 @@ class TestUpgrade:
             raise_on_error=False,
             timeout=600,
         )
+
         await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
         await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
+
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
             status="active",
@@ -161,49 +158,50 @@ class TestUpgrade:
 
     @pytest.mark.abort_on_fail
     async def test_populate_data_on_old_version(self, ops_test: OpsTest):
-        """Create an experiment and a run so the tracking database holds pre-upgrade data."""
+        """Create some pre-upgrade data such as an experiment run with metrics and parameters."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = int(config["mlflow_port"]["value"])
+
+        # while port-forwarding the tracking server for ease of access:
         with _PortForward(ops_test.model_name, mlflow_port) as url:
             _assert_tracking_server_reachable(url)
+
             client = MlflowClient(tracking_uri=url)
-            experiment_id = client.create_experiment(TEST_EXPERIMENT_NAME)
+
+            experiment_id = client.create_experiment(EXPERIMENT_NAME)
+
             run = client.create_run(experiment_id)
-            client.log_param(run.info.run_id, TEST_RUN_PARAM, TEST_RUN_PARAM_VALUE)
-            client.log_metric(run.info.run_id, TEST_RUN_METRIC, TEST_RUN_METRIC_VALUE)
+
+            client.log_param(run.info.run_id, RUN_PARAM, RUN_PARAM_VALUE)
+            client.log_metric(run.info.run_id, RUN_METRIC, RUN_METRIC_VALUE)
+
             client.set_terminated(run.info.run_id)
 
+            # asserting the experiment is actually created and retrievable:
             experiments = client.search_experiments()
-            assert [e for e in experiments if e.name == TEST_EXPERIMENT_NAME]
+            assert [e for e in experiments if e.name == EXPERIMENT_NAME]
 
     @pytest.mark.abort_on_fail
-    async def test_refresh_to_local_charm_migrates_and_stays_active(
-        self, ops_test: OpsTest, request
-    ):
-        """Refresh to the locally built charm and assert it reconciles to active.
+    async def test_refresh_gets_active_for_successful_migrations(self, ops_test: OpsTest, request):
+        """Refresh the tracking server and assert it gets active, meaning migrations succeeded.
 
-        The refresh triggers the `upgrade-charm` event, whose reconcile detects the out-of-date
-        schema and runs the migration automatically. That migration issues a ``CREATE TRIGGER``
-        statement (the immutability trigger added alongside the ``secrets`` table) which, with
-        binary logging enabled, MySQL rejects for a user lacking global privileges. The locally
-        built charm requests the ``charmed_dba`` role via ``extra_user_roles`` (granting
-        SYSTEM_VARIABLES_ADMIN and TRIGGER) and, using those relation credentials, persists
-        ``log_bin_trust_function_creators`` before the migration runs. The data-platform provider
-        only grants extra roles on the *first* ``database_requested`` event, which already fired
-        for the old version without that role, so we remove the ``relational-db`` relation before
-        refreshing and re-add it afterwards so the request fires again for the new charm. The
-        pre-upgrade data is preserved because dropping the relation only deletes the scoped user,
-        not the database.
+        NOTE: the new major of the charm automatically migrates the tracking database schema on
+        charm upgrades, without manual intervention. Manual intervention is however required to
+        recreate the integration with MySQL that provides the backend store, as permission changes
+        are otherwise not picked up by the MySQL charm. This manual step is only necessary as long
+        as the upstream bug that requires the MLflow charm to access the database with elevated
+        privileges is open: https://github.com/mlflow/mlflow/issues/19943
         """
+        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+        # TODO: remove this block delimited by "- - -" once this issue is fixed:
+        # https://github.com/mlflow/mlflow/issues/19943
+
+        # removing the relation for backend store with MySQL:
         await ops_test.model.applications[CHARM_NAME].remove_relation(
             "relational-db", f"{MYSQL_K8S.charm}:database"
         )
-        # Wait for the charm to observe the relation is gone (`blocked`) before refreshing. We do
-        # NOT wait for mysql-k8s to reach a stable idle here: on relation removal mysql-k8s can get
-        # stuck flapping `executing` while it repeatedly fails to delete the old scoped user (it
-        # logs "Failed to delete instance users"), so it may never satisfy an idle settle. That
-        # stuck teardown of the *old* user does not affect re-adding the relation, which creates a
-        # fresh scoped user (granted `charmed_dba` by the new version's request).
+
+        # waiting for MLflow to observe the relation is gone (which triggers a blocked status):
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
             status="blocked",
@@ -211,14 +209,25 @@ class TestUpgrade:
             raise_on_error=False,
             timeout=600,
         )
+        # NOTE: waiting for MySQL to reach a stable idle is not desirable, as on relation removal
+        # MySQL can get stuck flapping "executing" while it repeatedly fails to delete the old
+        # scoped user (logging "Failed to delete instance users") - which is nevertheless not a
+        # problem for MLflow, since the stuck teardown of the old user does not affect re-adding
+        # the relation, which creates a fresh scoped user granted the newly requested privileges
 
-        charm = _built_charm(ops_test, request)
+        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+        # refreshing the tracking server to the charm built from the current source:
         await ops_test.model.applications[CHARM_NAME].refresh(
-            path=charm, resources=_charm_resources()
+            path=_built_charm(ops_test, request), resources=_charm_resources()
         )
-        # Let the refreshed charm settle before re-establishing the relation so the new version's
-        # `DatabaseRequires` (which requests `charmed_dba`) is the one that handles the
-        # relation-created event and writes `extra-user-roles` to the databag.
+
+        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+        # TODO: remove this block delimited by "- - -" once this issue is fixed:
+        # https://github.com/mlflow/mlflow/issues/19943
+
+        # waiting for the tracking server to settle before re-establishing the (updated) relation
+        # for backend store with MySQL:
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
             status="blocked",
@@ -227,7 +236,12 @@ class TestUpgrade:
             timeout=600,
         )
 
+        # re-establishing the relation for backend store with MySQL:
         await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
+
+        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+        # waiting for the tracking server to be active:
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
             status="active",
@@ -240,20 +254,25 @@ class TestUpgrade:
 
     @pytest.mark.abort_on_fail
     async def test_data_preserved_after_upgrade(self, ops_test: OpsTest):
-        """Assert the pre-upgrade experiment and run survived the schema migration."""
+        """Assert the pre-upgrade experiment data survived the schema migration."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = int(config["mlflow_port"]["value"])
+
+        # while port-forwarding the tracking server for ease of access:
         with _PortForward(ops_test.model_name, mlflow_port) as url:
             _assert_tracking_server_reachable(url)
             client = MlflowClient(tracking_uri=url)
 
-            experiments = [
-                e for e in client.search_experiments() if e.name == TEST_EXPERIMENT_NAME
+            preupgrade_experiments = [
+                experiment for experiment in client.search_experiments()
+                if experiment.name == EXPERIMENT_NAME
             ]
-            assert len(experiments) == 1, "the pre-upgrade experiment did not survive the upgrade"
 
-            runs = client.search_runs([experiments[0].experiment_id])
-            assert len(runs) == 1, "the pre-upgrade run did not survive the upgrade"
-            run = runs[0]
-            assert run.data.params.get(TEST_RUN_PARAM) == TEST_RUN_PARAM_VALUE
-            assert run.data.metrics.get(TEST_RUN_METRIC) == TEST_RUN_METRIC_VALUE
+            # asserting the experiment data are not lost after the upgrade:
+            assert len(preupgrade_experiments) == 1, "pre-upgrade experiment lost after upgrade"
+            preupgrade_experiment = preupgrade_experiments[0]
+            preupgrade_experiment_runs = client.search_runs([preupgrade_experiment.experiment_id])
+            assert len(preupgrade_experiment_runs) == 1, "pre-upgrade run lost after upgrade"
+            preupgrade_experiment_run = preupgrade_experiment_runs[0]
+            assert preupgrade_experiment_run.data.params.get(RUN_PARAM) == RUN_PARAM_VALUE
+            assert preupgrade_experiment_run.data.metrics.get(RUN_METRIC) == RUN_METRIC_VALUE
