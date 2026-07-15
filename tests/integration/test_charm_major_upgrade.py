@@ -275,7 +275,8 @@ class TestUpgrade:
             client = MlflowClient(tracking_uri=url)
 
             preupgrade_experiments = [
-                experiment for experiment in client.search_experiments()
+                experiment
+                for experiment in client.search_experiments()
                 if experiment.name == EXPERIMENT_NAME
             ]
 
