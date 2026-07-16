@@ -318,7 +318,9 @@ class TestUpgrade:
             run = client.create_run(experiment_id)
 
             client.log_param(run.info.run_id, POSTUPGRADE_RUN_PARAM, POSTUPGRADE_RUN_PARAM_VALUE)
-            client.log_metric(run.info.run_id, POSTUPGRADE_RUN_METRIC, POSTUPGRADE_RUN_METRIC_VALUE)
+            client.log_metric(
+                run.info.run_id, POSTUPGRADE_RUN_METRIC, POSTUPGRADE_RUN_METRIC_VALUE
+            )
 
             client.set_terminated(run.info.run_id)
 
