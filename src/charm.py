@@ -583,9 +583,19 @@ class MlflowCharm(CharmBase):
             process.wait_output()
 
         except ExecError as error:
-            self.logger.error(f"Database schema migration failed: exit code {error.exit_code}")
+            # keeping the Juju status message short; the failure detail and remediation go to the
+            # logs - NOTE: the raw stderr is deliberately NOT logged as it can embed the backend
+            # store URI (and thus database credentials); only the exit code is safe to log:
+            self.logger.error(
+                "Database schema migration ('mlflow db upgrade') failed with exit code "
+                f"{error.exit_code}. The schema may be left partially migrated: 'mlflow db "
+                "upgrade' applies Alembic migrations and MySQL DDL is not transactional, so a "
+                "failed step cannot be rolled back automatically. Restore the tracking database "
+                "from a backup taken before the refresh (see the charm's backup/restore how-to), "
+                "then retry the refresh."
+            )
             raise ErrorWithStatus(
-                "Database schema migration failed. Check the unit logs for details.",
+                "Database schema migration failed. Check the unit logs and act accordingly.",
                 # NOTE: Blocked (not Waiting) so the caller does not defer/retry: the container and
                 # database are already reachable and the schema was determinable, so a failing
                 # `mlflow db upgrade` is a non-transient problem (e.g., bad/partial schema,
