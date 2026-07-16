@@ -105,7 +105,7 @@ try:
     _verify_schema(engine)
 except Exception as exc:
     message = str(exc).lower()
-    if 'Detected out-of-date database schema' in message:
+    if 'Detected out-of-date database schema'.lower() in message:
         print('{SCHEMA_OUT_OF_DATE_MARKER}')
         sys.exit(0)
     raise
