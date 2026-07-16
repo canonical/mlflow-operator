@@ -3,6 +3,7 @@
 
 import base64
 import json
+import logging
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import botocore.exceptions
@@ -1301,20 +1302,24 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_run_database_migration_failure(self, harness: Harness):
+    def test_run_database_migration_failure(self, harness: Harness, caplog):
         harness.begin()
         process = MagicMock()
         process.wait_output.side_effect = ExecError(
             command=["mlflow", "db", "upgrade"], exit_code=1, stdout="", stderr="boom"
         )
         harness.charm.container.exec = MagicMock(return_value=process)
-        with pytest.raises(ErrorWithStatus) as e_info:
-            harness.charm._run_database_migration("mysql+pymysql://u:p@h:3306/mlflow")
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(ErrorWithStatus) as e_info:
+                harness.charm._run_database_migration("mysql+pymysql://u:p@h:3306/mlflow")
         assert e_info.value.status.__class__ is BlockedStatus
         assert "Database schema migration failed" in str(e_info)
         # the raw stderr (which can contain the backend store URI/credentials) is not leaked into
         # the user-facing status message:
         assert "boom" not in str(e_info.value.status.message)
+        # ...nor into the logs (only the exit code and static guidance are logged):
+        assert "boom" not in caplog.text
+        assert "exit code 1" in caplog.text
 
     @patch(
         "charm.KubernetesServicePatch",
