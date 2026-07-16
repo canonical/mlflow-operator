@@ -631,10 +631,15 @@ class MlflowCharm(CharmBase):
             # grants extra roles when the relation (and its user) is first created. Retrying will
             # never succeed, so surface an actionable Blocked status instead of looping in Waiting.
             if "1227" in stderr or "SYSTEM_VARIABLES_ADMIN" in stderr:
+                # keeping the Juju status message short; the remediation details go to the logs:
+                self.logger.error(
+                    "The database user lacks the SYSTEM_VARIABLES_ADMIN privilege required to "
+                    "migrate the schema. Remove and re-add the 'relational-db' relation (or grant "
+                    "the 'charmed_dba' role to the database user) so the charm can proceed."
+                )
                 raise ErrorWithStatus(
-                    "Database user lacks the SYSTEM_VARIABLES_ADMIN privilege required to migrate "
-                    "the schema. Remove and re-add the 'relational-db' relation (or grant the "
-                    "'charmed_dba' role to the database user) so the charm can proceed.",
+                    "Database user lacks privileges to migrate the schema. Check the unit logs "
+                    "and act accordingly.",
                     BlockedStatus,
                 )
 

@@ -1438,8 +1438,12 @@ class TestCharm:
         with pytest.raises(ErrorWithStatus) as exc_info:
             harness.charm._ensure_trigger_creation_allowed("mysql+pymysql://u:p@h:3306/mlflow")
         assert exc_info.value.status_type is BlockedStatus
-        # the actionable message tells the operator how to remediate:
-        assert "charmed_dba" in str(exc_info.value.status.message)
+        # the short status message points the operator to the logs for remediation details:
+        assert (
+            str(exc_info.value.status.message)
+            == "Database user lacks privileges to migrate the schema. Check the unit logs "
+            "and act accordingly."
+        )
         # the raw stderr (which can contain the backend store URI/credentials) is not leaked:
         assert "Access denied" not in str(exc_info.value.status.message)
 
