@@ -12,14 +12,16 @@ output "provides" {
 
 output "requires" {
   value = {
-    dashboard_links  = "dashboard-links",
-    ingress          = "ingress",
-    object_storage   = "object-storage",
-    pod_defaults     = "pod-defaults",
-    relational_db    = "relational-db",
-    require_cmr_mesh = "require-cmr-mesh",
-    secrets          = "secrets",
-    service_mesh     = "service-mesh",
-    logging          = "logging",
+    dashboard_links      = "dashboard-links",
+    ingress              = "ingress",
+    istio_ingress_route  = "istio-ingress-route",
+    object_storage       = "object-storage",
+    pod_defaults         = "pod-defaults",
+    relational_db        = "relational-db",
+    require_cmr_mesh     = "require-cmr-mesh",
+    s3_credentials       = "s3-credentials",
+    secrets              = "secrets",
+    service_mesh         = "service-mesh",
+    logging              = "logging",
   }
 }
