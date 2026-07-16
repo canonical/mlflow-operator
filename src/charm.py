@@ -539,9 +539,10 @@ class MlflowCharm(CharmBase):
         misattributed to a required database migration and the caller can defer and retry.
 
         Raises:
-            ErrorWithStatus(..., Waiting) when the schema state cannot be determined (e.g. the
-            database is not yet reachable), so the caller can defer and retry rather than
-            proceeding on incomplete information.
+            ErrorWithStatus(..., Waiting) when the schema check could not be completed, so the
+            caller can defer and retry rather than proceed on incomplete information: the database
+            may not be reachable yet, or the check could not complete (unexpected MLflow error or a
+            failed exec).
         """
         try:
             proc = self.container.exec(["python3", "-c", SCHEMA_CHECK_SNIPPET, backend_store_uri])
@@ -549,10 +550,14 @@ class MlflowCharm(CharmBase):
 
         except ExecError as error:
             self.logger.warning(
-                f"Could not determine the database schema state: exit code {error.exit_code}",
+                "Could not complete the database schema check "
+                f"(database unreachable, unexpected MLflow error or failed exec): "
+                f"exit code {error.exit_code}",
             )
             raise ErrorWithStatus(
-                "Could not verify the database schema state; will retry.", WaitingStatus
+                "The database is not yet reachable, or the schema check could not be completed; "
+                "will retry.",
+                WaitingStatus,
             )
 
         return SCHEMA_OUT_OF_DATE_MARKER in stdout
