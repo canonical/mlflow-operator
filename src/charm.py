@@ -549,7 +549,7 @@ class MlflowCharm(CharmBase):
 
         except ExecError as error:
             self.logger.warning(
-                f"Could not determine the database schema state: {error.stderr or error}",
+                f"Could not determine the database schema state: exit code {error.exit_code}",
             )
             raise ErrorWithStatus(
                 "Could not verify the database schema state; will retry.", WaitingStatus
@@ -578,7 +578,7 @@ class MlflowCharm(CharmBase):
             process.wait_output()
 
         except ExecError as error:
-            self.logger.error("Database schema migration failed: %s", error.stderr)
+            self.logger.error(f"Database schema migration failed: exit code {error.exit_code}")
             raise ErrorWithStatus(
                 "Database schema migration failed. Check the unit logs for details.",
                 # NOTE: Blocked (not Waiting) so the caller does not defer/retry: the container and
@@ -617,7 +617,7 @@ class MlflowCharm(CharmBase):
         except ExecError as error:
             stderr = error.stderr or ""
             self.logger.warning(
-                "Could not enable trigger creation on the database: %s", stderr or error
+                f"Could not enable trigger creation on the database: exit code {error.exit_code}",
             )
 
             # MySQL error 1227 = the user lacks SUPER/SYSTEM_VARIABLES_ADMIN. This happens when the
