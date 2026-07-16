@@ -44,11 +44,17 @@ PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
 
 OLD_CHANNEL = "2.22/stable"
 
-EXPERIMENT_NAME = "upgrade-experiment"
-RUN_METRIC = "accuracy"
-RUN_METRIC_VALUE = 0.42
-RUN_PARAM = "epochs"
-RUN_PARAM_VALUE = "10"
+PREUPGRADE_EXPERIMENT_NAME = "pre-upgrade-experiment"
+PREUPGRADE_RUN_METRIC = "accuracy"
+PREUPGRADE_RUN_METRIC_VALUE = 0.42
+PREUPGRADE_RUN_PARAM = "epochs"
+PREUPGRADE_RUN_PARAM_VALUE = "10"
+
+POSTUPGRADE_EXPERIMENT_NAME = "post-upgrade-experiment"
+POSTUPGRADE_RUN_METRIC = "loss"
+POSTUPGRADE_RUN_METRIC_VALUE = 0.13
+POSTUPGRADE_RUN_PARAM = "batch_size"
+POSTUPGRADE_RUN_PARAM_VALUE = "32"
 
 
 def deploy_k8s_resources(template_files: str):
@@ -168,18 +174,18 @@ class TestUpgrade:
 
             client = MlflowClient(tracking_uri=url)
 
-            experiment_id = client.create_experiment(EXPERIMENT_NAME)
+            experiment_id = client.create_experiment(PREUPGRADE_EXPERIMENT_NAME)
 
             run = client.create_run(experiment_id)
 
-            client.log_param(run.info.run_id, RUN_PARAM, RUN_PARAM_VALUE)
-            client.log_metric(run.info.run_id, RUN_METRIC, RUN_METRIC_VALUE)
+            client.log_param(run.info.run_id, PREUPGRADE_RUN_PARAM, PREUPGRADE_RUN_PARAM_VALUE)
+            client.log_metric(run.info.run_id, PREUPGRADE_RUN_METRIC, PREUPGRADE_RUN_METRIC_VALUE)
 
             client.set_terminated(run.info.run_id)
 
             # asserting the experiment is actually created and retrievable:
             experiments = client.search_experiments()
-            assert [e for e in experiments if e.name == EXPERIMENT_NAME]
+            assert [e for e in experiments if e.name == PREUPGRADE_EXPERIMENT_NAME]
 
     @pytest.mark.abort_on_fail
     async def test_refresh_gets_active_for_successful_migrations(self, ops_test: OpsTest, request):
@@ -277,7 +283,7 @@ class TestUpgrade:
             preupgrade_experiments = [
                 experiment
                 for experiment in client.search_experiments()
-                if experiment.name == EXPERIMENT_NAME
+                if experiment.name == PREUPGRADE_EXPERIMENT_NAME
             ]
 
             # asserting the experiment data are not lost after the upgrade:
@@ -286,5 +292,54 @@ class TestUpgrade:
             preupgrade_experiment_runs = client.search_runs([preupgrade_experiment.experiment_id])
             assert len(preupgrade_experiment_runs) == 1, "pre-upgrade run lost after upgrade"
             preupgrade_experiment_run = preupgrade_experiment_runs[0]
-            assert preupgrade_experiment_run.data.params.get(RUN_PARAM) == RUN_PARAM_VALUE
-            assert preupgrade_experiment_run.data.metrics.get(RUN_METRIC) == RUN_METRIC_VALUE
+            assert (
+                preupgrade_experiment_run.data.params.get(PREUPGRADE_RUN_PARAM)
+                == PREUPGRADE_RUN_PARAM_VALUE
+            )
+            assert (
+                preupgrade_experiment_run.data.metrics.get(PREUPGRADE_RUN_METRIC)
+                == PREUPGRADE_RUN_METRIC_VALUE
+            )
+
+    @pytest.mark.abort_on_fail
+    async def test_populate_data_on_new_version(self, ops_test: OpsTest):
+        """Create some post-upgrade data such as an experiment run with metrics and parameters."""
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = int(config["mlflow_port"]["value"])
+
+        # while port-forwarding the tracking server for ease of access:
+        with _PortForward(ops_test.model_name, mlflow_port) as url:
+            _assert_tracking_server_reachable(url)
+
+            client = MlflowClient(tracking_uri=url)
+
+            experiment_id = client.create_experiment(POSTUPGRADE_EXPERIMENT_NAME)
+
+            run = client.create_run(experiment_id)
+
+            client.log_param(run.info.run_id, POSTUPGRADE_RUN_PARAM, POSTUPGRADE_RUN_PARAM_VALUE)
+            client.log_metric(run.info.run_id, POSTUPGRADE_RUN_METRIC, POSTUPGRADE_RUN_METRIC_VALUE)
+
+            client.set_terminated(run.info.run_id)
+
+            # asserting the newly created experiment data are persisted and retrievable:
+            postupgrade_experiments = [
+                experiment
+                for experiment in client.search_experiments()
+                if experiment.name == POSTUPGRADE_EXPERIMENT_NAME
+            ]
+            assert len(postupgrade_experiments) == 1, "post-upgrade experiment not created"
+            postupgrade_experiment = postupgrade_experiments[0]
+            postupgrade_experiment_runs = client.search_runs(
+                [postupgrade_experiment.experiment_id]
+            )
+            assert len(postupgrade_experiment_runs) == 1, "post-upgrade run not created"
+            postupgrade_experiment_run = postupgrade_experiment_runs[0]
+            assert (
+                postupgrade_experiment_run.data.params.get(POSTUPGRADE_RUN_PARAM)
+                == POSTUPGRADE_RUN_PARAM_VALUE
+            )
+            assert (
+                postupgrade_experiment_run.data.metrics.get(POSTUPGRADE_RUN_METRIC)
+                == POSTUPGRADE_RUN_METRIC_VALUE
+            )
