@@ -226,11 +226,15 @@ class TestUpgrade:
             raise_on_error=False,
             timeout=600,
         )
-        # NOTE: waiting for MySQL to reach a stable idle is not desirable, as on relation removal
-        # MySQL can get stuck flapping "executing" while it repeatedly fails to delete the old
-        # scoped user (logging "Failed to delete instance users") - which is nevertheless not a
-        # problem for MLflow, since the stuck teardown of the old user does not affect re-adding
-        # the relation, which creates a fresh scoped user granted the newly requested privileges
+
+        # waiting for MySQL to settle back to active after the relation removal:
+        await ops_test.model.wait_for_idle(
+            apps=[MYSQL_K8S.charm],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=600,
+        )
 
         # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
