@@ -1,7 +1,7 @@
 Deploy MLflow 3 with Terraform
 ==============================
 
-This guide describes how to deploy Charmed MLflow 3 (experimental) using `Terraform <https://www.terraform.io/>`_, via the Charmed Kubeflow Terraform solution.
+This guide describes how to deploy Charmed MLflow 3 (experimental) using `Terraform <https://www.terraform.io/>`__, via the Charmed Kubeflow Terraform solution.
 
 It uses the Terraform solution from the ``main`` branch of the `charmed-kubeflow-solutions <https://github.com/canonical/charmed-kubeflow-solutions>`_ repository, deployed from the ``latest/edge`` channels. For MLflow, ``latest/edge`` currently provides MLflow 3, which is the only way to deploy it at the moment.
 
@@ -13,7 +13,7 @@ Requirements
 
 * A Kubernetes cluster.
 * The `Juju <https://juju.is/>`_ client installed, with a controller bootstrapped on your Kubernetes cloud. The Terraform Juju provider operates on the controller your Juju client is currently connected to.
-* `Terraform <https://developer.hashicorp.com/terraform/install>`_ version 1.6 or later.
+* `Terraform <https://developer.hashicorp.com/terraform/install>`__ version 1.6 or later.
 * `Git <https://git-scm.com/>`_.
 
 Deploy MLflow 3
