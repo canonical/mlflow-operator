@@ -32,6 +32,7 @@ Intersphinx
 Jupyter
 JupyterLab
 kubectl
+kubeflow
 KServe
 lang
 LaTeX
