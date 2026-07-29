@@ -1,5 +1,6 @@
 # Leave a blank line at the end of this file to support concatenation
 artifact
+artifacts
 aws
 AWS
 backend
@@ -31,6 +32,7 @@ Intersphinx
 Jupyter
 JupyterLab
 kubectl
+kubeflow
 KServe
 lang
 LaTeX
