@@ -46,7 +46,22 @@ Deploy the solution, enabling MLflow and selecting the ``latest/edge`` channels:
 The ``release=latest`` variable, together with the default ``risk=edge``, selects the ``latest/edge`` channels. For MLflow, ``latest/edge`` currently ships MLflow 3, whereas pinned releases (such as ``release=1.11``) ship MLflow 2.
 
 .. note::
-    This does not deploy the full Kubeflow platform. With only MLflow enabled, the solution brings up MLflow and the components it needs — its backend store (``mysql-k8s``), artifact store (``minio``), the resource dispatcher, and KServe — together with the base layer that the Kubeflow product always includes: a service mesh (Istio), authentication, and Kubeflow core (dashboard, profiles, and related controllers). Optional components such as Kubeflow Pipelines and notebooks are not deployed.
+    This command does not deploy the full Charmed Kubeflow platform. With only MLflow enabled, the solution brings up MLflow together with:
+
+    * The components MLflow needs:
+
+      * its backend store (``mysql-k8s``)
+      * its artifact store (``minio``)
+      * the resource dispatcher
+      * KServe
+
+    * The base layer that the Kubeflow product always includes:
+
+      * a service mesh (Istio)
+      * authentication
+      * Kubeflow core (Dashboard, Profiles, and related controllers)
+
+    Optional components such as Kubeflow Pipelines and Notebooks are not deployed.
 
 Terraform creates the ``kubeflow`` model and deploys the applications. You can watch the progress and wait for them to become ``active`` with:
 
