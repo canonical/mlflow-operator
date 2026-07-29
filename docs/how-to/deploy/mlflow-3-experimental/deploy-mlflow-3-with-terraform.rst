@@ -11,7 +11,7 @@ It uses the Terraform solution from the ``main`` branch of the `charmed-kubeflow
 Requirements
 -------------
 
-* A Kubernetes cluster.
+* A Kubernetes cluster of version 1.32, 1.33 or 1.34.
 * The `Juju <https://juju.is/>`_ client installed, with a controller bootstrapped on your Kubernetes cloud. The Terraform Juju provider operates on the controller your Juju client is currently connected to.
 * `Terraform <https://developer.hashicorp.com/terraform/install>`__ version 1.6 or later.
 * `Git <https://git-scm.com/>`_.

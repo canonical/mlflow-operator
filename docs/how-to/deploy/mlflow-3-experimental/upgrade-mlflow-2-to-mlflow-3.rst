@@ -1,5 +1,5 @@
-Upgrade an Existing MLflow 2 Deployment
-=======================================
+Upgrade an Existing MLflow 2 Deployment to MLflow 3
+===================================================
 
 This guide describes how to upgrade an existing Charmed MLflow 2 deployment to the experimental Charmed MLflow 3.
 
@@ -24,7 +24,7 @@ Before upgrading, review the upstream documentation to understand and accept the
 Requirements
 -------------
 
-* You have an existing Charmed MLflow 2.22 deployment (version 2.22, precisely).
+* You have an existing Charmed MLflow 2.22 deployment (version 2.22, precisely). If you are running an older version, first upgrade it to 2.22 by following the :doc:`stable upgrade guides <../../manage/upgrade/index>`.
 * You have Command Line Interface (CLI) access to the machine where the Juju controller is deployed. All commands in this guide are executed from it.
 * Your deployment uses ``mysql-k8s`` as its backend store, related to ``mlflow-server`` over the ``relational-db`` endpoint.
 

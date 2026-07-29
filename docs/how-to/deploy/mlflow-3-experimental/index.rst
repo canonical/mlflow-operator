@@ -6,5 +6,5 @@ The following guides describe how to deploy the experimental MLflow 3 support fo
 .. toctree::
    :maxdepth: 1
 
-   deploy-mlflow-3-terraform
-   upgrade-mlflow-2
+   deploy-mlflow-3-with-terraform
+   upgrade-mlflow-2-to-mlflow-3
