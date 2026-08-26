@@ -50,6 +50,7 @@ from lightkube.generic_resource import (
 )
 from lightkube.resources.core_v1 import Secret, Service
 from minio import Minio
+from mlflow.artifacts import download_artifacts
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, stop_after_delay, wait_fixed
@@ -639,9 +640,7 @@ class TestCharm:
             logged_artifacts = {artifact.path for artifact in client.list_artifacts(run_id)}
             assert artifact_name in logged_artifacts
 
-            downloaded_path = client.download_artifacts(
-                artifact_uri=f"runs:/{run_id}/{artifact_name}"
-            )
+            downloaded_path = download_artifacts(artifact_uri=f"runs:/{run_id}/{artifact_name}")
             assert Path(downloaded_path).read_text() == artifact_content
         finally:
             for key, value in saved_env_vars.items():

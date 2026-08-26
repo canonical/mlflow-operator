@@ -57,6 +57,7 @@ from lightkube.generic_resource import (
     load_in_cluster_generic_resources,
 )
 from lightkube.resources.core_v1 import Namespace, Secret
+from mlflow.artifacts import download_artifacts
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_fixed
@@ -759,9 +760,7 @@ class TestCharm:
             logged_artifacts = {artifact.path for artifact in client.list_artifacts(run_id)}
             assert artifact_name in logged_artifacts
 
-            downloaded_path = client.download_artifacts(
-                artifact_uri=f"runs:/{run_id}/{artifact_name}"
-            )
+            downloaded_path = download_artifacts(artifact_uri=f"runs:/{run_id}/{artifact_name}")
             assert Path(downloaded_path).read_text() == artifact_content
         finally:
             for key, value in saved_env_vars.items():
