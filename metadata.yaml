@@ -24,7 +24,7 @@ resources:
   exporter-oci-image:
     type: oci-image
     description: Image for Prometheus exporter
-    upstream-source: docker.io/charmedkubeflow/mlflow-prometheus-exporter:3.14.0-5a468e9-20260710142238
+    upstream-source: docker.io/charmedkubeflow/mlflow-prometheus-exporter:3.15.1-340fe92-20260826095012
 requires:
   relational-db:
     interface: mysql_client
