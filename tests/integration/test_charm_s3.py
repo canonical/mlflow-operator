@@ -759,7 +759,9 @@ class TestCharm:
             logged_artifacts = {artifact.path for artifact in client.list_artifacts(run_id)}
             assert artifact_name in logged_artifacts
 
-            downloaded_path = client.download_artifacts(run_id=run_id, path=artifact_name)
+            downloaded_path = client.download_artifacts(
+                artifact_uri=f"runs:/{run_id}/{artifact_name}"
+            )
             assert Path(downloaded_path).read_text() == artifact_content
         finally:
             for key, value in saved_env_vars.items():
