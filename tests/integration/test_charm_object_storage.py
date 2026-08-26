@@ -640,7 +640,7 @@ class TestCharm:
             assert artifact_name in logged_artifacts
 
             downloaded_path = client.download_artifacts(
-                run_id=run_id, 
+                run_id=run_id,
                 path=artifact_name
             )
             assert Path(downloaded_path).read_text() == artifact_content
