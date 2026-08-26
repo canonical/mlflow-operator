@@ -50,7 +50,6 @@ from lightkube.generic_resource import (
 )
 from lightkube.resources.core_v1 import Secret, Service
 from minio import Minio
-from mlflow.artifacts import download_artifacts
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, stop_after_delay, wait_fixed

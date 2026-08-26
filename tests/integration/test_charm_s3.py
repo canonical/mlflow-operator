@@ -57,7 +57,6 @@ from lightkube.generic_resource import (
     load_in_cluster_generic_resources,
 )
 from lightkube.resources.core_v1 import Namespace, Secret
-from mlflow.artifacts import download_artifacts
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_fixed
