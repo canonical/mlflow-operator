@@ -29,7 +29,7 @@ Run the MLflow action to retrieve MinIO credentials:
 ```shell
 juju run-action mlflow-server/0 get-minio-credentials --wait
 
-# Expected result
+# expected result
 unit-mlflow-server-0:
   UnitId: mlflow-server/0
   id: "2"
