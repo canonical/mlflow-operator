@@ -721,6 +721,8 @@ class TestCharm:
         env_var_names = {env_var["name"] for env_var in mlflow_poddefault.spec["env"]}
         assert "MLFLOW_TRACKING_URI" in env_var_names
         assert "MLFLOW_S3_ENDPOINT_URL" not in env_var_names
+        assert "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD" in env_var_names
+        assert "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD" in env_var_names
 
     @pytest.mark.abort_on_fail
     async def test_client_logs_and_fetches_artifact_via_tracking_server(self, ops_test: OpsTest):
@@ -753,6 +755,12 @@ class TestCharm:
             "MLFLOW_TRACKING_URI",
         ]
         saved_env_vars = {key: os.environ.pop(key, None) for key in object_storage_env_vars}
+        proxy_multipart_env_vars = {
+            "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD": "false",
+            "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD": "false",
+        }
+        saved_multipart_env_vars = {key: os.environ.get(key) for key in proxy_multipart_env_vars}
+        os.environ.update(proxy_multipart_env_vars)
         try:
             tracking_uri = f"http://localhost:{mlflow_port}"
             mlflow.set_tracking_uri(tracking_uri)
@@ -775,5 +783,10 @@ class TestCharm:
         finally:
             for key, value in saved_env_vars.items():
                 if value is not None:
+                    os.environ[key] = value
+            for key, value in saved_multipart_env_vars.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
                     os.environ[key] = value
             mlflow_subprocess.terminate()
