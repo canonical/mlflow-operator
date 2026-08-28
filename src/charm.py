@@ -88,7 +88,7 @@ SCHEMA_OUT_OF_DATE_MARKER = "MLFLOW_SCHEMA_OUT_OF_DATE"
 # read-only snippet run in the workload container to detect whether the tracking database schema is
 # outdated with respect to the deployed MLflow version, based on this exception being raised by
 # running `_verify_schema` directly:
-# https://github.com/mlflow/mlflow/blob/v3.14.0/mlflow/store/db/utils.py#L127-L134
+# https://github.com/mlflow/mlflow/blob/v3.15.1/mlflow/store/db/utils.py#L127-L134
 # NOTE:
 # - it is and it has to be idempotent and read-only
 # - it relies on MLflow's own schema verification, which raises a stable error instructing to run
@@ -994,7 +994,7 @@ class MlflowCharm(CharmBase):
         """Return environment variables for the `mlflow server` command.
 
         See here how such environment variables provide defaults for `mlflow server` CLI options:
-        https://mlflow.org/docs/3.14.0/api_reference/cli.html#mlflow-server
+        https://mlflow.org/docs/3.15.1/api_reference/cli.html#mlflow-server
         """
         try:
             interfaces = self._get_interfaces()

@@ -239,6 +239,8 @@ EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE = {
     "spec": {
         "desc": "Allow access to MLFlow",
         "env": [
+            {"name": "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD", "value": "false"},
+            {"name": "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD", "value": "false"},
             {"name": "MLFLOW_TRACKING_URI", "value": EXPECTED_MLFLOW_ENDPOINT},
         ],
         "selector": {"matchLabels": {"mlflow-server-minio": "true"}},

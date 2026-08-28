@@ -23,7 +23,10 @@ jobs:
     steps:
       - name: Install charmcraft
         run: |
-          sudo snap install charmcraft --classic --channel latest/stable
+          # Pin < 4.4.1 (amd64 rev 8022): 4.4.1 hard-switched candid -> Ubuntu One auth, breaking release tokens.
+          sudo snap install charmcraft --classic --revision 8022
+          # TODO: restore this instead:
+          # sudo snap install charmcraft --classic --channel latest/stable
       - name: Run charmcraft promote
         run: |
           charmcraft promote --name ${{ github.event.inputs.charm-name }} \
