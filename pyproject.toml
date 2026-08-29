@@ -92,7 +92,7 @@ optional = true
 
 [tool.poetry.group.integration.dependencies]
 juju = "<4.0"
-mlflow = "==3.14.0"
+mlflow = "==3.15.1"
 lightkube-models = ">=1.25.4.4"
 charmed-kubeflow-chisme = ">=0.4.28"
 aiohttp = "^3.12.13"

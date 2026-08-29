@@ -8,6 +8,14 @@ spec:
   {%- if not is_proxy_mode_enabled %}
   - name: MLFLOW_S3_ENDPOINT_URL
     value: {{ s3_endpoint }}
+  {%- else %}
+  # in proxy mode, where clients have no access to the artifact store, they have to be kept from
+  # using presigned URLs, an enablement which would instead transfer artifacts to/from the artifact
+  # store directly from/to the client side:
+  - name: MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD
+    value: "false"
+  - name: MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD
+    value: "false"
   {%- endif %}
   - name: MLFLOW_TRACKING_URI
     value: {{ mlflow_endpoint }}

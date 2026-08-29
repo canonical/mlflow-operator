@@ -28,6 +28,8 @@ jobs:
       track: ${{ needs.ci-tests.outputs.track }}
       artifact-prefix: ${{ needs.ci-tests.outputs.artifact-prefix }}
       path-to-charm-directory: ${{ matrix.charm }}
+      # Pin < 4.4.1 (amd64 rev 8022): 4.4.1 hard-switched candid -> Ubuntu One auth, breaking release tokens.
+      charmcraft-snap-revision: 8022  # TODO: restore by removing this
     secrets:
       charmhub-token: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
     permissions:
