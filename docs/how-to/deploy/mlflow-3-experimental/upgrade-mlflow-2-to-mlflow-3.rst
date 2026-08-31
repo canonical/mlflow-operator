@@ -66,7 +66,7 @@ Next, refresh the tracking server to the experimental MLflow 3 channel:
 
 .. code-block:: bash
 
-    juju refresh mlflow-server --channel=3.14/edge
+    juju refresh mlflow-server --channel=3.15/edge
 
 Wait until ``mlflow-server`` reports a ``blocked`` status again, as it is still waiting for its backend store.
 
