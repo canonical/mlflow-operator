@@ -23,13 +23,13 @@ jobs:
     name: Release charm | ${{ matrix.charm }}
     needs:
       - ci-tests
-    uses: canonical/data-platform-workflows/.github/workflows/release_charm_edge.yaml@v49.0.1
+    uses: canonical/data-platform-workflows/.github/workflows/release_charm_edge.yaml@v51.0.0
     with:
       track: ${{ needs.ci-tests.outputs.track }}
       artifact-prefix: ${{ needs.ci-tests.outputs.artifact-prefix }}
       path-to-charm-directory: ${{ matrix.charm }}
     secrets:
-      charmhub-token: ${{ secrets.CHARMCRAFT_CREDENTIALS }}
+      charmhub-token: ${{ secrets.CHARMHUB_TOKEN_EDGE }}
     permissions:
       actions: read
       contents: write  # Needed to create git tags
