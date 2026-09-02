@@ -129,6 +129,35 @@ with engine.connect() as connection:
     connection.execute(text('SET PERSIST log_bin_trust_function_creators = ON'))
 """
 
+# directory inside the workload container where the charm writes the RBAC/auth files it owns: the
+# rendered basic_auth.ini and the custom authentication module - NOTE: under Pebble's home
+# directory, writable by the non-root user:
+AUTH_CONFIG_DIR = "/var/lib/pebble/default/auth"
+AUTH_CONFIG_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/basic_auth.ini"
+AUTH_MODULE_NAME = "custom_userid_header_auth"
+AUTH_MODULE_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/{AUTH_MODULE_NAME}.py"
+AUTH_MODULE_SOURCE_PATH = "src/auth/custom_userid_header_auth.py"
+AUTH_CONFIG_TEMPLATE_PATH = "src/auth/basic_auth.ini.j2"
+AUTHORIZATION_FUNCTION = f"{AUTH_MODULE_NAME}:authenticate_request"
+
+# username of the charm's MLflow super-admin - NOTE: it contains an underscore and it does not
+# contain any "@" so that it can never collide with a K8s namespace name (DNS-1123) or an IAM
+# email, which are the possible identity value kinds set by external entities:
+MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
+
+
+# idempotent snippet run in the workload container to create the separate auth database in the
+# same MySQL instance as the tracking backend store (issuing a server-level CREATE DATABASE 
+# the auth database via the backend store URI, whose database will already exist):
+CREATE_AUTH_DATABASE_SNIPPET = """\
+import sys
+from sqlalchemy import create_engine, text
+
+engine = create_engine(sys.argv[1])
+with engine.connect() as connection:
+    connection.execute(text('CREATE DATABASE IF NOT EXISTS `' + sys.argv[2] + '`'))
+"""
+
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
 # both the `object-storage` and `s3` interfaces.
@@ -157,13 +186,14 @@ class MlflowCharm(CharmBase):
         self._exporter_port = self.model.config["mlflow_prometheus_exporter_port"]
         self._container_name = "mlflow-server"
         self._exporter_container_name = "mlflow-prometheus-exporter"
-        self._database_name = "mlflow"
+        self._backend_store_database_name = "mlflow"
+        self._auth_database_name = f"{self._backend_store_database_name}_auth"
         self._container = self.unit.get_container(self._container_name)
         self._exporter_container = self.unit.get_container(self._exporter_container_name)
         self.database = DatabaseRequires(
             self,
             relation_name="relational-db",
-            database_name=self._database_name,
+            database_name=self._backend_store_database_name,
             # NOTE: `charmed_dba` grants the relation user SYSTEM_VARIABLES_ADMIN (to persist
             # `log_bin_trust_function_creators`) and TRIGGER, which together let MLflow's schema
             # migration create the `secrets` immutability trigger under binary logging
@@ -398,7 +428,8 @@ class MlflowCharm(CharmBase):
                 self._container_name: {
                     "override": "replace",
                     "summary": "Entrypoint of mlflow-server image",
-                    "command": "mlflow server",
+                    # running the tracking server while enabling RBAC via the "basic-auth" app:
+                    "command": "mlflow server --app-name basic-auth",
                     "startup": "enabled",
                     "environment": self.service_environment,  # defaults `mlflow server` CLI options
                 }
@@ -518,7 +549,7 @@ class MlflowCharm(CharmBase):
         raise ErrorWithStatus("Waiting for relational-db relation data", WaitingStatus)
 
     def _get_backend_store_uri(self) -> str:
-        """Return the SQLAlchemy backend store URI for the `relational-db` MySQL backend.
+        """Return the SQLAlchemy backend-store URI from the `relational-db` MySQL provider.
 
         Raises:
             ErrorWithStatus if the `relational-db` relation or its data are not ready.
@@ -526,7 +557,23 @@ class MlflowCharm(CharmBase):
         relational_db_data = self._get_relational_db_data()
         return (
             f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}"
-            f"@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}"
+            f"@{relational_db_data['host']}:{relational_db_data['port']}"
+            f"/{self._backend_store_database_name}"
+        )
+
+    def _get_auth_database_uri(self) -> str:
+        """Return the SQLAlchemy auth-database URI from the `relational-db` MySQL provider.
+
+        Same MySQL instance and credentials as the backend store, but a separate database.
+
+        Raises:
+            ErrorWithStatus if the `relational-db` relation or its data are not ready.
+        """
+        relational_db_data = self._get_relational_db_data()
+        return (
+            f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}"
+            f"@{relational_db_data['host']}:{relational_db_data['port']}"
+            f"/{self._auth_database_name}"
         )
 
     def _is_database_schema_out_of_date(self, backend_store_uri: str) -> bool:
@@ -655,6 +702,42 @@ class MlflowCharm(CharmBase):
 
             raise ErrorWithStatus(
                 "Could not prepare the database for schema migration; will retry.", WaitingStatus
+            )
+
+    def _ensure_auth_database_exists(self, backend_store_uri: str) -> None:
+        """Create the separate RBAC auth database in the same MySQL instance (idempotent).
+
+        MLflow's auth app creates its own tables but not the database itself, so the charm creates
+        the auth database beforehand. The statement connects through the backend store URI (whose
+        database already exists) and issues a server-level `CREATE DATABASE IF NOT EXISTS` for the
+        auth database.
+
+        Assumes the `relational-db` user may create databases (granted via the `charmed_dba` role).
+
+        Raises:
+            ErrorWithStatus(..., Waiting) if the statement could not be run (e.g. the database is
+            not reachable yet), so the caller can defer and retry.
+        """
+        try:
+            process = self.container.exec(
+                [
+                    "python3",
+                    "-c",
+                    CREATE_AUTH_DATABASE_SNIPPET,
+                    backend_store_uri,
+                    self._auth_database_name,
+                ]
+            )
+            process.wait_output()
+        except ExecError as error:
+            self.logger.warning(
+                "Could not create the auth database (database unreachable or insufficient "
+                f"privileges): exit code {error.exit_code}",
+            )
+            raise ErrorWithStatus(
+                "The database is not yet reachable, or the auth database could not be created; "
+                "will retry.",
+                WaitingStatus,
             )
 
     def _reconcile_database_schema(self) -> None:
@@ -1014,6 +1097,19 @@ class MlflowCharm(CharmBase):
             # NOTE: security middleware disable as already provided by the outer Istio layer:
             # https://mlflow.org/docs/latest/self-hosting/security/network/#disable-security-middleware  # noqa: E501
             "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
+            # enabling workspaces (tenants):
+            "MLFLOW_ENABLE_WORKSPACES": "true",
+            # disabling seeding new workspaces with default roles, as the charm manages them
+            # exclusively and explicitly:
+            "MLFLOW_RBAC_SEED_DEFAULT_ROLES": "false",
+            # the charm-rendered basic_auth.ini (RBAC settings and custom authentication logic):
+            "MLFLOW_AUTH_CONFIG_PATH": AUTH_CONFIG_CONTAINER_PATH,
+            # static and identical across replicas, required by the auth app for CSRF/session:
+            "MLFLOW_FLASK_SERVER_SECRET_KEY": auth_secrets["flask_secret_key"],
+            # trusted user-ID header the custom authentication logic reads to map requests to users:
+            "IDENTITY_HEADER_NAME": self.model.config["identity_header_name"],
+            # so that MLflow's auth app can import the charm-written custom authentication module:
+            "PYTHONPATH": AUTH_CONFIG_DIR,
         }
         if self.proxy_mode:
             proxy_environment_variables = {
@@ -1038,6 +1134,27 @@ class MlflowCharm(CharmBase):
             )
 
         return environment_variables
+
+
+    def _reconcile_auth_config(self) -> None:
+        """Render and push the RBAC auth config and the custom authentication module.
+
+        Writes into the workload container the custom authentication module (shipped in the charm)
+        and the rendered basic_auth.ini that points MLflow at it, at the paths that the server's
+        environment then references via `MLFLOW_AUTH_CONFIG_PATH` and `PYTHONPATH`.
+        """
+        auth_secrets = self._get_or_create_auth_secrets()
+
+        custom_auth_module = Path(AUTH_MODULE_SOURCE_PATH).read_text()
+        self.container.push(AUTH_MODULE_CONTAINER_PATH, custom_auth_module, make_dirs=True)
+
+        auth_config = Template(Path(AUTH_CONFIG_TEMPLATE_PATH).read_text()).render(
+            auth_database_uri=self._get_auth_database_uri(),
+            admin_username=MLFLOW_SUPER_ADMIN_USERNAME,
+            admin_password=auth_secrets["admin_password"],
+            authorization_function=AUTHORIZATION_FUNCTION,
+        )
+        self.container.push(AUTH_CONFIG_CONTAINER_PATH, auth_config, make_dirs=True)
 
     def _reconcile_policy_resource_manager(self):
         if not self.unit.is_leader():
@@ -1160,6 +1277,13 @@ class MlflowCharm(CharmBase):
             # auto-initializes the database schema on a fresh deployment (an operation that indeed
             # requires the privileges granted with this step):
             self._ensure_trigger_creation_allowed(self._get_backend_store_uri())
+
+            # ensuring that the separate RBAC auth database exists, necessary for RBAC and custom
+            # authentication:
+            self._ensure_auth_database_exists(self._get_backend_store_uri())
+            # (re)rendering the required authentication configurations, including the custom
+            # authentication module, into the workload:
+            self._reconcile_auth_config()
 
             update_layer(
                 self._container_name, self._container, self._mlflow_server_layer, self.logger
