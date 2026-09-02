@@ -150,11 +150,3 @@ provides:
       are cross-model, relate that app to this additional relation to retrieve additional
       data required for these policies. This is required because Juju does not natively
       provide all information required to build these policies when related cross-model.
-peers:
-  peers:
-    interface: mlflow_server_peers
-    description: |
-      Peer relation used to share, across units and restarts, the auto-generated RBAC
-      credentials the tracking server needs to be consistent: the Flask secret key (which must be
-      identical across replicas for CSRF/session validation) and the charm's MLflow super-admin
-      password.

@@ -49,7 +49,7 @@ from jinja2 import Template
 from lightkube import Client
 from lightkube.models.core_v1 import ServicePort
 from object_storage import S3Requirer
-from ops import ActionEvent, main
+from ops import ActionEvent, SecretNotFoundError, main
 from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Layer
@@ -146,7 +146,10 @@ AUTHORIZATION_FUNCTION = f"{AUTH_MODULE_NAME}:authenticate_request"
 # email, which are the possible identity value kinds set by external entities:
 MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
 
-PEER_RELATION_NAME = "peers"
+# label of the application-scoped Juju secret holding the auto-generated RBAC credentials (the
+# Flask secret key and the super-admin password), kept stable across restarts and identical across
+# replicas:
+AUTH_SECRET_LABEL = "mlflow-auth-credentials"
 
 # idempotent snippet run in the workload container to create the separate auth database in the same
 # MySQL instance as the tracking backend store (issuing a server-level CREATE DATABASE for creating
@@ -1142,34 +1145,30 @@ class MlflowCharm(CharmBase):
         """Return the shared RBAC credentials, generating and persisting them on first use.
 
         The Flask secret key and the MLflow super-admin password are generated once by the leader
-        and stored in the peer relation's application databag, so they stay stable across restarts
-        and identical across replicas (the auth app requires a consistent Flask secret key).
+        and stored in an application-scoped Juju secret, so they stay stable across restarts and
+        identical across replicas (the auth app requires a consistent Flask secret key).
 
         Raises:
-            ErrorWithStatus(..., Waiting) if the peer relation or the generated values are not
-            available yet, so the caller can defer and retry.
-
-        TODO: migrate these in-pod credentials to a Juju secret for stronger at-rest protection.
+            ErrorWithStatus(..., Waiting) if the credentials have not been generated yet (a
+            non-leader unit observed before the leader created them), so the caller can defer.
         """
-        peer_relation = self.model.get_relation(PEER_RELATION_NAME)
-        if peer_relation is None:
-            raise ErrorWithStatus("Waiting for the peer relation to be created", WaitingStatus)
+        try:
+            content = self.model.get_secret(label=AUTH_SECRET_LABEL).get_content()
+        except SecretNotFoundError:
+            if not self.unit.is_leader():
+                raise ErrorWithStatus(
+                    "Waiting for the leader to generate the RBAC credentials", WaitingStatus
+                )
+            content = {
+                "flask-secret-key": secrets.token_urlsafe(32),
+                "admin-password": secrets.token_urlsafe(32),
+            }
+            self.app.add_secret(content, label=AUTH_SECRET_LABEL)
 
-        app_databag = peer_relation.data[self.app]
-        if self.unit.is_leader():
-            if not app_databag.get("flask-secret-key"):
-                app_databag["flask-secret-key"] = secrets.token_urlsafe(32)
-            if not app_databag.get("admin-password"):
-                app_databag["admin-password"] = secrets.token_urlsafe(32)
-
-        flask_secret_key = app_databag.get("flask-secret-key")
-        admin_password = app_databag.get("admin-password")
-        if not flask_secret_key or not admin_password:
-            raise ErrorWithStatus(
-                "Waiting for the RBAC credentials to be generated", WaitingStatus
-            )
-
-        return {"flask_secret_key": flask_secret_key, "admin_password": admin_password}
+        return {
+            "flask_secret_key": content["flask-secret-key"],
+            "admin_password": content["admin-password"],
+        }
 
     def _reconcile_auth_config(self) -> None:
         """Render and push the RBAC auth config and the custom authentication module.
