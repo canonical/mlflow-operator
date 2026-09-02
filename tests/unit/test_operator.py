@@ -91,6 +91,20 @@ EXPECTED_S3_ENDPOINT = (
     f"{OBJECT_STORAGE_DATA_NORMALIZED['host']}:{OBJECT_STORAGE_DATA_NORMALIZED['port']}"
 )
 EXPECTED_S3_URI = f"s3://{BUCKET_NAME}"
+EXPECTED_FLASK_SECRET_KEY = "test-flask-secret-key"
+EXPECTED_ADMIN_PASSWORD = "test-admin-password"
+AUTH_SECRETS = {
+    "flask_secret_key": EXPECTED_FLASK_SECRET_KEY,
+    "admin_password": EXPECTED_ADMIN_PASSWORD,
+}
+EXPECTED_AUTH_ENVIRONMENT = {
+    "MLFLOW_ENABLE_WORKSPACES": "true",
+    "MLFLOW_RBAC_SEED_DEFAULT_ROLES": "false",
+    "MLFLOW_AUTH_CONFIG_PATH": "/var/lib/pebble/default/auth/basic_auth.ini",
+    "MLFLOW_FLASK_SERVER_SECRET_KEY": EXPECTED_FLASK_SECRET_KEY,
+    "IDENTITY_HEADER_NAME": "kubeflow-userid",
+    "PYTHONPATH": "/var/lib/pebble/default/auth",
+}
 EXPECTED_ENVIRONMENT_NON_PROXY_MODE = {
     "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
     "MLFLOW_DEFAULT_ARTIFACT_ROOT": EXPECTED_S3_URI,
@@ -99,6 +113,7 @@ EXPECTED_ENVIRONMENT_NON_PROXY_MODE = {
     "MLFLOW_PORT": EXPECTED_SERVER_PORT,
     "MLFLOW_SERVE_ARTIFACTS": "False",
     "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
+    **EXPECTED_AUTH_ENVIRONMENT,
 }
 EXPECTED_ENVIRONMENT_PROXY_MODE = {
     "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
@@ -112,6 +127,7 @@ EXPECTED_ENVIRONMENT_PROXY_MODE = {
     "MLFLOW_S3_ENDPOINT_URL": EXPECTED_S3_ENDPOINT,
     "MLFLOW_SERVE_ARTIFACTS": "True",
     "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
+    **EXPECTED_AUTH_ENVIRONMENT,
 }
 
 
@@ -124,7 +140,7 @@ def build_expected_pebble_service_plan(environment_variables: dict) -> dict:
                 "summary": "Entrypoint of mlflow-server image",
                 "startup": "enabled",
                 "override": "replace",
-                "command": "mlflow server",
+                "command": "mlflow server --app-name basic-auth",
                 "environment": environment_variables,
             },
         )
@@ -702,6 +718,7 @@ class TestCharm:
     )
     @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
     @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
         "serve_artifacts, tls_ca_chain, region, expected_environment",
@@ -763,6 +780,7 @@ class TestCharm:
     )
     @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
     @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
         "serve_artifacts, tls_ca_chain, expected_environment",
