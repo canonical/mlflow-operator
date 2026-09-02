@@ -1017,6 +1017,7 @@ class MlflowCharm(CharmBase):
             # Create the bucket if missing
             self.unit.status = MaintenanceStatus(f"Creating bucket {bucket_name}.")
             s3_wrapper.create_bucket(bucket_name)
+            self.model.unit.status = ActiveStatus()
             return
 
         except botocore.exceptions.SSLError as e:
