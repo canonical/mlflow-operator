@@ -36,7 +36,7 @@ from pytest_operator.plugin import OpsTest
 from tenacity import retry, stop_after_delay, wait_fixed
 
 # TODO: remove after multi-tenancy is completed:
-from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY
+from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY  # isort:skip
 
 logger = logging.getLogger(__name__)
 

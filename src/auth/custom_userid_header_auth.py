@@ -22,12 +22,10 @@ import os
 import secrets
 
 import sqlalchemy
-from flask import Response, request
-from werkzeug.datastructures import Authorization
-
-from flask import make_response
+from flask import Response, make_response, request
 from mlflow import MlflowException
 from mlflow.server.auth import authenticate_request_basic_auth, store
+from werkzeug.datastructures import Authorization
 
 # TODO: remove after multi-tenancy is completed
 HARDCODED_TEST_IDENTITY = "charm-test-user"
