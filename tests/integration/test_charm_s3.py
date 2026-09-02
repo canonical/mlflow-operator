@@ -60,7 +60,7 @@ from lightkube.resources.core_v1 import Namespace, Secret
 from mlflow.artifacts import download_artifacts
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
-from tenacity import retry, retry_if_exception_type, stop_after_delay
+from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_fixed
 
 # TODO: remove after multi-tenancy is completed:
 from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY
