@@ -1011,6 +1011,7 @@ class MlflowCharm(CharmBase):
             self.unit.status = MaintenanceStatus(f"Checking if bucket {bucket_name} exists.")
             # Check if bucket already exists
             if s3_wrapper.bucket_exists(bucket_name):
+                self.model.unit.status = ActiveStatus()
                 return
 
             # Create the bucket if missing
