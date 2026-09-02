@@ -4,6 +4,7 @@
 
 import base64
 import logging
+import secrets
 from pathlib import Path
 from typing import List, Optional, TypedDict
 from urllib.parse import urlparse
@@ -145,6 +146,7 @@ AUTHORIZATION_FUNCTION = f"{AUTH_MODULE_NAME}:authenticate_request"
 # email, which are the possible identity value kinds set by external entities:
 MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
 
+PEER_RELATION_NAME = "peers"
 
 # idempotent snippet run in the workload container to create the separate auth database in the
 # same MySQL instance as the tracking backend store (issuing a server-level CREATE DATABASE 
@@ -1083,6 +1085,7 @@ class MlflowCharm(CharmBase):
             interfaces = self._get_interfaces()
             artifact_store_data = self._get_artifact_store_data(interfaces)
             backend_store_uri = self._get_backend_store_uri()
+            auth_secrets = self._get_or_create_auth_secrets()
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
@@ -1135,6 +1138,38 @@ class MlflowCharm(CharmBase):
 
         return environment_variables
 
+    def _get_or_create_auth_secrets(self) -> dict:
+        """Return the shared RBAC credentials, generating and persisting them on first use.
+
+        The Flask secret key and the MLflow super-admin password are generated once by the leader
+        and stored in the peer relation's application databag, so they stay stable across restarts
+        and identical across replicas (the auth app requires a consistent Flask secret key).
+
+        Raises:
+            ErrorWithStatus(..., Waiting) if the peer relation or the generated values are not
+            available yet, so the caller can defer and retry.
+
+        TODO: migrate these in-pod credentials to a Juju secret for stronger at-rest protection.
+        """
+        peer_relation = self.model.get_relation(PEER_RELATION_NAME)
+        if peer_relation is None:
+            raise ErrorWithStatus("Waiting for the peer relation to be created", WaitingStatus)
+
+        app_databag = peer_relation.data[self.app]
+        if self.unit.is_leader():
+            if not app_databag.get("flask-secret-key"):
+                app_databag["flask-secret-key"] = secrets.token_urlsafe(32)
+            if not app_databag.get("admin-password"):
+                app_databag["admin-password"] = secrets.token_urlsafe(32)
+
+        flask_secret_key = app_databag.get("flask-secret-key")
+        admin_password = app_databag.get("admin-password")
+        if not flask_secret_key or not admin_password:
+            raise ErrorWithStatus(
+                "Waiting for the RBAC credentials to be generated", WaitingStatus
+            )
+
+        return {"flask_secret_key": flask_secret_key, "admin_password": admin_password}
 
     def _reconcile_auth_config(self) -> None:
         """Render and push the RBAC auth config and the custom authentication module.
