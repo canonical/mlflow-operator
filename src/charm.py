@@ -148,8 +148,8 @@ MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
 
 PEER_RELATION_NAME = "peers"
 
-# idempotent snippet run in the workload container to create the separate auth database in the
-# same MySQL instance as the tracking backend store (issuing a server-level CREATE DATABASE 
+# idempotent snippet run in the workload container to create the separate auth database in the same
+# MySQL instance as the tracking backend store (issuing a server-level CREATE DATABASE for creating
 # the auth database via the backend store URI, whose database will already exist):
 CREATE_AUTH_DATABASE_SNIPPET = """\
 import sys
