@@ -35,6 +35,9 @@ from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, stop_after_delay, wait_fixed
 
+# TODO: remove after multi-tenancy is completed:
+from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY
+
 logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
@@ -111,7 +114,11 @@ class _PortForward:
 
 @retry(stop=stop_after_delay(300), wait=wait_fixed(10), reraise=True)
 def _assert_tracking_server_reachable(url: str):
-    response = requests.get(url)
+    response = requests.get(
+        url,
+        # TODO: remove after multi-tenancy is completed:
+        headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+    )
     assert response.status_code == 200
 
 
