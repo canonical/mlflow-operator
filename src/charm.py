@@ -151,8 +151,7 @@ MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
 # replicas:
 AUTH_SECRET_LABEL = "mlflow-auth-credentials"
 
-RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "backend-store-db"
-RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB = "auth-db"
+RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "relational-db"
 
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
@@ -183,7 +182,6 @@ class MlflowCharm(CharmBase):
         self._container_name = "mlflow-server"
         self._exporter_container_name = "mlflow-prometheus-exporter"
         self._backend_store_database_name = "mlflow"
-        self._auth_database_name = f"{self._backend_store_database_name}_auth"
         self._container = self.unit.get_container(self._container_name)
         self._exporter_container = self.unit.get_container(self._exporter_container_name)
         self.backend_store_database = DatabaseRequires(
@@ -194,12 +192,6 @@ class MlflowCharm(CharmBase):
             # `log_bin_trust_function_creators`) and TRIGGER, which together let MLflow's schema
             # migration create the `secrets` immutability trigger under binary logging
             # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-            extra_user_roles="charmed_dba",
-        )
-        self.auth_database = DatabaseRequires(
-            self,
-            relation_name=RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB,
-            database_name=self._auth_database_name,
             extra_user_roles="charmed_dba",
         )
 
@@ -220,12 +212,6 @@ class MlflowCharm(CharmBase):
         self.framework.observe(
             self.on.backend_store_db_relation_broken,
             self._on_backend_store_relation_removed,
-        )
-        self.framework.observe(self.auth_database.on.database_created, self._on_event)
-        self.framework.observe(self.auth_database.on.endpoints_changed, self._on_event)
-        self.framework.observe(
-            self.on.auth_db_relation_broken,
-            self._on_auth_database_relation_removed,
         )
 
         self.framework.observe(
@@ -562,38 +548,6 @@ class MlflowCharm(CharmBase):
             f"Waiting for {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB} relation data", WaitingStatus
         )
 
-    def _get_auth_database_db_data(self) -> dict:
-        mysql_relation = self.model.get_relation(RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB)
-
-        # Raise exception and stop execution if the auth-database relation is not established
-        if not mysql_relation:
-            raise ErrorWithStatus(
-                f"Please add the relation {RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}", BlockedStatus
-            )
-
-        data = self.auth_database.fetch_relation_data()
-        self.logger.debug("Got following database data: %s", data)
-        for val in data.values():
-            if not val:
-                continue
-            try:
-                host, port = val["endpoints"].split(":")
-                db_data = {
-                    "host": host,
-                    "port": port,
-                    "username": val["username"],
-                    "password": val["password"],
-                }
-            except KeyError:
-                raise ErrorWithStatus(
-                    f"Incorrect data found in relation {RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}",
-                    WaitingStatus,
-                )
-            return db_data
-        raise ErrorWithStatus(
-            f"Waiting for {RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB} relation data", WaitingStatus
-        )
-
     def _get_backend_store_uri(self) -> str:
         """Return the SQLAlchemy backend-store URI from the MySQL provider.
 
@@ -605,21 +559,6 @@ class MlflowCharm(CharmBase):
             f"mysql+pymysql://{backend_store_data['username']}:{backend_store_data['password']}"
             f"@{backend_store_data['host']}:{backend_store_data['port']}"
             f"/{self._backend_store_database_name}"
-        )
-
-    def _get_auth_database_uri(self) -> str:
-        """Return the SQLAlchemy auth-database URI from the MySQL provider.
-
-        Same MySQL instance and credentials as the backend store, but a separate database.
-
-        Raises:
-            ErrorWithStatus if the relation or its data are not ready.
-        """
-        auth_database_data = self._get_auth_database_db_data()
-        return (
-            f"mysql+pymysql://{auth_database_data['username']}:{auth_database_data['password']}"
-            f"@{auth_database_data['host']}:{auth_database_data['port']}"
-            f"/{self._auth_database_name}"
         )
 
     def _is_database_schema_out_of_date(self, backend_store_uri: str) -> bool:
@@ -760,7 +699,6 @@ class MlflowCharm(CharmBase):
         migration runs.
         """
         backend_store_uri = self._get_backend_store_uri()
-        auth_database_uri = self._get_auth_database_uri()
 
         # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
         self._ensure_trigger_creation_allowed(backend_store_uri)
@@ -770,7 +708,6 @@ class MlflowCharm(CharmBase):
                 "Database schema is out of date for the deployed MLflow version; migrating it."
             )
             self._run_database_migration(backend_store_uri)
-            self._run_database_migration(auth_database_uri)
 
     def _validate_sdi_interface(self, interfaces, relation_name, default_return=None):
         """Validates data received from SerializedDataInterface, returning the data if valid.
@@ -1098,7 +1035,6 @@ class MlflowCharm(CharmBase):
             interfaces = self._get_interfaces()
             artifact_store_data = self._get_artifact_store_data(interfaces)
             backend_store_uri = self._get_backend_store_uri()
-            auth_database_uri = self._get_auth_database_uri()
             auth_secrets = self._get_or_create_auth_secrets()
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
@@ -1108,7 +1044,6 @@ class MlflowCharm(CharmBase):
 
         environment_variables = {
             "MLFLOW_BACKEND_STORE_URI": backend_store_uri,
-            "MLFLOW_DATABASE_AUTH_URI": auth_database_uri,
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
             "MLFLOW_PORT": self._mlflow_port,
@@ -1195,6 +1130,7 @@ class MlflowCharm(CharmBase):
         self.container.push(AUTH_MODULE_CONTAINER_PATH, custom_auth_module, make_dirs=True)
 
         auth_config = Template(Path(AUTH_CONFIG_TEMPLATE_PATH).read_text()).render(
+            database_uri=self._get_backend_store_uri(),
             admin_username=MLFLOW_SUPER_ADMIN_USERNAME,
             admin_password=auth_secrets["admin_password"],
             authorization_function=AUTHORIZATION_FUNCTION,
@@ -1268,12 +1204,6 @@ class MlflowCharm(CharmBase):
         """Event is fired when relation with the backend store is broken."""
         self.unit.status = BlockedStatus(
             f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
-        )
-
-    def _on_auth_database_relation_removed(self, _) -> None:
-        """Event is fired when relation with the auth database is broken."""
-        self.unit.status = BlockedStatus(
-            f"Please add the relation {RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}"
         )
 
     def _send_manifests(

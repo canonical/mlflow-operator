@@ -91,9 +91,6 @@ GATEWAY_RESOURCE = create_namespaced_resource(
     "gateway.networking.k8s.io", "v1", "Gateway", "gateways"
 )
 
-RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "backend-store-db"
-RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB = "auth-db"
-
 
 def _safe_load_file_to_text(filename: str) -> str:
     """Returns the contents of filename if it is an existing file, else it returns filename."""
@@ -218,14 +215,7 @@ class TestCharm:
             timeout=600,
         )
         await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
-        await ops_test.model.integrate(
-            MYSQL_K8S.charm,
-            f"{CHARM_NAME}:{RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}",
-        )
-        await ops_test.model.integrate(
-            MYSQL_K8S.charm,
-            f"{CHARM_NAME}:{RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}",
-        )
+        await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
