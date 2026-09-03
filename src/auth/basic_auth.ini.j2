@@ -8,7 +8,7 @@
 #   > and auth data without migration conflicts.
 # from:
 # https://mlflow.org/docs/3.15.1/self-hosting/security/basic-http-auth/#connecting-to-a-centralized-database
-database_uri = {{ auth_database_uri }}
+database_uri = {{ database_uri }}
 
 # deny-by-default: an authenticated user with no grants can read nothing (overrides the shipped
 # default of READ). Fail-closed authorization is the sole workspace-isolation boundary:
