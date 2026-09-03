@@ -186,8 +186,3 @@ jobs:
       - name: Get operator logs
         run: kubectl logs --tail 100 -ntesting -lapp.kubernetes.io/name=mlflow-server -c charm
         if: failure()
-
-      - name: Temporary Debugging
-        run: |
-          kubectl exec -it $(kubectl get pod -ntesting -lapp.kubernetes.io/name=mlflow-server -o jsonpath='{.items[0].metadata.name}') -ntesting -c mlflow-server -- pebble logs -n 1000
-        if: failure()
