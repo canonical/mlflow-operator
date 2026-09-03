@@ -557,9 +557,8 @@ class TestCharm:
         with pytest.raises(ErrorWithStatus) as e_info:
             harness.charm._get_backend_store_db_data()
         assert e_info.value.status_type(WaitingStatus)
-        assert (
-            f"Incorrect data found in relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
-            in str(e_info)
+        assert f"Incorrect data found in relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}" in str(
+            e_info
         )
 
     @patch(
@@ -578,9 +577,8 @@ class TestCharm:
         with pytest.raises(ErrorWithStatus) as e_info:
             harness.charm._get_auth_database_db_data()
         assert e_info.value.status_type(WaitingStatus)
-        assert (
-            f"Incorrect data found in relation {RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}"
-            in str(e_info)
+        assert f"Incorrect data found in relation {RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}" in str(
+            e_info
         )
 
     @patch(
