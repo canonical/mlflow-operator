@@ -486,7 +486,7 @@ class TestCharm:
         harness = add_object_storage_to_harness(harness)
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
-            "Please add relation to the database"
+            f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
         )
 
     @patch(
@@ -1283,7 +1283,7 @@ class TestCharm:
         harness: Harness,
     ):
         harness.begin()
-        harness.charm._on_backend_store_db_relation_removed(None)
+        harness.charm._on_backend_store_relation_removed(None)
         assert harness.charm.model.unit.status == BlockedStatus(
             f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
         )
