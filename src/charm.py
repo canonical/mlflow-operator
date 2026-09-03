@@ -535,7 +535,9 @@ class MlflowCharm(CharmBase):
 
         # Raise exception and stop execution if the backend-store relation is not established
         if not mysql_relation:
-            raise ErrorWithStatus("Please add relation to the database", BlockedStatus)
+            raise ErrorWithStatus(
+                f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}", BlockedStatus
+            )
 
         data = self.backend_store_database.fetch_relation_data()
         self.logger.debug("Got following database data: %s", data)
@@ -565,7 +567,9 @@ class MlflowCharm(CharmBase):
 
         # Raise exception and stop execution if the auth-database relation is not established
         if not mysql_relation:
-            raise ErrorWithStatus("Please add relation to the database", BlockedStatus)
+            raise ErrorWithStatus(
+                f"Please add the relation {RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}", BlockedStatus
+            )
 
         data = self.auth_database.fetch_relation_data()
         self.logger.debug("Got following database data: %s", data)
