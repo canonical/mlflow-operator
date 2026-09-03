@@ -73,8 +73,15 @@ S3_TLS_CA_CHAIN = [
 # The same CA chain as embedded (joined + base64-encoded) into the artifact-store Secret's data.
 EXPECTED_S3_CA_BUNDLE_B64 = base64.b64encode("\n".join(S3_TLS_CA_CHAIN).encode()).decode()
 
-RELATIONAL_DB_DATA = {
-    "database": "database",
+BACKEND_STORE_DB_DATA = {
+    "database": "mlflow",
+    "host": "host",
+    "username": "username",
+    "password": "lorem-ipsum",
+    "port": "port",
+}
+AUTH_DATABASE_DB_DATA = {
+    "database": "mlflow_auth",
     "host": "host",
     "username": "username",
     "password": "lorem-ipsum",
@@ -155,6 +162,8 @@ RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE = "ingress"
 RELATION_ENDPOINT_FOR_SERVICE_MESH = "service-mesh"
 RELATION_ENDPOINT_FOR_SECRETS = "secrets"
 RELATION_ENDPOINT_FOR_PODDEFAULTS = "pod-defaults"
+RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "backend-store-db"
+RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB = "auth-db"
 
 INGRESS_DATA = {
     "prefix": EXPECTED_INGRESS_PATH_MATCHED_PREFIX,
@@ -482,7 +491,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_relational_db_data_success(self, harness: Harness):
+    def test_get_backend_store_db_data_success(self, harness: Harness):
         database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {
@@ -496,7 +505,7 @@ class TestCharm:
         harness.model.get_relation = MagicMock()
         harness.begin()
         harness.charm.database = database
-        res = harness.charm._get_relational_db_data()
+        res = harness.charm._get_backend_store_db_data()
         assert res == {
             "host": "host",
             "password": "password",
@@ -508,7 +517,33 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_relational_db_data_failure_wrong_data(self, harness: Harness):
+    def test_get_auth_database_db_data_success(self, harness: Harness):
+        database = MagicMock()
+        fetch_relation_data = MagicMock()
+        fetch_relation_data.return_value = {
+            "test-db-data": {
+                "endpoints": "host:port",
+                "username": "username",
+                "password": "password",
+            }
+        }
+        database.fetch_relation_data = fetch_relation_data
+        harness.model.get_relation = MagicMock()
+        harness.begin()
+        harness.charm.database = database
+        res = harness.charm._get_auth_database_db_data()
+        assert res == {
+            "host": "host",
+            "password": "password",
+            "port": "port",
+            "username": "username",
+        }
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_backend_store_db_data_failure_wrong_data(self, harness: Harness):
         """Test with missing username and password in databag"""
         database = MagicMock()
         fetch_relation_data = MagicMock()
@@ -518,15 +553,39 @@ class TestCharm:
         harness.begin()
         harness.charm.database = database
         with pytest.raises(ErrorWithStatus) as e_info:
-            harness.charm._get_relational_db_data()
+            harness.charm._get_backend_store_db_data()
         assert e_info.value.status_type(WaitingStatus)
-        assert "Incorrect data found in relation relational-db" in str(e_info)
+        assert (
+            f"Incorrect data found in relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
+            in str(e_info)
+        )
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_relational_db_data_failure_waiting(self, harness: Harness):
+    def test_get_auth_database_db_data_data_failure_wrong_data(self, harness: Harness):
+        """Test with missing username and password in databag"""
+        database = MagicMock()
+        fetch_relation_data = MagicMock()
+        fetch_relation_data.return_value = {"test-db-data": {"endpoints": "host:port"}}
+        database.fetch_relation_data = fetch_relation_data
+        harness.model.get_relation = MagicMock()
+        harness.begin()
+        harness.charm.database = database
+        with pytest.raises(ErrorWithStatus) as e_info:
+            harness.charm._get_auth_database_db_data()
+        assert e_info.value.status_type(WaitingStatus)
+        assert (
+            f"Incorrect data found in relation {RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}"
+            in str(e_info)
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_backend_store_db_data_failure_waiting(self, harness: Harness):
         database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {}
@@ -534,10 +593,27 @@ class TestCharm:
         harness.begin()
         harness.charm.database = database
         with pytest.raises(ErrorWithStatus) as e_info:
-            harness.charm._get_relational_db_data()
+            harness.charm._get_backend_store_db_data()
 
         assert e_info.value.status_type(BlockedStatus)
-        assert "Please add relation to the database" in str(e_info)
+        assert f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}" in str(e_info)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_auth_database_db_data_failure_waiting(self, harness: Harness):
+        database = MagicMock()
+        fetch_relation_data = MagicMock()
+        fetch_relation_data.return_value = {}
+        database.fetch_relation_data = fetch_relation_data
+        harness.begin()
+        harness.charm.database = database
+        with pytest.raises(ErrorWithStatus) as e_info:
+            harness.charm._get_auth_database_db_data()
+
+        assert e_info.value.status_type(BlockedStatus)
+        assert f"Please add the relation {RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}" in str(e_info)
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -717,7 +793,12 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
-    @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch(
+        "charm.MlflowCharm._get_auth_database_db_data", lambda *args, **kw: AUTH_DATABASE_DB_DATA
+    )
     @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
@@ -779,7 +860,12 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
-    @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch(
+        "charm.MlflowCharm._get_auth_database_db_data", lambda *args, **kw: AUTH_DATABASE_DB_DATA
+    )
     @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
@@ -1148,11 +1234,13 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+    @patch("charm.MlflowCharm._get_auth_database_db_data", return_value=AUTH_DATABASE_DB_DATA)
     def test_on_event_waiting_for_exporter(
         self,
         _: MagicMock,
         __: MagicMock,
+        ___: MagicMock,
         harness: Harness,
     ):
         harness.set_can_connect("mlflow-prometheus-exporter", False)
@@ -1173,11 +1261,13 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+    @patch("charm.MlflowCharm._get_auth_database_db_data", return_value=AUTH_DATABASE_DB_DATA)
     def test_on_event(
         self,
         _: MagicMock,
         __: MagicMock,
+        ___: MagicMock,
         harness: Harness,
     ):
         harness.begin()
@@ -1309,14 +1399,17 @@ class TestCharm:
     def test_run_database_migration_success(self, harness: Harness):
         harness.begin()
         backend_store_uri = "mysql+pymysql://username:password@host:port/mlflow"
+        auth_database_uri = "mysql+pymysql://username:password@host:port/mlflow_auth"
         process = MagicMock()
         process.wait_output.return_value = ("migration output", "")
         exec_mock = MagicMock(return_value=process)
         harness.charm.container.exec = exec_mock
         harness.charm._run_database_migration(backend_store_uri)
-        exec_mock.assert_called_once_with(["mlflow", "db", "upgrade", backend_store_uri])
+        harness.charm._run_database_migration(auth_database_uri)
+        exec_mock.assert_any_call(["mlflow", "db", "upgrade", backend_store_uri])
+        exec_mock.assert_any_call(["mlflow", "db", "upgrade", auth_database_uri])
         # the command output is consumed so failures surface as an ExecError:
-        process.wait_output.assert_called_once_with()
+        process.wait_output.assert_called()
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1637,7 +1730,8 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+    @patch("charm.MlflowCharm._get_auth_database_db_data", return_value=AUTH_DATABASE_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")
     @pytest.mark.parametrize(
@@ -1652,6 +1746,7 @@ class TestCharm:
         __: MagicMock,
         ___: MagicMock,
         ____: MagicMock,
+        _____: MagicMock,
         harness: Harness,
         add_ambient_mode_ingress,
         add_sidecar_mode_ingress,
@@ -1720,7 +1815,8 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+    @patch("charm.MlflowCharm._get_auth_database_db_data", return_value=AUTH_DATABASE_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")
     def test_multiple_ambient_ingress_relations(
@@ -1729,6 +1825,7 @@ class TestCharm:
         __: MagicMock,
         ___: MagicMock,
         ____: MagicMock,
+        _____: MagicMock,
         harness: Harness,
     ):
         """Test the charm reconciles to active with more than one istio-ingress-route relation."""
@@ -1764,7 +1861,8 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+    @patch("charm.MlflowCharm._get_auth_database_db_data", return_value=AUTH_DATABASE_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")
     def test_each_istio_ingress_route_relation_receives_config(
@@ -1773,6 +1871,7 @@ class TestCharm:
         __: MagicMock,
         ___: MagicMock,
         ____: MagicMock,
+        _____: MagicMock,
         harness: Harness,
     ):
         """Test that every istio-ingress-route relation databag receives a valid config."""
@@ -1821,7 +1920,8 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+    @patch("charm.MlflowCharm._get_auth_database_db_data", return_value=AUTH_DATABASE_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")
     @pytest.mark.parametrize("config_submission_broken", [True, False], ids=["broken", "good"])
@@ -1831,6 +1931,7 @@ class TestCharm:
         __: MagicMock,
         ___: MagicMock,
         ____: MagicMock,
+        _____: MagicMock,
         harness: Harness,
         config_submission_broken,
     ):
@@ -1903,7 +2004,8 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+    @patch("charm.MlflowCharm._get_auth_database_db_data", return_value=AUTH_DATABASE_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")
     @pytest.mark.parametrize(
@@ -1915,6 +2017,7 @@ class TestCharm:
         __: MagicMock,
         ___: MagicMock,
         ____: MagicMock,
+        _____: MagicMock,
         harness: Harness,
         tls_enabled,
         expected_port,

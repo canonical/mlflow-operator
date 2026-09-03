@@ -72,6 +72,9 @@ TEST_EXPERIMENT_NAME = "test-experiment"
 
 PodDefault = create_namespaced_resource("kubeflow.org", "v1alpha1", "PodDefault", "poddefaults")
 
+RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "backend-store-db"
+RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB = "auth-db"
+
 
 def _safe_load_file_to_text(filename: str) -> str:
     """Returns the contents of filename if it is an existing file, else it returns filename."""
@@ -210,7 +213,7 @@ class TestCharm:
         return "".join(choices(ascii_lowercase, k=length))
 
     @pytest.mark.abort_on_fail
-    async def test_add_relational_db_with_relation_expect_active(self, ops_test: OpsTest):
+    async def test_add_relational_dbs_with_relations_expect_active(self, ops_test: OpsTest):
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
         await ops_test.model.deploy(
             MINIO.charm,
@@ -233,7 +236,14 @@ class TestCharm:
             timeout=600,
         )
         await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
-        await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
+        await ops_test.model.integrate(
+            MYSQL_K8S.charm,
+            f"{CHARM_NAME}:{RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}",
+        )
+        await ops_test.model.integrate(
+            MYSQL_K8S.charm,
+            f"{CHARM_NAME}:{RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}",
+        )
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],

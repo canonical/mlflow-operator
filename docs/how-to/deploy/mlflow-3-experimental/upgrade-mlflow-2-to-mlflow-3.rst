@@ -26,7 +26,7 @@ Requirements
 
 * You have an existing Charmed MLflow 2.22 deployment. If you are running an older 2.X version, first upgrade it to 2.22 by following the :doc:`stable upgrade guides <../../manage/upgrade/index>`.
 * You have Command Line Interface (CLI) access to the machine where the Juju controller is deployed. All commands in this guide are executed from it.
-* Your deployment uses ``mysql-k8s`` as its backend store, related to ``mlflow-server`` over the ``relational-db`` endpoint.
+* Your deployment uses ``mysql-k8s`` as its backend store, related to ``mlflow-server`` over the ``backend-store-db`` endpoint.
 
 .. _backup_backend_database:
 
@@ -54,7 +54,7 @@ First, remove the relation between the tracking server and the backend database:
 
 .. code-block:: bash
 
-    juju remove-relation mlflow-server:relational-db mysql-k8s:database
+    juju remove-relation mlflow-server:backend-store-db mysql-k8s:database
 
 This leaves ``mlflow-server`` without a backend store. Wait until ``mlflow-server`` reports a ``blocked`` status and ``mysql-k8s`` settles back to ``active``. You can monitor the statuses with:
 
@@ -74,7 +74,7 @@ Finally, re-establish the relation with the backend database:
 
 .. code-block:: bash
 
-    juju integrate mysql-k8s:database mlflow-server:relational-db
+    juju integrate mysql-k8s:database mlflow-server:backend-store-db
 
 The tracking server now migrates the backend database schema automatically and becomes ``active`` once the migration completes. You can watch its progress with:
 

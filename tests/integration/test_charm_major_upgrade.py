@@ -59,6 +59,9 @@ POSTUPGRADE_RUN_METRIC_VALUE = 0.13
 POSTUPGRADE_RUN_PARAM = "batch_size"
 POSTUPGRADE_RUN_PARAM_VALUE = "32"
 
+RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "backend-store-db"
+RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB = "auth-db"
+
 
 def deploy_k8s_resources(template_files: str):
     """Apply the given Kubernetes resource templates (e.g. the PodDefaults CRD)."""
@@ -157,7 +160,14 @@ class TestUpgrade:
         )
 
         await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
-        await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
+        await ops_test.model.integrate(
+            MYSQL_K8S.charm,
+            f"{CHARM_NAME}:{RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}",
+        )
+        await ops_test.model.integrate(
+            MYSQL_K8S.charm,
+            f"{CHARM_NAME}:{RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}",
+        )
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
@@ -212,9 +222,10 @@ class TestUpgrade:
         SYSTEM_VARIABLES_ADMIN and TRIGGER) and, using those relation credentials, persists
         `log_bin_trust_function_creators` before the migration runs; the data-platform provider only
         grants extra roles on the *first* `database_requested` event, which already fired for the
-        old version without that role, so we remove the `relational-db` relation before refreshing
-        and re-add it afterwards so the request fires again for the new charm; the pre-upgrade data
-        is preserved because dropping the relation only deletes the scoped user, not the database
+        old version without that role, so we remove the `backend-store-db` relation before
+        refreshing and re-add it afterwards so the request fires again for the new charm; the
+        pre-upgrade data is preserved because dropping the relation only deletes the scoped user,
+        not the database
         """
         # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
         # TODO: remove this block delimited by "- - -" once this issue is fixed:
@@ -222,7 +233,7 @@ class TestUpgrade:
 
         # removing the relation for backend store with MySQL:
         await ops_test.model.applications[CHARM_NAME].remove_relation(
-            "relational-db", f"{MYSQL_K8S.charm}:database"
+            "backend-store-db", f"{MYSQL_K8S.charm}:database"
         )
 
         # waiting for MLflow to observe the relation is gone (which triggers a blocked status):

@@ -26,7 +26,9 @@ resources:
     description: Image for Prometheus exporter
     upstream-source: docker.io/charmedkubeflow/mlflow-prometheus-exporter:3.15.1-340fe92-20260826095012
 requires:
-  relational-db:
+  backend-store-db:
+    interface: mysql_client
+  auth-db:
     interface: mysql_client
   s3-credentials:
     interface: s3
