@@ -28,8 +28,6 @@ resources:
 requires:
   relational-db:
     interface: mysql_client
-  auth-db:
-    interface: mysql_client
   s3-credentials:
     interface: s3
     optional: true

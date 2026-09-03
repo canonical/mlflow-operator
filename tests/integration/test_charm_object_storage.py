@@ -210,7 +210,7 @@ class TestCharm:
         return "".join(choices(ascii_lowercase, k=length))
 
     @pytest.mark.abort_on_fail
-    async def test_add_relational_dbs_with_relations_expect_active(self, ops_test: OpsTest):
+    async def test_add_relational_db_with_relation_expect_active(self, ops_test: OpsTest):
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
         await ops_test.model.deploy(
             MINIO.charm,
