@@ -210,7 +210,7 @@ class MlflowCharm(CharmBase):
         self.framework.observe(self.backend_store_database.on.database_created, self._on_event)
         self.framework.observe(self.backend_store_database.on.endpoints_changed, self._on_event)
         self.framework.observe(
-            self.on.backend_store_db_relation_broken,
+            self.on.relational_db_relation_broken,
             self._on_backend_store_relation_removed,
         )
 
