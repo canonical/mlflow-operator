@@ -424,7 +424,7 @@ class MlflowCharm(CharmBase):
                     "override": "replace",
                     "summary": "Entrypoint of mlflow-server image",
                     # running the tracking server while enabling RBAC via the "basic-auth" app:
-                    "command": "mlflow server --app-name basic-auth",
+                    "command": "mlflow server --app-name basic-auth --gunicorn-opts '--log-level debug --access-logfile -'",
                     "startup": "enabled",
                     "environment": self.service_environment,  # defaults `mlflow server` CLI options
                 }
@@ -1063,6 +1063,8 @@ class MlflowCharm(CharmBase):
             "IDENTITY_HEADER_NAME": self.model.config["identity_header_name"],
             # so that MLflow's auth app can import the charm-written custom authentication module:
             "PYTHONPATH": AUTH_CONFIG_DIR,
+            "PYTHONUNBUFFERED": "1",
+            "MLFLOW_LOGGING_LEVEL": "DEBUG",
         }
         if self.proxy_mode:
             proxy_environment_variables = {
