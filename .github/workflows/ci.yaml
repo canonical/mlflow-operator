@@ -119,8 +119,6 @@ jobs:
   integration:
     name: Integration tests (${{ matrix.test-type }})
     needs:
-      - lint
-      - unit
       - build
     strategy:
       fail-fast: false
