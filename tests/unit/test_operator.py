@@ -1283,7 +1283,7 @@ class TestCharm:
         harness: Harness,
     ):
         harness.begin()
-        harness.charm._on_database_relation_removed(None)
+        harness.charm._on_backend_store_db_relation_removed(None)
         assert harness.charm.model.unit.status == BlockedStatus(
             f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
         )
@@ -1297,7 +1297,7 @@ class TestCharm:
         harness: Harness,
     ):
         harness.begin()
-        harness.charm._on_database_relation_removed(None)
+        harness.charm._on_auth_database_relation_removed(None)
         assert harness.charm.model.unit.status == BlockedStatus(
             f"Please add the relation {RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}"
         )
@@ -1584,9 +1584,12 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     def test_reconcile_database_schema_migrates_when_out_of_date(self, harness: Harness):
-        harness.begin()
         backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
+        auth_database_uri = "mysql+pymysql://u:p@h:3306/mlflow_auth"
+
+        harness.begin()
         harness.charm._get_backend_store_uri = MagicMock(return_value=backend_store_uri)
+        harness.charm._get_auth_database_uri = MagicMock(return_value=auth_database_uri)
         harness.charm._ensure_trigger_creation_allowed = MagicMock()
         harness.charm._is_database_schema_out_of_date = MagicMock(return_value=True)
 
@@ -1603,7 +1606,8 @@ class TestCharm:
         # the migration trigger is permitted before the migration runs:
         harness.charm._ensure_trigger_creation_allowed.assert_called_once_with(backend_store_uri)
         harness.charm._is_database_schema_out_of_date.assert_called_once_with(backend_store_uri)
-        harness.charm._run_database_migration.assert_called_once_with(backend_store_uri)
+        harness.charm._run_database_migration.assert_any_call(backend_store_uri)
+        harness.charm._run_database_migration.assert_any_call(auth_database_uri)
         assert isinstance(observed_status["value"], MaintenanceStatus)
 
     @patch(
