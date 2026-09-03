@@ -151,18 +151,6 @@ MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
 # replicas:
 AUTH_SECRET_LABEL = "mlflow-auth-credentials"
 
-# idempotent snippet run in the workload container to create the separate auth database in the same
-# MySQL instance as the tracking backend store (issuing a server-level CREATE DATABASE for creating
-# the auth database via the backend store URI, whose database will already exist):
-CREATE_AUTH_DATABASE_SNIPPET = """\
-import sys
-from sqlalchemy import create_engine, text
-
-engine = create_engine(sys.argv[1])
-with engine.connect() as connection:
-    connection.execute(text('CREATE DATABASE IF NOT EXISTS `' + sys.argv[2] + '`'))
-"""
-
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
 # both the `object-storage` and `s3` interfaces.
@@ -195,7 +183,7 @@ class MlflowCharm(CharmBase):
         self._auth_database_name = f"{self._backend_store_database_name}_auth"
         self._container = self.unit.get_container(self._container_name)
         self._exporter_container = self.unit.get_container(self._exporter_container_name)
-        self.database = DatabaseRequires(
+        self.backend_store_database = DatabaseRequires(
             self,
             relation_name="relational-db",
             database_name=self._backend_store_database_name,
@@ -203,6 +191,12 @@ class MlflowCharm(CharmBase):
             # `log_bin_trust_function_creators`) and TRIGGER, which together let MLflow's schema
             # migration create the `secrets` immutability trigger under binary logging
             # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
+            extra_user_roles="charmed_dba",
+        )
+        self.auth_database = DatabaseRequires(
+            self,
+            relation_name="relational-db",
+            database_name=self._auth_database_name,
             extra_user_roles="charmed_dba",
         )
 
@@ -218,8 +212,10 @@ class MlflowCharm(CharmBase):
         self._create_service()
 
         self.framework.observe(self.on.update_status, self._on_event)
-        self.framework.observe(self.database.on.database_created, self._on_event)
-        self.framework.observe(self.database.on.endpoints_changed, self._on_event)
+        self.framework.observe(self.backend_store_database.on.database_created, self._on_event)
+        self.framework.observe(self.backend_store_database.on.endpoints_changed, self._on_event)
+        self.framework.observe(self.auth_database.on.database_created, self._on_event)
+        self.framework.observe(self.auth_database.on.endpoints_changed, self._on_event)
         self.framework.observe(
             self.on.relational_db_relation_broken, self._on_database_relation_removed
         )
@@ -526,14 +522,41 @@ class MlflowCharm(CharmBase):
             raise ErrorWithStatus(err, BlockedStatus)
         return interfaces
 
-    def _get_relational_db_data(self) -> dict:
+    def _get_backend_store_data(self) -> dict:
         mysql_relation = self.model.get_relation("relational-db")
 
         # Raise exception and stop execution if the relational-db relation is not established
         if not mysql_relation:
             raise ErrorWithStatus("Please add relation to the database", BlockedStatus)
 
-        data = self.database.fetch_relation_data()
+        data = self.backend_store_database.fetch_relation_data()
+        self.logger.debug("Got following database data: %s", data)
+        for val in data.values():
+            if not val:
+                continue
+            try:
+                host, port = val["endpoints"].split(":")
+                db_data = {
+                    "host": host,
+                    "port": port,
+                    "username": val["username"],
+                    "password": val["password"],
+                }
+            except KeyError:
+                raise ErrorWithStatus(
+                    "Incorrect data found in relation relational-db", WaitingStatus
+                )
+            return db_data
+        raise ErrorWithStatus("Waiting for relational-db relation data", WaitingStatus)
+
+    def _get_auth_database_data(self) -> dict:
+        mysql_relation = self.model.get_relation("relational-db")
+
+        # Raise exception and stop execution if the relational-db relation is not established
+        if not mysql_relation:
+            raise ErrorWithStatus("Please add relation to the database", BlockedStatus)
+
+        data = self.auth_database.fetch_relation_data()
         self.logger.debug("Got following database data: %s", data)
         for val in data.values():
             if not val:
@@ -559,10 +582,10 @@ class MlflowCharm(CharmBase):
         Raises:
             ErrorWithStatus if the `relational-db` relation or its data are not ready.
         """
-        relational_db_data = self._get_relational_db_data()
+        backend_store_data = self._get_backend_store_data()
         return (
-            f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}"
-            f"@{relational_db_data['host']}:{relational_db_data['port']}"
+            f"mysql+pymysql://{backend_store_data['username']}:{backend_store_data['password']}"
+            f"@{backend_store_data['host']}:{backend_store_data['port']}"
             f"/{self._backend_store_database_name}"
         )
 
@@ -574,10 +597,10 @@ class MlflowCharm(CharmBase):
         Raises:
             ErrorWithStatus if the `relational-db` relation or its data are not ready.
         """
-        relational_db_data = self._get_relational_db_data()
+        auth_database_data = self._get_auth_database_data()
         return (
-            f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}"
-            f"@{relational_db_data['host']}:{relational_db_data['port']}"
+            f"mysql+pymysql://{auth_database_data['username']}:{auth_database_data['password']}"
+            f"@{auth_database_data['host']}:{auth_database_data['port']}"
             f"/{self._auth_database_name}"
         )
 
@@ -707,42 +730,6 @@ class MlflowCharm(CharmBase):
 
             raise ErrorWithStatus(
                 "Could not prepare the database for schema migration; will retry.", WaitingStatus
-            )
-
-    def _ensure_auth_database_exists(self, backend_store_uri: str) -> None:
-        """Create the separate RBAC auth database in the same MySQL instance (idempotent).
-
-        MLflow's auth app creates its own tables but not the database itself, so the charm creates
-        the auth database beforehand. The statement connects through the backend store URI (whose
-        database already exists) and issues a server-level `CREATE DATABASE IF NOT EXISTS` for the
-        auth database.
-
-        Assumes the `relational-db` user may create databases (granted via the `charmed_dba` role).
-
-        Raises:
-            ErrorWithStatus(..., Waiting) if the statement could not be run (e.g. the database is
-            not reachable yet), so the caller can defer and retry.
-        """
-        try:
-            process = self.container.exec(
-                [
-                    "python3",
-                    "-c",
-                    CREATE_AUTH_DATABASE_SNIPPET,
-                    backend_store_uri,
-                    self._auth_database_name,
-                ]
-            )
-            process.wait_output()
-        except ExecError as error:
-            self.logger.warning(
-                "Could not create the auth database (database unreachable or insufficient "
-                f"privileges): exit code {error.exit_code}",
-            )
-            raise ErrorWithStatus(
-                "The database is not yet reachable, or the auth database could not be created; "
-                "will retry.",
-                WaitingStatus,
             )
 
     def _reconcile_database_schema(self) -> None:
@@ -1314,9 +1301,6 @@ class MlflowCharm(CharmBase):
             # requires the privileges granted with this step):
             self._ensure_trigger_creation_allowed(self._get_backend_store_uri())
 
-            # ensuring that the separate RBAC auth database exists, necessary for RBAC and custom
-            # authentication:
-            self._ensure_auth_database_exists(self._get_backend_store_uri())
             # (re)rendering the required authentication configurations, including the custom
             # authentication module, into the workload:
             self._reconcile_auth_config()
