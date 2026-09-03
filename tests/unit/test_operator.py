@@ -494,7 +494,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     def test_get_backend_store_db_data_success(self, harness: Harness):
-        database = MagicMock()
+        backend_store_database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {
             "test-db-data": {
@@ -503,10 +503,10 @@ class TestCharm:
                 "password": "password",
             }
         }
-        database.fetch_relation_data = fetch_relation_data
+        backend_store_database.fetch_relation_data = fetch_relation_data
         harness.model.get_relation = MagicMock()
         harness.begin()
-        harness.charm.database = database
+        harness.charm.backend_store_database = backend_store_database
         res = harness.charm._get_backend_store_db_data()
         assert res == {
             "host": "host",
@@ -520,7 +520,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     def test_get_auth_database_db_data_success(self, harness: Harness):
-        database = MagicMock()
+        auth_database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {
             "test-db-data": {
@@ -529,10 +529,10 @@ class TestCharm:
                 "password": "password",
             }
         }
-        database.fetch_relation_data = fetch_relation_data
+        auth_database.fetch_relation_data = fetch_relation_data
         harness.model.get_relation = MagicMock()
         harness.begin()
-        harness.charm.database = database
+        harness.charm.auth_database = auth_database
         res = harness.charm._get_auth_database_db_data()
         assert res == {
             "host": "host",
@@ -547,13 +547,13 @@ class TestCharm:
     )
     def test_get_backend_store_db_data_failure_wrong_data(self, harness: Harness):
         """Test with missing username and password in databag"""
-        database = MagicMock()
+        backend_store_database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {"test-db-data": {"endpoints": "host:port"}}
-        database.fetch_relation_data = fetch_relation_data
+        backend_store_database.fetch_relation_data = fetch_relation_data
         harness.model.get_relation = MagicMock()
         harness.begin()
-        harness.charm.database = database
+        harness.charm.backend_store_database = backend_store_database
         with pytest.raises(ErrorWithStatus) as e_info:
             harness.charm._get_backend_store_db_data()
         assert e_info.value.status_type(WaitingStatus)
@@ -567,13 +567,13 @@ class TestCharm:
     )
     def test_get_auth_database_db_data_data_failure_wrong_data(self, harness: Harness):
         """Test with missing username and password in databag"""
-        database = MagicMock()
+        auth_database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {"test-db-data": {"endpoints": "host:port"}}
-        database.fetch_relation_data = fetch_relation_data
+        auth_database.fetch_relation_data = fetch_relation_data
         harness.model.get_relation = MagicMock()
         harness.begin()
-        harness.charm.database = database
+        harness.charm.auth_database = auth_database
         with pytest.raises(ErrorWithStatus) as e_info:
             harness.charm._get_auth_database_db_data()
         assert e_info.value.status_type(WaitingStatus)
@@ -586,12 +586,12 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     def test_get_backend_store_db_data_failure_waiting(self, harness: Harness):
-        database = MagicMock()
+        backend_store_database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {}
-        database.fetch_relation_data = fetch_relation_data
+        backend_store_database.fetch_relation_data = fetch_relation_data
         harness.begin()
-        harness.charm.database = database
+        harness.charm.backend_store_database = backend_store_database
         with pytest.raises(ErrorWithStatus) as e_info:
             harness.charm._get_backend_store_db_data()
 
@@ -603,12 +603,12 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     def test_get_auth_database_db_data_failure_waiting(self, harness: Harness):
-        database = MagicMock()
+        auth_database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {}
-        database.fetch_relation_data = fetch_relation_data
+        auth_database.fetch_relation_data = fetch_relation_data
         harness.begin()
-        harness.charm.database = database
+        harness.charm.auth_database = auth_database
         with pytest.raises(ErrorWithStatus) as e_info:
             harness.charm._get_auth_database_db_data()
 
@@ -1278,14 +1278,28 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_on_database_relation_removed(
+    def test_on_backend_store_db_relation_removed(
         self,
         harness: Harness,
     ):
         harness.begin()
         harness.charm._on_database_relation_removed(None)
         assert harness.charm.model.unit.status == BlockedStatus(
-            "Please add relation to the database"
+            f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_auth_database_db_relation_removed(
+        self,
+        harness: Harness,
+    ):
+        harness.begin()
+        harness.charm._on_database_relation_removed(None)
+        assert harness.charm.model.unit.status == BlockedStatus(
+            f"Please add the relation {RELATION_ENDPOINT_FOR_AUTH_DATABASE_DB}"
         )
 
     @patch(
