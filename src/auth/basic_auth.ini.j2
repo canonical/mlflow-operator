@@ -7,10 +7,6 @@ default_permission = NO_PERMISSIONS
 # the reserved `default` workspace is also deny-by-default (not auto-granted):
 grant_default_workspace_access = false
 
-# the tracking server's auth database is separate from the tracking server's backend store, even
-# when the database provider instance is shared:
-database_uri = {{ auth_database_uri }}
-
 # the charm's MLflow super-admin credentials, used only by the charm in-pod over localhost for
 # provisioning tenants (workspaces) and cross-tenant RBAC:
 admin_username = {{ admin_username }}

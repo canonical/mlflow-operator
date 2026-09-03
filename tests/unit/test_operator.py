@@ -114,6 +114,7 @@ EXPECTED_AUTH_ENVIRONMENT = {
 }
 EXPECTED_ENVIRONMENT_NON_PROXY_MODE = {
     "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
+    "MLFLOW_DATABASE_AUTH_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow_auth",
     "MLFLOW_DEFAULT_ARTIFACT_ROOT": EXPECTED_S3_URI,
     "MLFLOW_EXPOSE_PROMETHEUS": EXPECTED_SERVER_METRICS_PATH,
     "MLFLOW_HOST": EXPECTED_SERVER_HOST,
@@ -124,6 +125,7 @@ EXPECTED_ENVIRONMENT_NON_PROXY_MODE = {
 }
 EXPECTED_ENVIRONMENT_PROXY_MODE = {
     "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
+    "MLFLOW_DATABASE_AUTH_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow_auth",
     "MLFLOW_EXPOSE_PROMETHEUS": EXPECTED_SERVER_METRICS_PATH,
     "MLFLOW_HOST": EXPECTED_SERVER_HOST,
     "MLFLOW_PORT": EXPECTED_SERVER_PORT,

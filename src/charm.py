@@ -1094,6 +1094,7 @@ class MlflowCharm(CharmBase):
             interfaces = self._get_interfaces()
             artifact_store_data = self._get_artifact_store_data(interfaces)
             backend_store_uri = self._get_backend_store_uri()
+            auth_database_uri = self._get_auth_database_uri()
             auth_secrets = self._get_or_create_auth_secrets()
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
@@ -1103,6 +1104,7 @@ class MlflowCharm(CharmBase):
 
         environment_variables = {
             "MLFLOW_BACKEND_STORE_URI": backend_store_uri,
+            "MLFLOW_DATABASE_AUTH_URI": auth_database_uri,
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
             "MLFLOW_PORT": self._mlflow_port,
@@ -1189,7 +1191,6 @@ class MlflowCharm(CharmBase):
         self.container.push(AUTH_MODULE_CONTAINER_PATH, custom_auth_module, make_dirs=True)
 
         auth_config = Template(Path(AUTH_CONFIG_TEMPLATE_PATH).read_text()).render(
-            auth_database_uri=self._get_auth_database_uri(),
             admin_username=MLFLOW_SUPER_ADMIN_USERNAME,
             admin_password=auth_secrets["admin_password"],
             authorization_function=AUTHORIZATION_FUNCTION,
