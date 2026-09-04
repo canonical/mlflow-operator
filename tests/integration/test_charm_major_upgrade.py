@@ -1,22 +1,14 @@
 # Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Integration tests for the major upgrade from 2.22 to 3.X.
+"""Integration tests for the minor upgrade of the MLflow charm from 3.X to 3.Y.
 
-This suite verifies that refreshing the tracking server from the latest stable version available
-for the old major, that is 2.22, to the current version available for the new major, that is 3.X,
-built from this source, keeps the server functional and preserves data from the previous version.
+This suite verifies that refreshing the MLflow charm from the latest stable version available
+for the current major, that is 3.X, to the current version built from this source for the same
+major, that is 3.Y, keeps the server functional and preserves data from the previous version.
 
-NOTE: the new major of the charm automatically migrates the tracking database schema on charm
-upgrades, without manual intervention. Manual intervention is however required to recreate the
-integration with MySQL that provides the backend store, as permission changes are otherwise not
-picked up by the MySQL charm. This manual step is only necessary as long as the upstream bug that
-requires the MLflow charm to access the database with elevated privileges is open:
-https://github.com/mlflow/mlflow/issues/19943
-
-NOTE: for the artifact store, the older MinIO (`object-storage`) integration is used rather than
-the newer s3-integrator (`s3-credentials`) one as it is the only one supported by the older charm
-version.
+NOTE: the charm automatically migrates the tracking server's database schema(s) on charm upgrades,
+without manual intervention.
 """
 
 import logging
@@ -28,8 +20,10 @@ import lightkube
 import pytest
 import requests
 import yaml
-from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
-from charms_dependencies import MINIO, MYSQL_K8S
+from charmed_kubeflow_chisme.kubernetes import (
+    KubernetesResourceHandler, deploy_and_assert_s3_integrator
+)
+from charms_dependencies import POSTGRESQL_K8S, S3_INTEGRATOR
 from lightkube.generic_resource import load_in_cluster_generic_resources
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
@@ -45,7 +39,7 @@ CHARM_NAME = METADATA["name"]
 
 PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
 
-OLD_CHANNEL = "2.22/stable"
+OLD_CHANNEL = "3.15/stable"
 
 PREUPGRADE_EXPERIMENT_NAME = "pre-upgrade-experiment"
 PREUPGRADE_RUN_METRIC = "accuracy"
@@ -122,6 +116,7 @@ def _assert_tracking_server_reachable(url: str):
     assert response.status_code == 200
 
 
+@pytest.mark.skip(reason="TODO: restore once we have something on stable for MLflow 3")
 class TestUpgrade:
     @pytest.mark.abort_on_fail
     async def test_deploy_old_version(self, ops_test: OpsTest):
@@ -134,30 +129,29 @@ class TestUpgrade:
             application_name=CHARM_NAME,
             trust=True,
         )
-        await ops_test.model.deploy(
-            MINIO.charm,
-            channel=MINIO.channel,
-            config=MINIO.config,
-            trust=MINIO.trust,
+        await deploy_and_assert_s3_integrator(
+            ops_test.model, add_ca_chain=True, s3_integrator=S3_INTEGRATOR
         )
         await ops_test.model.deploy(
-            MYSQL_K8S.charm,
-            channel=MYSQL_K8S.channel,
+            POSTGRESQL_K8S.charm,
+            channel=POSTGRESQL_K8S.channel,
             series="jammy",
-            config=MYSQL_K8S.config,
-            trust=MYSQL_K8S.trust,
+            config=POSTGRESQL_K8S.config,
+            trust=POSTGRESQL_K8S.trust,
         )
 
         await ops_test.model.wait_for_idle(
-            apps=[MINIO.charm, MYSQL_K8S.charm],
+            apps=[S3_INTEGRATOR.charm, POSTGRESQL_K8S.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
         )
 
-        await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
-        await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
+        await ops_test.model.integrate(
+            f"{S3_INTEGRATOR.charm}:s3-credentials", f"{CHARM_NAME}:s3-credentials"
+        )
+        await ops_test.model.integrate(POSTGRESQL_K8S.charm, CHARM_NAME)
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
@@ -196,78 +190,11 @@ class TestUpgrade:
 
     @pytest.mark.abort_on_fail
     async def test_refresh_gets_active_for_successful_migrations(self, ops_test: OpsTest, request):
-        """Refresh the tracking server and assert it gets active, meaning migrations succeeded.
-
-        NOTE: the new major of the charm automatically migrates the tracking database schema on
-        charm upgrades, without manual intervention. Manual intervention is however required to
-        recreate the integration with MySQL that provides the backend store, as permission changes
-        are otherwise not picked up by the MySQL charm. This manual step is only necessary as long
-        as the upstream bug that requires the MLflow charm to access the database with elevated
-        privileges is open: https://github.com/mlflow/mlflow/issues/19943
-
-        NOTE: the migration automatically triggered by the charm refresh issues a `CREATE TRIGGER`
-        statement (the immutability trigger added alongside the `secrets` table of MLflow) which,
-        with binary logging enabled, MySQL rejects for a user lacking global privileges; the locally
-        built charm requests the `charmed_dba` role via `extra_user_roles` (granting
-        SYSTEM_VARIABLES_ADMIN and TRIGGER) and, using those relation credentials, persists
-        `log_bin_trust_function_creators` before the migration runs; the data-platform provider only
-        grants extra roles on the *first* `database_requested` event, which already fired for the
-        old version without that role, so we remove the `relational-db` relation before refreshing
-        and re-add it afterwards so the request fires again for the new charm; the pre-upgrade data
-        is preserved because dropping the relation only deletes the scoped user, not the database
-        """
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-        # TODO: remove this block delimited by "- - -" once this issue is fixed:
-        # https://github.com/mlflow/mlflow/issues/19943
-
-        # removing the relation for backend store with MySQL:
-        await ops_test.model.applications[CHARM_NAME].remove_relation(
-            "relational-db", f"{MYSQL_K8S.charm}:database"
-        )
-
-        # waiting for MLflow to observe the relation is gone (which triggers a blocked status):
-        await ops_test.model.wait_for_idle(
-            apps=[CHARM_NAME],
-            status="blocked",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=600,
-        )
-
-        # waiting for MySQL to settle back to active after the relation removal:
-        await ops_test.model.wait_for_idle(
-            apps=[MYSQL_K8S.charm],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=600,
-        )
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
+        """Refresh the tracking server and assert it gets active, meaning migrations succeeded."""
         # refreshing the tracking server to the charm built from the current source:
         await ops_test.model.applications[CHARM_NAME].refresh(
             path=_built_charm(ops_test, request), resources=_charm_resources()
         )
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-        # TODO: remove this block delimited by "- - -" once this issue is fixed:
-        # https://github.com/mlflow/mlflow/issues/19943
-
-        # waiting for the tracking server to settle before re-establishing the (updated) relation
-        # for backend store with MySQL:
-        await ops_test.model.wait_for_idle(
-            apps=[CHARM_NAME],
-            status="blocked",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=600,
-        )
-
-        # re-establishing the relation for backend store with MySQL:
-        await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
         # waiting for the tracking server to be active:
         await ops_test.model.wait_for_idle(
