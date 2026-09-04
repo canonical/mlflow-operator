@@ -26,8 +26,8 @@ MINIO = CharmSpec(
     },
     trust=True,
 )
-MYSQL_K8S = CharmSpec(
-    charm="mysql-k8s", channel="8.0/stable", config={"profile": "testing"}, trust=True
+POSTGRESQL_K8S = CharmSpec(
+    charm="postgresql-k8s", channel="14/stable", config={"profile": "testing"}, trust=True
 )
 RESOURCE_DISPATCHER = CharmSpec(charm="resource-dispatcher", channel="latest/edge", trust=True)
 S3_INTEGRATOR = CharmSpec(charm="s3-integrator", channel="2/stable", trust=False)

@@ -38,7 +38,7 @@ from charms_dependencies import (
     ISTIO_PILOT,
     METACONTROLLER_OPERATOR,
     MINIO,
-    MYSQL_K8S,
+    POSTGRESQL_K8S,
     RESOURCE_DISPATCHER,
     S3_INTEGRATOR,
 )
@@ -219,21 +219,21 @@ class TestCharm:
             trust=MINIO.trust,
         )
         await ops_test.model.deploy(
-            MYSQL_K8S.charm,
-            channel=MYSQL_K8S.channel,
+            POSTGRESQL_K8S.charm,
+            channel=POSTGRESQL_K8S.channel,
             series="jammy",
-            config=MYSQL_K8S.config,
-            trust=MYSQL_K8S.trust,
+            config=POSTGRESQL_K8S.config,
+            trust=POSTGRESQL_K8S.trust,
         )
         await ops_test.model.wait_for_idle(
-            apps=[MINIO.charm, MYSQL_K8S.charm],
+            apps=[MINIO.charm, POSTGRESQL_K8S.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
         )
         await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
-        await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
+        await ops_test.model.integrate(POSTGRESQL_K8S.charm, CHARM_NAME)
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],

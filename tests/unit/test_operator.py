@@ -23,7 +23,6 @@ from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import (
-    ENABLE_TRIGGER_CREATION_SNIPPET,
     PODDEFAULTS_FILES,
     S3_CA_BUNDLE_CONTAINER_PATH,
     SCHEMA_OUT_OF_DATE_MARKER,
@@ -107,7 +106,7 @@ EXPECTED_AUTH_ENVIRONMENT = {
     "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
 }
 EXPECTED_ENVIRONMENT_NON_PROXY_MODE = {
-    "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
+    "MLFLOW_BACKEND_STORE_URI": "postgresql://username:lorem-ipsum@host:port/mlflow",
     "MLFLOW_DEFAULT_ARTIFACT_ROOT": EXPECTED_S3_URI,
     "MLFLOW_EXPOSE_PROMETHEUS": EXPECTED_SERVER_METRICS_PATH,
     "MLFLOW_HOST": EXPECTED_SERVER_HOST,
@@ -117,7 +116,7 @@ EXPECTED_ENVIRONMENT_NON_PROXY_MODE = {
     **EXPECTED_AUTH_ENVIRONMENT,
 }
 EXPECTED_ENVIRONMENT_PROXY_MODE = {
-    "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
+    "MLFLOW_BACKEND_STORE_URI": "postgresql://username:lorem-ipsum@host:port/mlflow",
     "MLFLOW_EXPOSE_PROMETHEUS": EXPECTED_SERVER_METRICS_PATH,
     "MLFLOW_HOST": EXPECTED_SERVER_HOST,
     "MLFLOW_PORT": EXPECTED_SERVER_PORT,
@@ -308,11 +307,11 @@ def harness() -> Harness:
     harness.handle_exec("mlflow-server", ["python3"], result=0)
     # NOTE: several reconcile paths shell out some Python script execution on the workload via
     # `container.exec(["python3", "-c", <snippet>, backend_store_uri])`, such as
-    # `_ensure_trigger_creation_allowed` and `_is_database_schema_out_of_date`, and without this
-    # registered handler, the Harness would raise on the first such exec, while this makes those
-    # paths succeed by default (exit code 0, empty stdout/stderr) - and then tests that need to
-    # assert on the exec call, or to simulate a failure, replace `harness.charm.container.exec`
-    # with their own MagicMock, which takes precedence over this handler
+    # `_is_database_schema_out_of_date`, and without this registered handler, the Harness would
+    # raise on the first such exec, while this makes those paths succeed by default (exit code
+    # 0, empty stdout/stderr) - and then tests that need to assert on the exec call, or to simulate
+    # a failure, replace `harness.charm.container.exec` with their own MagicMock, which takes
+    # precedence over this handler
 
     return harness
 
@@ -1316,7 +1315,7 @@ class TestCharm:
     )
     def test_run_database_migration_success(self, harness: Harness):
         harness.begin()
-        backend_store_uri = "mysql+pymysql://username:password@host:port/mlflow"
+        backend_store_uri = "postgresql://username:password@host:port/mlflow"
         process = MagicMock()
         process.wait_output.return_value = ("migration output", "")
         exec_mock = MagicMock(return_value=process)
@@ -1339,7 +1338,7 @@ class TestCharm:
         harness.charm.container.exec = MagicMock(return_value=process)
         with caplog.at_level(logging.ERROR):
             with pytest.raises(ErrorWithStatus) as e_info:
-                harness.charm._run_database_migration("mysql+pymysql://u:p@h:3306/mlflow")
+                harness.charm._run_database_migration("postgresql://u:p@h:3306/mlflow")
         assert e_info.value.status.__class__ is BlockedStatus
         assert "Database schema migration failed" in str(e_info)
         # the raw stderr (which can contain the backend store URI/credentials) is not leaked into
@@ -1359,7 +1358,7 @@ class TestCharm:
         Also verifies the probe is read-only: it never invokes `mlflow db upgrade`.
         """
         harness.begin()
-        backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
+        backend_store_uri = "postgresql://u:p@h:3306/mlflow"
         process = MagicMock()
         process.wait_output.return_value = (
             f"some warning line\n{SCHEMA_OUT_OF_DATE_MARKER}\ntrailing\n",
@@ -1386,7 +1385,7 @@ class TestCharm:
         process.wait_output.return_value = ("", "")
         harness.charm.container.exec = MagicMock(return_value=process)
         assert not harness.charm._is_database_schema_out_of_date(
-            "mysql+pymysql://u:p@h:3306/mlflow"
+            "postgresql://u:p@h:3306/mlflow"
         )
 
     @patch(
@@ -1402,83 +1401,8 @@ class TestCharm:
         )
         harness.charm.container.exec = MagicMock(return_value=process)
         with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._is_database_schema_out_of_date("mysql+pymysql://u:p@h:3306/mlflow")
+            harness.charm._is_database_schema_out_of_date("postgresql://u:p@h:3306/mlflow")
         assert exc_info.value.status_type is WaitingStatus
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-    def test_ensure_trigger_creation_allowed_persists_variable(self, harness: Harness):
-        harness.begin()
-        backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
-        process = MagicMock()
-        process.wait_output.return_value = ("", "")
-        exec_mock = MagicMock(return_value=process)
-        harness.charm.container.exec = exec_mock
-        harness.charm._ensure_trigger_creation_allowed(backend_store_uri)
-        exec_mock.assert_called_once_with(
-            ["python3", "-c", ENABLE_TRIGGER_CREATION_SNIPPET, backend_store_uri]
-        )
-        process.wait_output.assert_called_once_with()
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-    def test_ensure_trigger_creation_allowed_raises_waiting_on_exec_error(self, harness: Harness):
-        """An unreachable database raises Waiting so the caller can defer and retry."""
-        harness.begin()
-        process = MagicMock()
-        process.wait_output.side_effect = ExecError(
-            command=["python3"], exit_code=1, stdout="", stderr="cannot connect"
-        )
-        harness.charm.container.exec = MagicMock(return_value=process)
-        with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._ensure_trigger_creation_allowed("mysql+pymysql://u:p@h:3306/mlflow")
-        assert exc_info.value.status_type is WaitingStatus
-        # the raw stderr (which can contain the backend store URI/credentials) is not leaked:
-        assert "cannot connect" not in str(exc_info.value.status.message)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-    def test_ensure_trigger_creation_allowed_raises_blocked_on_privilege_error(
-        self, harness: Harness
-    ):
-        """A missing SYSTEM_VARIABLES_ADMIN privilege (error 1227) raises Blocked, not Waiting.
-
-        Retrying cannot succeed when the relation user was created without the `charmed_dba` role
-        (e.g. an in-place upgrade), so the charm must surface an actionable Blocked status instead
-        of looping in Waiting.
-        """
-        harness.begin()
-        process = MagicMock()
-        process.wait_output.side_effect = ExecError(
-            command=["python3"],
-            exit_code=1,
-            stdout="",
-            stderr=(
-                "pymysql.err.OperationalError: (1227, 'Access denied; you need (at least one "
-                "of) the SUPER or SYSTEM_VARIABLES_ADMIN privilege(s) for this operation')"
-            ),
-        )
-        harness.charm.container.exec = MagicMock(return_value=process)
-        with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._ensure_trigger_creation_allowed("mysql+pymysql://u:p@h:3306/mlflow")
-        assert exc_info.value.status_type is BlockedStatus
-        # the short status message points the operator to the logs for remediation details:
-        assert (
-            str(exc_info.value.status.message)
-            == "Database user lacks privileges to migrate the schema. Check the unit logs "
-            "and act accordingly."
-        )
-        # the raw stderr (which can contain the backend store URI/credentials) is not leaked:
-        assert "Access denied" not in str(exc_info.value.status.message)
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1486,9 +1410,8 @@ class TestCharm:
     )
     def test_reconcile_database_schema_migrates_when_out_of_date(self, harness: Harness):
         harness.begin()
-        backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
+        backend_store_uri = "postgresql://u:p@h:3306/mlflow"
         harness.charm._get_backend_store_uri = MagicMock(return_value=backend_store_uri)
-        harness.charm._ensure_trigger_creation_allowed = MagicMock()
         harness.charm._is_database_schema_out_of_date = MagicMock(return_value=True)
 
         # capture the unit status observed at the moment the migration is invoked, to assert the
@@ -1501,8 +1424,6 @@ class TestCharm:
         harness.charm._run_database_migration = MagicMock(side_effect=_record_status)
         harness.charm._reconcile_database_schema()
 
-        # the migration trigger is permitted before the migration runs:
-        harness.charm._ensure_trigger_creation_allowed.assert_called_once_with(backend_store_uri)
         harness.charm._is_database_schema_out_of_date.assert_called_once_with(backend_store_uri)
         harness.charm._run_database_migration.assert_called_once_with(backend_store_uri)
         assert isinstance(observed_status["value"], MaintenanceStatus)

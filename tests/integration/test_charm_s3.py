@@ -45,7 +45,7 @@ from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_
 from charms_dependencies import (
     KUBEFLOW_PROFILES,
     METACONTROLLER_OPERATOR,
-    MYSQL_K8S,
+    POSTGRESQL_K8S,
     RESOURCE_DISPATCHER,
     S3_INTEGRATOR,
 )
@@ -204,14 +204,14 @@ class TestCharm:
             ops_test.model, add_ca_chain=True, s3_integrator=S3_INTEGRATOR
         )
         await ops_test.model.deploy(
-            MYSQL_K8S.charm,
-            channel=MYSQL_K8S.channel,
+            POSTGRESQL_K8S.charm,
+            channel=POSTGRESQL_K8S.channel,
             series="jammy",
-            config=MYSQL_K8S.config,
-            trust=MYSQL_K8S.trust,
+            config=POSTGRESQL_K8S.config,
+            trust=POSTGRESQL_K8S.trust,
         )
         await ops_test.model.wait_for_idle(
-            apps=[S3_INTEGRATOR.charm, MYSQL_K8S.charm],
+            apps=[S3_INTEGRATOR.charm, POSTGRESQL_K8S.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
@@ -220,7 +220,7 @@ class TestCharm:
         await ops_test.model.integrate(
             f"{S3_INTEGRATOR.charm}:s3-credentials", f"{CHARM_NAME}:s3-credentials"
         )
-        await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
+        await ops_test.model.integrate(POSTGRESQL_K8S.charm, CHARM_NAME)
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
