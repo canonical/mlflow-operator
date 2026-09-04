@@ -1060,8 +1060,10 @@ class MlflowCharm(CharmBase):
             "IDENTITY_HEADER_NAME": self.model.config["identity_header_name"],
             # so that MLflow's auth app can import the charm-written custom authentication module:
             "PYTHONPATH": AUTH_CONFIG_DIR,
-            "PYTHONUNBUFFERED": "1",
-            "MLFLOW_LOGGING_LEVEL": "DEBUG",
+            # disabling MLflow's GenAI job-execution subsystem (online scoring, trace archival,
+            # prompt optimization): a tracking server does not need it, and it otherwise spawns
+            # several extra worker processes that each open database connections:
+            "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
         }
         if self.proxy_mode:
             proxy_environment_variables = {

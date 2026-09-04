@@ -104,6 +104,7 @@ EXPECTED_AUTH_ENVIRONMENT = {
     "MLFLOW_FLASK_SERVER_SECRET_KEY": EXPECTED_FLASK_SECRET_KEY,
     "IDENTITY_HEADER_NAME": "kubeflow-userid",
     "PYTHONPATH": "/var/lib/pebble/default/auth",
+    "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
 }
 EXPECTED_ENVIRONMENT_NON_PROXY_MODE = {
     "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
