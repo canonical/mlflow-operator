@@ -424,7 +424,7 @@ class MlflowCharm(CharmBase):
                     "override": "replace",
                     "summary": "Entrypoint of mlflow-server image",
                     # running the tracking server while enabling RBAC via the "basic-auth" app:
-                    "command": "mlflow server --app-name basic-auth --gunicorn-opts '--log-level debug --access-logfile -'",
+                    "command": "mlflow server --app-name basic-auth --uvicorn-opts '--log-level debug'",
                     "startup": "enabled",
                     "environment": self.service_environment,  # defaults `mlflow server` CLI options
                 }
@@ -956,13 +956,11 @@ class MlflowCharm(CharmBase):
             self.unit.status = MaintenanceStatus(f"Checking if bucket {bucket_name} exists.")
             # Check if bucket already exists
             if s3_wrapper.bucket_exists(bucket_name):
-                self.model.unit.status = ActiveStatus()
                 return
 
             # Create the bucket if missing
             self.unit.status = MaintenanceStatus(f"Creating bucket {bucket_name}.")
             s3_wrapper.create_bucket(bucket_name)
-            self.model.unit.status = ActiveStatus()
             return
 
         except botocore.exceptions.SSLError as e:
