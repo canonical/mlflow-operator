@@ -1384,9 +1384,7 @@ class TestCharm:
         process = MagicMock()
         process.wait_output.return_value = ("", "")
         harness.charm.container.exec = MagicMock(return_value=process)
-        assert not harness.charm._is_database_schema_out_of_date(
-            "postgresql://u:p@h:3306/mlflow"
-        )
+        assert not harness.charm._is_database_schema_out_of_date("postgresql://u:p@h:3306/mlflow")
 
     @patch(
         "charm.KubernetesServicePatch",
