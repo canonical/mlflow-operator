@@ -56,7 +56,7 @@ from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_fixed
 
-# TODO: remove after multi-tenancy is completed:
+# TODO: remove once multi-tenancy is completed:
 from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY  # isort:skip
 
 logger = logging.getLogger(__name__)
@@ -120,6 +120,8 @@ async def assert_ui_is_accessible(ops_test: OpsTest):
     """Verify that UI is accessible through the ingress gateway."""
     await assert_path_reachable_through_ingress(
         http_path=HTTP_PATH,
+        # TODO: remove once multi-tenancy is completed:
+        headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
         namespace=ops_test.model.name,
         expected_content_type="text/html",
         expected_response_text="MLflow",
@@ -262,7 +264,7 @@ class TestCharm:
         logger.info("found dashboards: %s", dashboards)
         await assert_grafana_dashboards(app, dashboards)
 
-    # TODO: remove after multi-tenancy is completed:
+    # TODO: remove once multi-tenancy is completed:
     @pytest.mark.skip(reason="WIP: /metrics now behind RBAC and exporter not yet credentialed")
     async def test_metrics_enpoint(self, ops_test: OpsTest):
         """Test metrics_endpoints are defined in relation data bag and their accessibility.
@@ -280,7 +282,7 @@ class TestCharm:
         app = ops_test.model.applications[CHARM_NAME]
         await assert_logging(app)
 
-    # TODO: remove after multi-tenancy is completed:
+    # TODO: remove once multi-tenancy is completed:
     @pytest.mark.skip(reason="WIP: /metrics now behind RBAC and exporter not yet credentialed")
     @retry(stop=stop_after_delay(300), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
@@ -366,7 +368,7 @@ class TestCharm:
         client = MlflowClient(tracking_uri=url)
         response = requests.get(
             url,
-            # TODO: remove after multi-tenancy is completed:
+            # TODO: remove once multi-tenancy is completed:
             headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
         )
         assert response.status_code == 200
@@ -510,11 +512,11 @@ class TestCharm:
                 f'payload=\'{{"name":"{experiment_name}"}}\'; '
                 "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors "
                 f"-X POST '{tracking_uri}/api/2.0/mlflow/experiments/create' "
-                # TODO: remove after multi-tenancy is completed:
+                # TODO: remove once multi-tenancy is completed:
                 f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
                 "-H 'Content-Type: application/json' -d \"$payload\" >/dev/null; "
                 "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors -G "
-                # TODO: remove after multi-tenancy is completed:
+                # TODO: remove once multi-tenancy is completed:
                 f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
                 f"'{tracking_uri}/api/2.0/mlflow/experiments/get-by-name' "
                 f"--data-urlencode 'experiment_name={experiment_name}'"

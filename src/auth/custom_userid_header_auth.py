@@ -27,7 +27,7 @@ from mlflow import MlflowException
 from mlflow.server.auth import authenticate_request_basic_auth, store
 from werkzeug.datastructures import Authorization
 
-# TODO: remove after multi-tenancy is completed
+# TODO: remove once multi-tenancy is completed:
 HARDCODED_TEST_IDENTITY = "charm-test-user"
 HARDCODED_TEST_WORKSPACE = "default"
 
@@ -56,7 +56,7 @@ def _ensure_user_exists(username: str) -> None:
             return
         raise
 
-    # TODO: remove after multi-tenancy is completed
+    # TODO: remove once multi-tenancy is completed:
     # granting the fixed, hardcoded integration-test identity access in the `default` tenant for
     # integration testing to be still carried out despite the work in progress:
     if username == HARDCODED_TEST_IDENTITY:

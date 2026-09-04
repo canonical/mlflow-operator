@@ -1,7 +1,7 @@
 # Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-# TODO: remove after multi-tenancy is completed:
+# TODO: remove once multi-tenancy is completed:
 """Temporary integration-test helpers for authenticating against the RBAC-enabled tracking server.
 
 The custom authentication module grants this fixed identity coarse `edit` access in the reserved
