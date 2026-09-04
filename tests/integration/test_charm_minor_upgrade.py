@@ -20,10 +20,8 @@ import lightkube
 import pytest
 import requests
 import yaml
-from charmed_kubeflow_chisme.kubernetes import (
-    KubernetesResourceHandler,
-    deploy_and_assert_s3_integrator,
-)
+from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
+from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_integrator
 from charms_dependencies import POSTGRESQL_K8S, S3_INTEGRATOR
 from lightkube.generic_resource import load_in_cluster_generic_resources
 from mlflow.tracking import MlflowClient

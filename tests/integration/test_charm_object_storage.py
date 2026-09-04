@@ -577,7 +577,11 @@ class TestCharm:
     async def test_ui_is_accessible_in_proxy_mode(self, lightkube_client, ops_test: OpsTest):
         """The tracking server UI must remain reachable after switching to proxy mode."""
         ingress_url = get_ingress_url(lightkube_client, ops_test.model_name)
-        result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
+        result_status, result_text = await fetch_response(
+            f"{ingress_url}/mlflow/",
+            # TODO: remove once multi-tenancy is completed:
+            {IDENTITY_HEADER_NAME: TEST_IDENTITY},
+        )
         assert result_status == 200
         assert len(result_text) > 0
 
