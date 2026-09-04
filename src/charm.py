@@ -423,8 +423,7 @@ class MlflowCharm(CharmBase):
                 self._container_name: {
                     "override": "replace",
                     "summary": "Entrypoint of mlflow-server image",
-                    # running the tracking server while enabling RBAC via the "basic-auth" app:
-                    "command": "mlflow server --app-name basic-auth --uvicorn-opts '--log-level debug'",
+                    "command": "mlflow server --app-name basic-auth --workers 1 --uvicorn-opts '--log-level debug'",
                     "startup": "enabled",
                     "environment": self.service_environment,  # defaults `mlflow server` CLI options
                 }
