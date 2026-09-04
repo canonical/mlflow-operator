@@ -38,7 +38,7 @@ options:
       Analogous to:
       https://mlflow.org/docs/latest/api_reference/cli.html#cmdoption-mlflow-server-serve-artifacts
     type: boolean
-    default: false
+    default: true
   identity_header_name:
     description: |
       Name of the trusted user-ID HTTP header the tracking server's custom authentication logic
