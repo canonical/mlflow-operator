@@ -21,7 +21,8 @@ import pytest
 import requests
 import yaml
 from charmed_kubeflow_chisme.kubernetes import (
-    KubernetesResourceHandler, deploy_and_assert_s3_integrator
+    KubernetesResourceHandler,
+    deploy_and_assert_s3_integrator,
 )
 from charms_dependencies import POSTGRESQL_K8S, S3_INTEGRATOR
 from lightkube.generic_resource import load_in_cluster_generic_resources
