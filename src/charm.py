@@ -4,6 +4,7 @@
 
 import base64
 import logging
+import secrets
 from pathlib import Path
 from typing import List, Optional, TypedDict
 from urllib.parse import urlparse
@@ -48,7 +49,7 @@ from jinja2 import Template
 from lightkube import Client
 from lightkube.models.core_v1 import ServicePort
 from object_storage import S3Requirer
-from ops import ActionEvent, main
+from ops import ActionEvent, SecretNotFoundError, main
 from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Layer
@@ -111,23 +112,28 @@ except Exception as exc:
     raise
 """
 
-# TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-# snippet run in the workload container to permit the relation user to create the immutability
-# trigger that MLflow's schema migration adds alongside the `secrets` table, as with binary logging
-# enabled (the default on mysql-k8s), MySQL rejects `CREATE TRIGGER` for a user lacking the
-# SET_USER_ID/SUPER privilege (error 1419) unless the global `log_bin_trust_function_creators`
-# variable is set - the relation user requests the `charmed_dba` role, which grants
-# SYSTEM_VARIABLES_ADMIN, so the charm can itself persist that variable using the relation
-# credentials and no administrative (root) access to the database is required - notably,
-# `SET PERSIST` keeps the setting across server restarts, and the statement is idempotent:
-ENABLE_TRIGGER_CREATION_SNIPPET = """\
-import sys
-from sqlalchemy import create_engine, text
+# directory inside the workload container where the charm writes the RBAC/auth files it owns: the
+# rendered basic_auth.ini and the custom authentication module - NOTE: under Pebble's home
+# directory, writable by the non-root user:
+AUTH_CONFIG_DIR = "/var/lib/pebble/default/auth"
+AUTH_CONFIG_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/basic_auth.ini"
+AUTH_MODULE_NAME = "custom_userid_header_auth"
+AUTH_MODULE_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/{AUTH_MODULE_NAME}.py"
+AUTH_MODULE_SOURCE_PATH = "src/auth/custom_userid_header_auth.py"
+AUTH_CONFIG_TEMPLATE_PATH = "src/auth/basic_auth.ini.j2"
+AUTHORIZATION_FUNCTION = f"{AUTH_MODULE_NAME}:authenticate_request"
 
-engine = create_engine(sys.argv[1])
-with engine.connect() as connection:
-    connection.execute(text('SET PERSIST log_bin_trust_function_creators = ON'))
-"""
+# username of the charm's MLflow super-admin - NOTE: it contains an underscore and it does not
+# contain any "@" so that it can never collide with a K8s namespace name (DNS-1123) or an IAM
+# email, which are the possible identity value kinds set by external entities:
+MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
+
+# label of the application-scoped Juju secret holding the auto-generated RBAC credentials (the
+# Flask secret key and the super-admin password), kept stable across restarts and identical across
+# replicas:
+AUTH_SECRET_LABEL = "mlflow-auth-credentials"
+
+RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "relational-db"
 
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
@@ -157,18 +163,13 @@ class MlflowCharm(CharmBase):
         self._exporter_port = self.model.config["mlflow_prometheus_exporter_port"]
         self._container_name = "mlflow-server"
         self._exporter_container_name = "mlflow-prometheus-exporter"
-        self._database_name = "mlflow"
+        self._backend_store_database_name = "mlflow"
         self._container = self.unit.get_container(self._container_name)
         self._exporter_container = self.unit.get_container(self._exporter_container_name)
-        self.database = DatabaseRequires(
+        self.backend_store_database = DatabaseRequires(
             self,
-            relation_name="relational-db",
-            database_name=self._database_name,
-            # NOTE: `charmed_dba` grants the relation user SYSTEM_VARIABLES_ADMIN (to persist
-            # `log_bin_trust_function_creators`) and TRIGGER, which together let MLflow's schema
-            # migration create the `secrets` immutability trigger under binary logging
-            # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-            extra_user_roles="charmed_dba",
+            relation_name=RELATION_ENDPOINT_FOR_BACKEND_STORE_DB,
+            database_name=self._backend_store_database_name,
         )
 
         self._secrets_manifests_wrapper = None
@@ -183,10 +184,11 @@ class MlflowCharm(CharmBase):
         self._create_service()
 
         self.framework.observe(self.on.update_status, self._on_event)
-        self.framework.observe(self.database.on.database_created, self._on_event)
-        self.framework.observe(self.database.on.endpoints_changed, self._on_event)
+        self.framework.observe(self.backend_store_database.on.database_created, self._on_event)
+        self.framework.observe(self.backend_store_database.on.endpoints_changed, self._on_event)
         self.framework.observe(
-            self.on.relational_db_relation_broken, self._on_database_relation_removed
+            self.on.relational_db_relation_broken,
+            self._on_backend_store_relation_removed,
         )
 
         self.framework.observe(
@@ -398,7 +400,8 @@ class MlflowCharm(CharmBase):
                 self._container_name: {
                     "override": "replace",
                     "summary": "Entrypoint of mlflow-server image",
-                    "command": "mlflow server",
+                    # running the tracking server while enabling RBAC via the "basic-auth" app:
+                    "command": "mlflow server --app-name basic-auth",
                     "startup": "enabled",
                     "environment": self.service_environment,  # defaults `mlflow server` CLI options
                 }
@@ -490,14 +493,16 @@ class MlflowCharm(CharmBase):
             raise ErrorWithStatus(err, BlockedStatus)
         return interfaces
 
-    def _get_relational_db_data(self) -> dict:
-        mysql_relation = self.model.get_relation("relational-db")
+    def _get_backend_store_db_data(self) -> dict:
+        db_relation = self.model.get_relation(RELATION_ENDPOINT_FOR_BACKEND_STORE_DB)
 
-        # Raise exception and stop execution if the relational-db relation is not established
-        if not mysql_relation:
-            raise ErrorWithStatus("Please add relation to the database", BlockedStatus)
+        # Raise exception and stop execution if the backend-store relation is not established
+        if not db_relation:
+            raise ErrorWithStatus(
+                f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}", BlockedStatus
+            )
 
-        data = self.database.fetch_relation_data()
+        data = self.backend_store_database.fetch_relation_data()
         self.logger.debug("Got following database data: %s", data)
         for val in data.values():
             if not val:
@@ -512,21 +517,25 @@ class MlflowCharm(CharmBase):
                 }
             except KeyError:
                 raise ErrorWithStatus(
-                    "Incorrect data found in relation relational-db", WaitingStatus
+                    f"Incorrect data found in relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}",
+                    WaitingStatus,
                 )
             return db_data
-        raise ErrorWithStatus("Waiting for relational-db relation data", WaitingStatus)
+        raise ErrorWithStatus(
+            f"Waiting for {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB} relation data", WaitingStatus
+        )
 
     def _get_backend_store_uri(self) -> str:
-        """Return the SQLAlchemy backend store URI for the `relational-db` MySQL backend.
+        """Return the SQLAlchemy backend-store URI from the PostgreSQL provider.
 
         Raises:
-            ErrorWithStatus if the `relational-db` relation or its data are not ready.
+            ErrorWithStatus if the relation or its data are not ready.
         """
-        relational_db_data = self._get_relational_db_data()
+        backend_store_data = self._get_backend_store_db_data()
         return (
-            f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}"
-            f"@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}"
+            f"postgresql://{backend_store_data['username']}:{backend_store_data['password']}"
+            f"@{backend_store_data['host']}:{backend_store_data['port']}"
+            f"/{self._backend_store_database_name}"
         )
 
     def _is_database_schema_out_of_date(self, backend_store_uri: str) -> bool:
@@ -562,7 +571,7 @@ class MlflowCharm(CharmBase):
 
         return SCHEMA_OUT_OF_DATE_MARKER in stdout
 
-    def _run_database_migration(self, backend_store_uri: str) -> None:
+    def _run_database_migration(self, database_uri: str) -> None:
         """Run `mlflow db upgrade` in the workload container to migrate the tracking DB schema.
 
         The `mlflow db upgrade` command is idempotent, so it is safe to run whenever the schema is
@@ -579,7 +588,7 @@ class MlflowCharm(CharmBase):
         self.logger.info("Running 'mlflow db upgrade' database schema migration.")
 
         try:
-            process = self.container.exec(["mlflow", "db", "upgrade", backend_store_uri])
+            process = self.container.exec(["mlflow", "db", "upgrade", database_uri])
             process.wait_output()
 
         except ExecError as error:
@@ -589,10 +598,10 @@ class MlflowCharm(CharmBase):
             self.logger.error(
                 "Database schema migration ('mlflow db upgrade') failed with exit code "
                 f"{error.exit_code}. The schema may be left partially migrated: 'mlflow db "
-                "upgrade' applies Alembic migrations and MySQL DDL is not transactional, so a "
-                "failed step cannot be rolled back automatically. Restore the tracking database "
-                "from a backup taken before the refresh (see the charm's backup/restore how-to), "
-                "then retry the refresh."
+                "upgrade' applies a sequence of Alembic migrations that is not atomic as a whole, "
+                "so a failed step cannot be rolled back automatically. Restore the tracking "
+                "database from a backup taken before the refresh (see the charm's backup/restore "
+                "how-to), then retry the refresh."
             )
             raise ErrorWithStatus(
                 "Database schema migration failed. Check the unit logs and act accordingly.",
@@ -606,57 +615,6 @@ class MlflowCharm(CharmBase):
 
         self.logger.info("Database schema migration completed successfully.")
 
-    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-    def _ensure_trigger_creation_allowed(self, backend_store_uri: str) -> None:
-        """Allow the MySQL relation user to create MLflow's `secrets` immutability trigger.
-
-        Workaround for upstream MLflow bug https://github.com/mlflow/mlflow/issues/19943: MLflow's
-        schema migration unconditionally issues a `CREATE TRIGGER` for the `secrets` table. With
-        binary logging enabled (the mysql-k8s default), MySQL rejects that statement for a user
-        without SET_USER_ID/SUPER (error 1419) unless the global `log_bin_trust_function_creators`
-        variable is set. The relation user is granted the `charmed_dba` role (SYSTEM_VARIABLES_
-        ADMIN), so the charm persists that variable itself using the relation credentials - no root
-        access to the database is needed. The statement is idempotent and must run before the
-        workload initialises or migrates the schema.
-
-        Raises:
-            ErrorWithStatus(..., Waiting) when the variable can't be set (e.g., the database is not
-            yet reachable), so the caller can defer and retry.
-        """
-        try:
-            proc = self.container.exec(
-                ["python3", "-c", ENABLE_TRIGGER_CREATION_SNIPPET, backend_store_uri]
-            )
-            proc.wait_output()
-
-        except ExecError as error:
-            stderr = error.stderr or ""
-            self.logger.warning(
-                f"Could not enable trigger creation on the database: exit code {error.exit_code}",
-            )
-
-            # MySQL error 1227 = the user lacks SUPER/SYSTEM_VARIABLES_ADMIN. This happens when the
-            # relation user was not created with the `charmed_dba` role - notably on an in-place
-            # upgrade from a revision that did not request it, since the data-platform provider only
-            # grants extra roles when the relation (and its user) is first created. Retrying will
-            # never succeed, so surface an actionable Blocked status instead of looping in Waiting.
-            if "1227" in stderr or "SYSTEM_VARIABLES_ADMIN" in stderr:
-                # keeping the Juju status message short; the remediation details go to the logs:
-                self.logger.error(
-                    "The database user lacks the SYSTEM_VARIABLES_ADMIN privilege required to "
-                    "migrate the schema. Remove and re-add the 'relational-db' relation (or grant "
-                    "the 'charmed_dba' role to the database user) so the charm can proceed."
-                )
-                raise ErrorWithStatus(
-                    "Database user lacks privileges to migrate the schema. Check the unit logs "
-                    "and act accordingly.",
-                    BlockedStatus,
-                )
-
-            raise ErrorWithStatus(
-                "Could not prepare the database for schema migration; will retry.", WaitingStatus
-            )
-
     def _reconcile_database_schema(self) -> None:
         """Automatically migrate the tracking database schema when it is out of date.
 
@@ -666,9 +624,6 @@ class MlflowCharm(CharmBase):
         migration runs.
         """
         backend_store_uri = self._get_backend_store_uri()
-
-        # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-        self._ensure_trigger_creation_allowed(backend_store_uri)
 
         if self._is_database_schema_out_of_date(backend_store_uri):
             self.unit.status = MaintenanceStatus(
@@ -1000,6 +955,7 @@ class MlflowCharm(CharmBase):
             interfaces = self._get_interfaces()
             artifact_store_data = self._get_artifact_store_data(interfaces)
             backend_store_uri = self._get_backend_store_uri()
+            auth_secrets = self._get_or_create_auth_secrets()
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
@@ -1014,6 +970,23 @@ class MlflowCharm(CharmBase):
             # NOTE: security middleware disable as already provided by the outer Istio layer:
             # https://mlflow.org/docs/latest/self-hosting/security/network/#disable-security-middleware  # noqa: E501
             "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
+            # enabling workspaces (tenants):
+            "MLFLOW_ENABLE_WORKSPACES": "true",
+            # disabling seeding new workspaces with default roles, as the charm manages them
+            # exclusively and explicitly:
+            "MLFLOW_RBAC_SEED_DEFAULT_ROLES": "false",
+            # the charm-rendered basic_auth.ini (RBAC settings and custom authentication logic):
+            "MLFLOW_AUTH_CONFIG_PATH": AUTH_CONFIG_CONTAINER_PATH,
+            # static and identical across replicas, required by the auth app for CSRF/session:
+            "MLFLOW_FLASK_SERVER_SECRET_KEY": auth_secrets["flask_secret_key"],
+            # trusted user-ID header the custom authentication logic reads to map requests to users:
+            "IDENTITY_HEADER_NAME": self.model.config["identity_header_name"],
+            # so that MLflow's auth app can import the charm-written custom authentication module:
+            "PYTHONPATH": AUTH_CONFIG_DIR,
+            # disabling MLflow's GenAI job-execution subsystem (online scoring, trace archival,
+            # prompt optimization): a tracking server does not need it, and it otherwise spawns
+            # several extra worker processes that each open database connections:
+            "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
         }
         if self.proxy_mode:
             proxy_environment_variables = {
@@ -1038,6 +1011,55 @@ class MlflowCharm(CharmBase):
             )
 
         return environment_variables
+
+    def _get_or_create_auth_secrets(self) -> dict:
+        """Return the shared RBAC credentials, generating and persisting them on first use.
+
+        The Flask secret key and the MLflow super-admin password are generated once by the leader
+        and stored in an application-scoped Juju secret, so they stay stable across restarts and
+        identical across replicas (the auth app requires a consistent Flask secret key).
+
+        Raises:
+            ErrorWithStatus(..., Waiting) if the credentials have not been generated yet (a
+            non-leader unit observed before the leader created them), so the caller can defer.
+        """
+        try:
+            content = self.model.get_secret(label=AUTH_SECRET_LABEL).get_content()
+        except SecretNotFoundError:
+            if not self.unit.is_leader():
+                raise ErrorWithStatus(
+                    "Waiting for the leader to generate the RBAC credentials", WaitingStatus
+                )
+            content = {
+                "flask-secret-key": secrets.token_urlsafe(32),
+                "admin-password": secrets.token_urlsafe(32),
+            }
+            self.app.add_secret(content, label=AUTH_SECRET_LABEL)
+
+        return {
+            "flask_secret_key": content["flask-secret-key"],
+            "admin_password": content["admin-password"],
+        }
+
+    def _reconcile_auth_config(self) -> None:
+        """Render and push the RBAC auth config and the custom authentication module.
+
+        Writes into the workload container the custom authentication module (shipped in the charm)
+        and the rendered basic_auth.ini that points MLflow at it, at the paths that the server's
+        environment then references via `MLFLOW_AUTH_CONFIG_PATH` and `PYTHONPATH`.
+        """
+        auth_secrets = self._get_or_create_auth_secrets()
+
+        custom_auth_module = Path(AUTH_MODULE_SOURCE_PATH).read_text()
+        self.container.push(AUTH_MODULE_CONTAINER_PATH, custom_auth_module, make_dirs=True)
+
+        auth_config = Template(Path(AUTH_CONFIG_TEMPLATE_PATH).read_text()).render(
+            database_uri=self._get_backend_store_uri(),
+            admin_username=MLFLOW_SUPER_ADMIN_USERNAME,
+            admin_password=auth_secrets["admin_password"],
+            authorization_function=AUTHORIZATION_FUNCTION,
+        )
+        self.container.push(AUTH_CONFIG_CONTAINER_PATH, auth_config, make_dirs=True)
 
     def _reconcile_policy_resource_manager(self):
         if not self.unit.is_leader():
@@ -1102,9 +1124,11 @@ class MlflowCharm(CharmBase):
         # proceed with other actions
         self._on_event(_)
 
-    def _on_database_relation_removed(self, _) -> None:
-        """Event is fired when relation with postgres is broken."""
-        self.unit.status = BlockedStatus("Please add relation to the database")
+    def _on_backend_store_relation_removed(self, _) -> None:
+        """Event is fired when relation with the backend store is broken."""
+        self.unit.status = BlockedStatus(
+            f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
+        )
 
     def _send_manifests(
         self, context, manifest_files, relation_requirer: KubernetesManifestRequirerWrapper
@@ -1155,11 +1179,9 @@ class MlflowCharm(CharmBase):
                     f"Container {self._container_name} is not ready", WaitingStatus
                 )
 
-            # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-            # clearing MySQL's binlog trigger-creation restriction before the workload starts and
-            # auto-initializes the database schema on a fresh deployment (an operation that indeed
-            # requires the privileges granted with this step):
-            self._ensure_trigger_creation_allowed(self._get_backend_store_uri())
+            # (re)rendering the required authentication configurations, including the custom
+            # authentication module, into the workload:
+            self._reconcile_auth_config()
 
             update_layer(
                 self._container_name, self._container, self._mlflow_server_layer, self.logger
