@@ -417,7 +417,7 @@ class TestCharm:
             headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
         )
         assert current_user_response.status_code == 200
-        current_user_info = current_user_response.json()
+        current_user_info = current_user_response.json()["user"]
 
         # asserting the current MLflow user corresponds to the expected external identity:
         assert current_user_info["username"] == TEST_IDENTITY
