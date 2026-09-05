@@ -11,6 +11,7 @@ simply sending it as the user-ID, as in-mesh security against such measures is n
 
 IDENTITY_HEADER_NAME = "kubeflow-userid"
 TEST_IDENTITY = "charm-test-user"
+TEST_WORKSPACE = "default"
 
 
 def register_identity_request_header_provider() -> None:

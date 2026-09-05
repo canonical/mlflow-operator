@@ -63,7 +63,7 @@ from pytest_operator.plugin import OpsTest
 from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_fixed
 
 # TODO: remove once multi-tenancy is completed:
-from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY  # isort:skip
+from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY, TEST_WORKSPACE  # isort:skip
 
 logger = logging.getLogger(__name__)
 
@@ -346,6 +346,44 @@ class TestCharm:
         client.create_experiment(TEST_EXPERIMENT_NAME)
         all_experiments = client.search_experiments()
         assert len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
+
+        mlflow_subprocess.terminate()
+
+    # TODO: update this test's logic as multi-tenancy is developed:
+    @pytest.mark.abort_on_fail
+    async def test_mlflow_user_identity_and_tenant_rbac(self, ops_test: OpsTest):
+        """Assert the MLflow user is associated to the expected identity and tenant RBAC."""
+        # port-forwarding the tracking server:
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        mlflow_subprocess = subprocess.Popen(
+            [
+                "kubectl",
+                "-n",
+                f"{ops_test.model_name}",
+                "port-forward",
+                f"svc/{CHARM_NAME}",
+                f"{mlflow_port}:{mlflow_port}",
+            ]
+        )
+        time.sleep(10)  # Must wait for port-forward
+
+        # getting information about the current, implicitly authenticated MLflow user:
+        current_user_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/2.0/mlflow/users/current",
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+        )
+        assert current_user_response.status_code == 200
+        current_user_info = current_user_response.json()
+
+        # asserting the current MLflow user corresponds to the expected external identity:
+        assert current_user_info["username"] == TEST_IDENTITY
+
+        # asserting the current MLflow user has access only to the expected tenant (workspace):
+        user_roles = current_user_info["roles"]
+        for role in user_roles:
+            assert role["workspace"] == TEST_WORKSPACE
 
         mlflow_subprocess.terminate()
 
