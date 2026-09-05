@@ -375,13 +375,22 @@ class TestCharm:
             headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
         )
         assert current_user_response.status_code == 200
-        current_user_info = current_user_response.json()["user"]
+        current_user_username = current_user_response.json()["user"]["username"]
 
         # asserting the current MLflow user corresponds to the expected external identity:
-        assert current_user_info["username"] == TEST_IDENTITY
+        assert current_user_username == TEST_IDENTITY
 
-        # asserting the current MLflow user has access only to the expected tenant (workspace):
-        user_roles = current_user_info["roles"]
+        # getting roles for the current MLflow user:
+        current_roles_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/3.0/mlflow/users/roles/list",
+            params={"username": current_user_username},
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},  # same as requested user
+        )
+        assert current_roles_response.status_code == 200
+        user_roles = current_roles_response.json()["roles"]
+
+        # asserting the current MLflow user is granted only the expected tenant (workspace):
         for role in user_roles:
             assert role["workspace"] == TEST_WORKSPACE
 
