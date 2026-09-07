@@ -105,6 +105,7 @@ EXPECTED_AUTH_ENVIRONMENT = {
     "MLFLOW_AUTH_CONFIG_PATH": "/var/lib/pebble/default/auth/basic_auth.ini",
     "MLFLOW_FLASK_SERVER_SECRET_KEY": EXPECTED_FLASK_SECRET_KEY,
     "IDENTITY_HEADER_NAME": "kubeflow-userid",
+    "IDENTITY_ALIASES_PATH": "/var/lib/pebble/default/auth/identity_aliases.json",
     "PYTHONPATH": "/var/lib/pebble/default/auth",
     "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
 }
@@ -819,6 +820,97 @@ class TestCharm:
         envs = harness.charm._generate_environment()
         assert "AWS_CA_BUNDLE" not in envs
         assert envs == expected_environment
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "raw_config, expected_aliases",
+        [
+            ("", {}),
+            ("   \n  ", {}),
+            ("# only a comment", {}),
+            ("svc-alice-ci: alice@example.com", {"svc-alice-ci": "alice@example.com"}),
+            (
+                "svc-alice-ci: alice@example.com\nkubeflow-profile-for-dan: dan@example.com",
+                {
+                    "svc-alice-ci": "alice@example.com",
+                    "kubeflow-profile-for-dan": "dan@example.com",
+                },
+            ),
+            (
+                "svc-a: alice@example.com\nsvc-b: alice@example.com",
+                {"svc-a": "alice@example.com", "svc-b": "alice@example.com"},
+            ),
+        ],
+        ids=["empty", "blank", "comment-only", "single", "distinct", "many-to-one"],
+    )
+    def test_get_identity_aliases_parses_valid_config(
+        self, harness: Harness, raw_config, expected_aliases
+    ):
+        harness.update_config({"identity_aliases": raw_config})
+        harness.begin()
+        assert harness.charm._get_identity_aliases() == expected_aliases
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "raw_config",
+        [
+            "- not\n- a\n- mapping",
+            "just-a-scalar",
+            "svc-alice-ci: 123",
+            "svc-alice-ci: true",
+            "'': alice@example.com",
+            "svc-alice-ci: ''",
+            "svc-alice-ci: [a, b]",
+            "alice@example.com: bob@example.com\nsvc-ci: alice@example.com",
+            "'unterminated",
+        ],
+        ids=[
+            "list",
+            "scalar",
+            "non-string-value",
+            "boolean-value",
+            "empty-key",
+            "empty-value",
+            "list-value",
+            "chained-alias",
+            "malformed-yaml",
+        ],
+    )
+    def test_get_identity_aliases_rejects_invalid_config(self, harness: Harness, raw_config):
+        harness.update_config({"identity_aliases": raw_config})
+        harness.begin()
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._get_identity_aliases()
+        assert exc_info.value.status_type is BlockedStatus
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_auth_config_pushes_identity_aliases_file(self, harness: Harness):
+        """The parsed alias map is written to the workload as JSON for the auth module to read."""
+        harness.update_config({"identity_aliases": "svc-alice-ci: alice@example.com"})
+        harness.begin()
+        harness.charm._get_or_create_auth_secrets = MagicMock(return_value=AUTH_SECRETS)
+        harness.charm._get_backend_store_uri = MagicMock(
+            return_value="postgresql://u:p@h:5432/mlflow"
+        )
+        harness.charm._container.push = MagicMock()
+
+        harness.charm._reconcile_auth_config()
+
+        pushed_files = {
+            call.args[0]: call.args[1] for call in harness.charm._container.push.call_args_list
+        }
+        aliases_path = "/var/lib/pebble/default/auth/identity_aliases.json"
+        assert aliases_path in pushed_files
+        assert json.loads(pushed_files[aliases_path]) == {"svc-alice-ci": "alice@example.com"}
 
     @patch(
         "charm.KubernetesServicePatch",
