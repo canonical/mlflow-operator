@@ -9,8 +9,9 @@ authenticates every request from the user-ID header that the surrounding charm e
 stack and service mesh) sets securely, and falls back to HTTP Basic auth only for the in-pod
 callers reaching the server over localhost (the charm super-admin and the metrics exporter).
 
-The header name is read from the ``IDENTITY_HEADER_NAME`` environment variable, set by the charm
-from its ``identity_header_name`` config.
+The header name is read from the ``IDENTITY_HEADER_NAME`` environment variable, and the optional
+identity-alias map from the file at ``IDENTITY_ALIASES_PATH``, both set by the charm from its
+``identity_header_name`` and ``identity_aliases`` config options, respectively.
 
 See https://mlflow.org/docs/3.15.1/self-hosting/security/custom/#using-a-function for details about
 custom authentication in MLflow.
@@ -18,14 +19,30 @@ custom authentication in MLflow.
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
+from typing import TypedDict
 
 import sqlalchemy
 from flask import Response, make_response, request
 from mlflow import MlflowException
 from mlflow.server.auth import authenticate_request_basic_auth, store
 from werkzeug.datastructures import Authorization
+
+class IdentityAliasesCache(TypedDict):
+    path: str
+    modified_time: float
+    aliases: dict[str, str]
+
+# in-process cache of the charm-maintained identity-aliases file, reloaded only when the file's
+# modification time changes so per-request cost stays negligible while alias edits still take
+# effect without a server restart:
+_IDENTITY_ALIASES_CACHE: IdentityAliasesCache = {
+    "file_path": "",
+    "file_modified_time": 0.0,
+    "aliases": {},
+}
 
 # TODO: remove once multi-tenancy is completed:
 HARDCODED_TEST_IDENTITY = "charm-test-user"
@@ -35,6 +52,40 @@ HARDCODED_TEST_WORKSPACE = "default"
 def _identity_header_name() -> str:
     """Return the name of the user-ID header to read, as configured by the charm."""
     return os.environ["IDENTITY_HEADER_NAME"]
+
+
+def _identity_aliases() -> dict:
+    """Return the charm-maintained flat ``{secondary-identity: primary-identity}`` alias map.
+
+    The map is read from the file whose path the charm sets in ``IDENTITY_ALIASES_PATH`` and cached
+    in-process, reloaded only when the file changes, so alias edits take effect without a restart.
+    An absent path or file (or an empty map) means no aliases are configured.
+    """
+    identity_aliases_file_path = os.environ.get("IDENTITY_ALIASES_PATH")
+
+    if not identity_aliases_file_path:
+        return {}  # no identity aliases configured
+
+    try:
+        identity_aliases_file_modified_time = os.path.getmtime(identity_aliases_file_path)
+    except OSError:
+        return {}  # no identity aliases configured
+
+    # updating the cache if the file defining identity aliases has changed, in particular...
+    if (
+        # ... if the location of the file has changed:
+        _IDENTITY_ALIASES_CACHE.get("file_path") != identity_aliases_file_path
+        # ... or if the modification time of the file has changed:
+        or _IDENTITY_ALIASES_CACHE.get("file_modified_time") != identity_aliases_file_modified_time
+    ):
+        # reloading the aliases from the updated file:
+        with open(identity_aliases_file_path, encoding="utf-8") as identity_aliases_file:
+            _IDENTITY_ALIASES_CACHE["aliases"] = json.load(identity_aliases_file)
+        # remembering the corresponding file path and modification time, to detect changes:
+        _IDENTITY_ALIASES_CACHE["file_path"] = identity_aliases_file_path
+        _IDENTITY_ALIASES_CACHE["file_modified_time"] = identity_aliases_file_modified_time
+
+    return _IDENTITY_ALIASES_CACHE["aliases"]
 
 
 def _ensure_user_exists(username: str) -> None:
@@ -76,11 +127,15 @@ def authenticate_request() -> Authorization | Response:
     """
     identity = request.headers.get(_identity_header_name())
     if identity:
-        # ensuring that the MLflow user whose username matches the identity header's value either
-        # already exists or is successfully created, for downstream permission resolution to work:
-        _ensure_user_exists(identity)
+        # resolving the identity to its primary identity, which is the MLflow username: the
+        # identity is the username unless the charm-maintained alias file remaps a secondary
+        # identity onto a primary one:
+        username = _identity_aliases().get(identity, identity)
+        # ensuring that the MLflow user for the resolved username either already exists or is
+        # successfully created, for downstream permission resolution to work:
+        _ensure_user_exists(username)
         # authenticating the request as the identified MLflow user:
-        return Authorization("basic", {"username": identity})
+        return Authorization("basic", {"username": username})
 
     # authenticating with Basic credentials validated against the auth database when the identity
     # header is not present (only in-pod localhost callers such as the charm super-admin and the

@@ -3,6 +3,7 @@
 # See LICENSE file for licensing details.
 
 import base64
+import json
 import logging
 import secrets
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import List, Optional, TypedDict
 from urllib.parse import urlparse
 
 import botocore.exceptions
+import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charmed_kubeflow_chisme.pebble import update_layer
 from charmed_kubeflow_chisme.service_mesh import generate_allow_all_authorization_policy
@@ -113,7 +115,7 @@ except Exception as exc:
 """
 
 # directory inside the workload container where the charm writes the RBAC/auth files it owns: the
-# rendered basic_auth.ini and the custom authentication module - NOTE: under Pebble's home
+# rendered basic_auth.ini and the custom authentication module's files - NOTE: under Pebble's home
 # directory, writable by the non-root user:
 AUTH_CONFIG_DIR = "/var/lib/pebble/default/auth"
 AUTH_CONFIG_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/basic_auth.ini"
@@ -122,6 +124,7 @@ AUTH_MODULE_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/{AUTH_MODULE_NAME}.py"
 AUTH_MODULE_SOURCE_PATH = "src/auth/custom_userid_header_auth.py"
 AUTH_CONFIG_TEMPLATE_PATH = "src/auth/basic_auth.ini.j2"
 AUTHORIZATION_FUNCTION = f"{AUTH_MODULE_NAME}:authenticate_request"
+IDENTITY_ALIASES_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/identity_aliases.json"
 
 # username of the charm's MLflow super-admin - NOTE: it contains an underscore and it does not
 # contain any "@" so that it can never collide with a K8s namespace name (DNS-1123) or an IAM
@@ -969,6 +972,10 @@ class MlflowCharm(CharmBase):
             "MLFLOW_FLASK_SERVER_SECRET_KEY": auth_secrets["flask_secret_key"],
             # trusted user-ID header the custom authentication logic reads to map requests to users:
             "IDENTITY_HEADER_NAME": self.model.config["identity_header_name"],
+            # file the charm writes the identity aliases received via charm config to, which the
+            # custom authentication logic of the tracking server reads and caches and reloads on
+            # file changes in order to update the aliasing logic without server restarts:
+            "IDENTITY_ALIASES_PATH": IDENTITY_ALIASES_CONTAINER_PATH,
             # so that MLflow's auth app can import the charm-written custom authentication module:
             "PYTHONPATH": AUTH_CONFIG_DIR,
             # disabling MLflow's GenAI job-execution subsystem (online scoring, trace archival,
@@ -1029,6 +1036,59 @@ class MlflowCharm(CharmBase):
             "admin_password": content["admin-password"],
         }
 
+    def _get_identity_aliases(self) -> dict:
+        """Return the validated flat ``{secondary-identity: primary-identity}`` alias map.
+
+        Parsed from the optional ``identity_aliases`` config: each key is a secondary identity
+        received via the trusted user-ID header (an IAM email, a programmatic client ID or an
+        in-mesh namespace name) and each value is the primary identity already used as an MLflow
+        username, so that identities as keys alias identities as respective values. Unmapped
+        identities resolve to themselves, and several secondaries may map to one primary identity.
+
+        Raises:
+            ErrorWithStatus(..., Blocked) when the config is malformed, so the operator can fix it.
+        """
+        raw_config = self.model.config["identity_aliases"]
+        if not raw_config.strip():
+            return {}  # no identity aliases configured
+
+        try:
+            aliases = yaml.safe_load(raw_config)
+        except yaml.YAMLError as error:
+            raise ErrorWithStatus(
+                f"Config 'identity_aliases' is not valid YAML: {error}", BlockedStatus
+            )
+
+        if aliases is None:
+            return {}  # no identity aliases configured
+
+        if not isinstance(aliases, dict):
+            raise ErrorWithStatus(
+                "Config 'identity_aliases' must be a YAML mapping of "
+                "'<secondary-identity>: <primary-identity>' entries.",
+                BlockedStatus,
+            )
+
+        for identity in (*aliases, *aliases.values()):
+            if not isinstance(identity, str) or not identity.strip():
+                raise ErrorWithStatus(
+                    "Config 'identity_aliases' identities must be non-empty strings; quote any "
+                    "value that YAML would otherwise read as a number or boolean.",
+                    BlockedStatus,
+                )
+
+        # NOTE: keeping the map flat (single-hop resolution): an identity used as both an alias key
+        # and a primary value would chain, so it is rejected rather than resolved ambiguously:
+        chained_identities = set(aliases) & set(aliases.values())
+        if chained_identities:
+            raise ErrorWithStatus(
+                f"Config 'identity_aliases' uses {sorted(chained_identities)} as both an alias "
+                "and a primary identity; aliases must map directly to a primary identity.",
+                BlockedStatus,
+            )
+
+        return aliases
+
     def _reconcile_auth_config(self) -> None:
         """Render and push the RBAC auth config and the custom authentication module.
 
@@ -1038,9 +1098,21 @@ class MlflowCharm(CharmBase):
         """
         auth_secrets = self._get_or_create_auth_secrets()
 
+        # the Python module defining the custom authentication logic run by the tracking server:
         custom_auth_module = Path(AUTH_MODULE_SOURCE_PATH).read_text()
         self.container.push(AUTH_MODULE_CONTAINER_PATH, custom_auth_module, make_dirs=True)
 
+        # the charm-maintained file containing identity aliases that the custom authentication
+        # logic of the tracking server reads and caches and reloads on file changes in order to
+        # update the aliasing logic without server restarts:
+        self.container.push(
+            IDENTITY_ALIASES_CONTAINER_PATH,
+            json.dumps(self._get_identity_aliases()),
+            make_dirs=True,
+        )
+
+        # the file configuring the authentication logic of MLflow, which internally points to the
+        # above-mentioned custom authentication module's path:
         auth_config = Template(Path(AUTH_CONFIG_TEMPLATE_PATH).read_text()).render(
             database_uri=self._get_backend_store_uri(),
             admin_username=MLFLOW_SUPER_ADMIN_USERNAME,
