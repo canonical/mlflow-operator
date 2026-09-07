@@ -30,10 +30,12 @@ from mlflow import MlflowException
 from mlflow.server.auth import authenticate_request_basic_auth, store
 from werkzeug.datastructures import Authorization
 
+
 class IdentityAliasesCache(TypedDict):
     path: str
     modified_time: float
     aliases: dict[str, str]
+
 
 # in-process cache of the charm-maintained identity-aliases file, reloaded only when the file's
 # modification time changes so per-request cost stays negligible while alias edits still take
