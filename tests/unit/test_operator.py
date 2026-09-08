@@ -23,6 +23,9 @@ from ops.testing import Harness
 from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import (
+    AUTH_CONFIG_CONTAINER_PATH,
+    AUTH_MODULE_CONTAINER_PATH,
+    MLFLOW_SUPER_ADMIN_USERNAME,
     PODDEFAULTS_FILES,
     S3_CA_BUNDLE_CONTAINER_PATH,
     SCHEMA_OUT_OF_DATE_MARKER,
@@ -1204,6 +1207,89 @@ class TestCharm:
         assert harness.charm.model.unit.status == BlockedStatus(
             f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
         )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_backend_store_relation_removed_stops_tracking_server(self, harness: Harness):
+        """Removing the backend store relation stops the tracking server and blocks the unit."""
+        harness.begin()
+        harness.charm.container.add_layer(
+            "mlflow-server",
+            {
+                "services": {
+                    "mlflow-server": {
+                        "override": "replace",
+                        "command": "sleep 3600",
+                        "startup": "enabled",
+                    }
+                }
+            },
+            combine=True,
+        )
+        harness.charm.container.start("mlflow-server")
+        assert harness.charm.container.get_service("mlflow-server").is_running()
+
+        harness.charm._on_backend_store_relation_removed(None)
+
+        assert not harness.charm.container.get_service("mlflow-server").is_running()
+        assert harness.charm.model.unit.status == BlockedStatus(
+            f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_or_create_auth_secrets_generates_and_persists(self, harness: Harness):
+        """The leader generates the RBAC credentials once and reuses them on later calls."""
+        harness.begin()
+
+        first = harness.charm._get_or_create_auth_secrets()
+        second = harness.charm._get_or_create_auth_secrets()
+
+        assert first["flask_secret_key"] and first["admin_password"]
+        # the credentials are persisted in a Juju secret, so a later call returns the same values:
+        assert first == second
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_or_create_auth_secrets_waits_when_missing_and_not_leader(self, harness: Harness):
+        """A non-leader defers until the leader has generated the shared RBAC credentials."""
+        harness.set_leader(False)
+        harness.begin()
+
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._get_or_create_auth_secrets()
+        assert exc_info.value.status_type is WaitingStatus
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_auth_config_pushes_module_and_rendered_config(self, harness: Harness):
+        """The custom auth module and the rendered basic_auth.ini are pushed to the workload."""
+        mocker_backend_store_uri = "postgresql://u:p@h:5432/mlflow"
+        harness.begin()
+        harness.charm._get_or_create_auth_secrets = MagicMock(return_value=AUTH_SECRETS)
+        harness.charm._get_backend_store_uri = MagicMock(return_value=mocker_backend_store_uri)
+        harness.charm._container.push = MagicMock()
+
+        harness.charm._reconcile_auth_config()
+
+        pushed = {
+            call.args[0]: call.args[1] for call in harness.charm._container.push.call_args_list
+        }
+        # asserting the authentication module is pushed to the workload container:
+        assert "authenticate_request" in pushed[AUTH_MODULE_CONTAINER_PATH]
+        # asserting rendered authentication configurations are pushed to the workload container:
+        rendered_config = pushed[AUTH_CONFIG_CONTAINER_PATH]
+        assert EXPECTED_ADMIN_PASSWORD in rendered_config
+        assert MLFLOW_SUPER_ADMIN_USERNAME in rendered_config
+        assert mocker_backend_store_uri in rendered_config
 
     @patch(
         "charm.KubernetesServicePatch",
