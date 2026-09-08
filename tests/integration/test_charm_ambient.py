@@ -433,7 +433,7 @@ class TestCharm:
                 assert role["workspace"] == TEST_WORKSPACE
         # when the identity is a newly seen one:
         else:
-            # asserting the user MLflow has no grants:
+            # asserting the MLflow user has no grants:
             assert user_roles == []
 
         mlflow_subprocess.terminate()
