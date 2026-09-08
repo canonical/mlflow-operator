@@ -380,8 +380,15 @@ class TestCharm:
 
     # TODO: update this test's logic as multi-tenancy is developed:
     @pytest.mark.abort_on_fail
-    async def test_mlflow_user_identity_and_tenant_rbac(self, ops_test: OpsTest):
-        """Assert the MLflow user is associated to the expected identity and tenant RBAC."""
+    @pytest.mark.parametrize("identity", [TEST_IDENTITY, "newly-seen-identity"])
+    async def test_mlflow_user_identity_and_grants(self, ops_test: OpsTest, identity: str):
+        """Test the MLflow user's associated identity and grants.
+
+        Assert the MLflow user is always associated to the expected identity, and that it has the
+        expected tenant RBAC when the identity is the one preconfigured by the charm while it has
+        no grants when the identity is a newly seen one.
+        """
+
         # port-forwarding the tracking server:
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
@@ -401,27 +408,33 @@ class TestCharm:
         current_user_response = requests.get(
             f"http://localhost:{mlflow_port}/api/2.0/mlflow/users/current",
             # TODO: remove once multi-tenancy is completed:
-            headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+            headers={IDENTITY_HEADER_NAME: identity},
         )
         assert current_user_response.status_code == 200
         current_user_username = current_user_response.json()["user"]["username"]
 
         # asserting the current MLflow user corresponds to the expected external identity:
-        assert current_user_username == TEST_IDENTITY
+        assert current_user_username == identity
 
         # getting roles for the current MLflow user:
         current_roles_response = requests.get(
             f"http://localhost:{mlflow_port}/api/3.0/mlflow/users/roles/list",
             params={"username": current_user_username},
             # TODO: remove once multi-tenancy is completed:
-            headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},  # same as requested user
+            headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
         )
         assert current_roles_response.status_code == 200
         user_roles = current_roles_response.json()["roles"]
 
-        # asserting the current MLflow user is granted only the expected tenant (workspace):
-        for role in user_roles:
-            assert role["workspace"] == TEST_WORKSPACE
+        # when the identity is the test identity the charm preconfigured:
+        if identity == TEST_IDENTITY:
+            # asserting the MLflow user is granted only the expected tenant (workspace):
+            for role in user_roles:
+                assert role["workspace"] == TEST_WORKSPACE
+        # when the identity is a newly seen one:
+        else:
+            # asserting the MLflow has no grants:
+            assert user_roles == []
 
         mlflow_subprocess.terminate()
 
