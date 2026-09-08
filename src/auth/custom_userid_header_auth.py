@@ -90,9 +90,9 @@ def authenticate_request() -> Authorization | Response:
 
     # when neither authentication method is provided, deny because unauthenticated - inspired by:
     # https://github.com/mlflow/mlflow/blob/v3.15.1/mlflow/server/auth/__init__.py#L494-L502
-    missing_authentication_resonse = make_response(
+    missing_authentication_response = make_response(
         "Not authenticated. Pass either the expected identity header or Basic auth credentials."
     )
-    missing_authentication_resonse.status_code = 401
-    missing_authentication_resonse.headers["WWW-Authenticate"] = 'Basic realm="mlflow"'
-    return missing_authentication_resonse
+    missing_authentication_response.status_code = 401
+    missing_authentication_response.headers["WWW-Authenticate"] = 'Basic realm="mlflow"'
+    return missing_authentication_response
