@@ -1125,7 +1125,17 @@ class MlflowCharm(CharmBase):
         self._on_event(_)
 
     def _on_backend_store_relation_removed(self, _) -> None:
-        """Event is fired when relation with the backend store is broken."""
+        """Stop the tracking server and block the unit when the backend store relation is removed.
+
+        Without a backend store the tracking server cannot serve requests, so its workload service
+        is stopped and the unit is blocked until the relation is re-added.
+        """
+        if self.container.can_connect():
+            services = self.container.get_services()
+            if self._container_name in services and services[self._container_name].is_running():
+                self.logger.info("Backend store relation removed; stopping the tracking server.")
+                self.container.stop(self._container_name)
+
         self.unit.status = BlockedStatus(
             f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
         )
