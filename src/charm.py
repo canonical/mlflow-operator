@@ -157,10 +157,10 @@ class MlflowCharm(CharmBase):
         super().__init__(*args)
 
         self.logger = logging.getLogger(__name__)
-        self._mlflow_port = int(self.model.config["mlflow_port"])
+        self._tracking_server_port = int(self.model.config["mlflow_port"])
         self._service_name = self.model.app.name
         self._namespace = self.model.name
-        self._exporter_port = self.model.config["mlflow_prometheus_exporter_port"]
+        self._exporter_port = int(self.model.config["mlflow_prometheus_exporter_port"])
         self._container_name = "mlflow-server"
         self._exporter_container_name = "mlflow-prometheus-exporter"
         self._backend_store_database_name = "mlflow"
@@ -215,7 +215,7 @@ class MlflowCharm(CharmBase):
                     "static_configs": [
                         {
                             "targets": [
-                                "*:{}".format(self._mlflow_port),
+                                "*:{}".format(self._tracking_server_port),
                                 "*:{}".format(
                                     self.model.config["mlflow_prometheus_exporter_port"]
                                 ),
@@ -317,7 +317,9 @@ class MlflowCharm(CharmBase):
                             )
                         )
                     ],
-                    backends=[BackendRef(service=self._service_name, port=self._mlflow_port)],
+                    backends=[
+                        BackendRef(service=self._service_name, port=self._tracking_server_port)
+                    ],
                 ),
             ],
         )
@@ -353,33 +355,19 @@ class MlflowCharm(CharmBase):
 
     def _create_service(self):
         """Create k8s service based on charm'sconfig."""
-        if self.config["enable_mlflow_nodeport"]:
-            service_type = "NodePort"
-            self._node_port = self.model.config["mlflow_nodeport"]
-            self._exporter_node_port = self.model.config["mlflow_prometheus_exporter_nodeport"]
-            port = ServicePort(
-                self._mlflow_port,
-                name=f"{self.app.name}",
-                targetPort=self._mlflow_port,
-                nodePort=int(self._node_port),
-            )
+        tracking_server_port_definition = ServicePort(
+            self._tracking_server_port,
+            name=f"{self.app.name}",
+        )
+        metrics_exporter_port_definition = ServicePort(
+            self._exporter_port,
+            name=f"{self.app.name}-prometheus-exporter",
+        )
 
-            exporter_port = ServicePort(
-                int(self._exporter_port),
-                name=f"{self.app.name}-prometheus-exporter",
-                targetPort=int(self._exporter_port),
-                nodePort=int(self._exporter_node_port),
-            )
-        else:
-            service_type = "ClusterIP"
-            port = ServicePort(self._mlflow_port, name=f"{self.app.name}")
-            exporter_port = ServicePort(
-                int(self._exporter_port), name=f"{self.app.name}-prometheus-exporter"
-            )
         self.service_patcher = KubernetesServicePatch(
             self,
-            [port, exporter_port],
-            service_type=service_type,
+            [tracking_server_port_definition, metrics_exporter_port_definition],
+            service_type="ClusterIP",
             service_name=self._service_name,
             refresh_event=self.on.config_changed,
         )
@@ -425,7 +413,7 @@ class MlflowCharm(CharmBase):
                         "python3 "
                         "mlflow_exporter.py "
                         f"--port {self._exporter_port} "
-                        f"--mlflowurl http://localhost:{self._mlflow_port}/"
+                        f"--mlflowurl http://localhost:{self._tracking_server_port}/"
                     ),
                     "startup": "enabled",
                 },
@@ -469,7 +457,7 @@ class MlflowCharm(CharmBase):
             "s3_endpoint": self._extract_s3_endpoint(artifact_store_data),
             "mlflow_endpoint": (
                 f"http://{self.app.name}.{self._namespace}.svc.cluster.local:"
-                f"{self._mlflow_port}"
+                f"{self._tracking_server_port}"
             ),
             "is_proxy_mode_enabled": self.proxy_mode,
             # whether to mount the S3 CA bundle into client pods and point AWS_CA_BUNDLE at it, so
@@ -966,7 +954,7 @@ class MlflowCharm(CharmBase):
             "MLFLOW_BACKEND_STORE_URI": backend_store_uri,
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
-            "MLFLOW_PORT": self._mlflow_port,
+            "MLFLOW_PORT": self._tracking_server_port,
             # NOTE: security middleware disable as already provided by the outer Istio layer:
             # https://mlflow.org/docs/latest/self-hosting/security/network/#disable-security-middleware  # noqa: E501
             "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
@@ -1169,7 +1157,7 @@ class MlflowCharm(CharmBase):
                     "rewrite": INGRESS_PATH_REWRITTEN_PREFIX,
                     "service": self._service_name,
                     "namespace": self._namespace,
-                    "port": self._mlflow_port,
+                    "port": self._tracking_server_port,
                 }
             )
 
