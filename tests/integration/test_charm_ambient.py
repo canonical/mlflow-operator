@@ -494,7 +494,10 @@ class TestCharm:
         current_user_username = current_user_response.json()["user"]["username"]
 
         # asserting the current MLflow user corresponds to the expected external identity:
-        assert current_user_username == identity
+        if identity == TEST_IDENTITY_ALIAS:
+            assert current_user_username == TEST_IDENTITY  # because aliasing another identity
+        else:
+            assert current_user_username == identity
 
         # getting roles for the current MLflow user:
         current_roles_response = requests.get(
