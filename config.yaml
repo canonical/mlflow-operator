@@ -39,3 +39,14 @@ options:
       https://mlflow.org/docs/latest/api_reference/cli.html#cmdoption-mlflow-server-serve-artifacts
     type: boolean
     default: false
+  identity_header_name:
+    description: |
+      Name of the trusted user-ID HTTP header the tracking server's custom authentication logic
+      reads to map incoming requests to MLflow users. The charm ecosystem (identity stack and
+      service mesh) is responsible for setting this header securely; the tracking server trusts it
+      as the sole source of truth for the caller's identity.
+
+      Defaults to "kubeflow-userid" (the header used when deployed alongside Charmed Kubeflow); set
+      it to e.g. "mlflow-userid" for a standalone deployment.
+    type: string
+    default: kubeflow-userid
