@@ -12,25 +12,11 @@ options:
       The port MLFlow will be listening on
     type: int
     default: 5000
-  mlflow_nodeport:
-    description: |
-      The nodeport for MLFlow
-    type: int
-    default: 31380
   mlflow_prometheus_exporter_port:
     description: |
       The port MLFlow Prometheus exporter will be listening on
     type: int
     default: 8000
-  mlflow_prometheus_exporter_nodeport:
-    description: |
-      The nodeport for MLFlow Prometheus exporter
-    type: int
-    default: 31381
-  enable_mlflow_nodeport:
-    description: Deploy the NodePort service for MLFlow
-    type: boolean
-    default: true
   serve_artifacts:
     description: |
       Whether to let the tracking server act as a proxy to interact with the artifact store on behalf of the client.
@@ -39,3 +25,14 @@ options:
       https://mlflow.org/docs/latest/api_reference/cli.html#cmdoption-mlflow-server-serve-artifacts
     type: boolean
     default: false
+  identity_header_name:
+    description: |
+      Name of the trusted user-ID HTTP header the tracking server's custom authentication logic
+      reads to map incoming requests to MLflow users. The charm ecosystem (identity stack and
+      service mesh) is responsible for setting this header securely; the tracking server trusts it
+      as the sole source of truth for the caller's identity.
+
+      Defaults to "kubeflow-userid" (the header used when deployed alongside Charmed Kubeflow); set
+      it to e.g. "mlflow-userid" for a standalone deployment.
+    type: string
+    default: kubeflow-userid
