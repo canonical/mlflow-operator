@@ -1035,7 +1035,7 @@ class MlflowCharm(CharmBase):
             "admin_password": content["admin-password"],
         }
 
-    def _get_identity_aliases(self) -> dict:
+    def _get_identity_aliases(self) -> dict[str, str]:
         """Return the validated flat ``{secondary-identity: primary-identity}`` alias map.
 
         Parsed from the optional ``identity_aliases`` config: each key is a secondary identity

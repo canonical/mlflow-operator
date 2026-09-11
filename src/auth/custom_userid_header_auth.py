@@ -36,7 +36,7 @@ HARDCODED_TEST_WORKSPACE = "default"
 # NOTE: there environment variables correspond to charm configs and are guaranteed to always be up
 # to date because the charm reloads the tracking server on config changes:
 _IDENTITY_HEADER_NAME = os.environ["IDENTITY_HEADER_NAME"]
-_RAW_IDENTITY_ALIASES = os.environ.get("IDENTITY_ALIASES")
+_RAW_IDENTITY_ALIASES = os.environ["IDENTITY_ALIASES"]
 _IDENTITY_ALIASES = json.loads(_RAW_IDENTITY_ALIASES) if _RAW_IDENTITY_ALIASES else {}
 
 
