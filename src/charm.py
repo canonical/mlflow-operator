@@ -124,7 +124,6 @@ AUTH_MODULE_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/{AUTH_MODULE_NAME}.py"
 AUTH_MODULE_SOURCE_PATH = "src/auth/custom_userid_header_auth.py"
 AUTH_CONFIG_TEMPLATE_PATH = "src/auth/basic_auth.ini.j2"
 AUTHORIZATION_FUNCTION = f"{AUTH_MODULE_NAME}:authenticate_request"
-IDENTITY_ALIASES_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/identity_aliases.json"
 
 # username of the charm's MLflow super-admin - NOTE: it contains an underscore and it does not
 # contain any "@" so that it can never collide with a K8s namespace name (DNS-1123) or an IAM
@@ -972,10 +971,10 @@ class MlflowCharm(CharmBase):
             "MLFLOW_FLASK_SERVER_SECRET_KEY": auth_secrets["flask_secret_key"],
             # trusted user-ID header the custom authentication logic reads to map requests to users:
             "IDENTITY_HEADER_NAME": self.model.config["identity_header_name"],
-            # file the charm writes the identity aliases received via charm config to, which the
-            # custom authentication logic of the tracking server reads and caches and reloads on
-            # file changes in order to update the aliasing logic without server restarts:
-            "IDENTITY_ALIASES_PATH": IDENTITY_ALIASES_CONTAINER_PATH,
+            # identity aliases (JSON) read by the tracking server's custom authentication logic,
+            # kept in the layer environment so that a config change replans and restarts the server
+            # to apply the updated aliases:
+            "IDENTITY_ALIASES": json.dumps(self._get_identity_aliases()),
             # so that MLflow's auth app can import the charm-written custom authentication module:
             "PYTHONPATH": AUTH_CONFIG_DIR,
             # disabling MLflow's GenAI job-execution subsystem (online scoring, trace archival,
@@ -1116,15 +1115,6 @@ class MlflowCharm(CharmBase):
         # the Python module defining the custom authentication logic run by the tracking server:
         custom_auth_module = Path(AUTH_MODULE_SOURCE_PATH).read_text()
         self.container.push(AUTH_MODULE_CONTAINER_PATH, custom_auth_module, make_dirs=True)
-
-        # the charm-maintained file containing identity aliases that the custom authentication
-        # logic of the tracking server reads and caches and reloads on file changes in order to
-        # update the aliasing logic without server restarts:
-        self.container.push(
-            IDENTITY_ALIASES_CONTAINER_PATH,
-            json.dumps(self._get_identity_aliases()),
-            make_dirs=True,
-        )
 
         # the file configuring the authentication logic of MLflow, which internally points to the
         # above-mentioned custom authentication module's path:
