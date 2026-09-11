@@ -87,6 +87,8 @@ HTTP_SECTION_NAME = "http-80"
 # Path matched by the mlflow HTTPRoute.
 INGRESS_ROUTE_PATH = HTTP_PATH
 
+TEST_IDENTITY_ALIAS = f"identity-that-aliases-{TEST_IDENTITY}"
+
 PodDefault = create_namespaced_resource("kubeflow.org", "v1alpha1", "PodDefault", "poddefaults")
 Profile = create_global_resource("kubeflow.org", "v1", "Profile", "profiles")
 # Gateway API generic resources, resolved at runtime via lightkube.
@@ -352,14 +354,13 @@ class TestCharm:
     # TODO: update this test's logic as multi-tenancy is developed:
     @pytest.mark.abort_on_fail
     @pytest.mark.parametrize("identity", [TEST_IDENTITY, "newly-seen-identity"])
-    async def test_mlflow_user_identity_and_grants(self, ops_test: OpsTest, identity: str):
-        """Test the MLflow user's associated identity and grants.
+    async def test_user_identity_and_grants_before_aliases(self, ops_test: OpsTest, identity: str):
+        """Test the MLflow user's associated identity and grants before configuring aliases.
 
         Assert the MLflow user is always associated to the expected identity, and that it has the
         expected tenant RBAC when the identity is the one preconfigured by the charm while it has
         no grants when the identity is a newly seen one.
         """
-
         # port-forwarding the tracking server:
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
@@ -399,6 +400,88 @@ class TestCharm:
 
         # when the identity is the test identity the charm preconfigured:
         if identity == TEST_IDENTITY:
+            # asserting the MLflow user is granted only the expected tenant (workspace):
+            for role in user_roles:
+                assert role["workspace"] == TEST_WORKSPACE
+        # when the identity is a newly seen one:
+        else:
+            # asserting the MLflow user has no grants:
+            assert user_roles == []
+
+        mlflow_subprocess.terminate()
+
+    @pytest.mark.abort_on_fail
+    async def test_configure_identity_aliases(self, ops_test: OpsTest):
+        """Test that the charm gets active after configuring valid identity aliases."""
+        await ops_test.model.applications[CHARM_NAME].set_config(
+            # configuring a single identity alias to the one the charm preconfigured:
+            {"identity_aliases": f"{TEST_IDENTITY_ALIAS}: {TEST_IDENTITY}\n"}
+        )
+
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=60 * 10,
+            idle_period=60,
+        )
+        assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+
+    # TODO: update this test's logic as multi-tenancy is developed:
+    @pytest.mark.abort_on_fail
+    @pytest.mark.parametrize(
+        "identity", [TEST_IDENTITY, TEST_IDENTITY_ALIAS, "newly-seen-identity"]
+    )
+    async def test_user_identity_and_grants_after_aliases(self, ops_test: OpsTest, identity: str):
+        """Test the MLflow user's associated identity and grants after configuring aliases.
+
+        Assert the MLflow user is always associated to the expected identity, and that it has the
+        expected tenant RBAC when the identity is either the one preconfigured by the charm or an
+        alias of its, while it has no grants when the identity is a newly seen one with no aliases.
+        """
+        # port-forwarding the tracking server:
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        mlflow_subprocess = subprocess.Popen(
+            [
+                "kubectl",
+                "-n",
+                f"{ops_test.model_name}",
+                "port-forward",
+                f"svc/{CHARM_NAME}",
+                f"{mlflow_port}:{mlflow_port}",
+            ]
+        )
+        time.sleep(10)  # Must wait for port-forward
+
+        # getting information about the current, implicitly authenticated MLflow user:
+        current_user_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/2.0/mlflow/users/current",
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: identity},
+        )
+        assert current_user_response.status_code == 200
+        current_user_username = current_user_response.json()["user"]["username"]
+
+        # asserting the current MLflow user corresponds to the expected external identity:
+        if identity == TEST_IDENTITY_ALIAS:
+            assert current_user_username == TEST_IDENTITY  # because aliasing another identity
+        else:
+            assert current_user_username == identity
+
+        # getting roles for the current MLflow user:
+        current_roles_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/3.0/mlflow/users/roles/list",
+            params={"username": current_user_username},
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
+        )
+        assert current_roles_response.status_code == 200
+        user_roles = current_roles_response.json()["roles"]
+
+        # when the identity is the test identity the charm preconfigured or an alias of its:
+        if identity in (TEST_IDENTITY, TEST_IDENTITY_ALIAS):
             # asserting the MLflow user is granted only the expected tenant (workspace):
             for role in user_roles:
                 assert role["workspace"] == TEST_WORKSPACE
