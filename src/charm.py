@@ -1055,25 +1055,36 @@ class MlflowCharm(CharmBase):
         try:
             aliases = yaml.safe_load(raw_config)
         except yaml.YAMLError as error:
+            self.logger.error(f"Config 'identity_aliases' is not valid YAML: {error}")
             raise ErrorWithStatus(
-                f"Config 'identity_aliases' is not valid YAML: {error}", BlockedStatus
+                "Config 'identity_aliases' is not valid YAML. Check the unit logs and act "
+                "accordingly.",
+                BlockedStatus,
             )
 
         if aliases is None:
             return {}  # no identity aliases configured
 
         if not isinstance(aliases, dict):
-            raise ErrorWithStatus(
+            self.logger.error(
                 "Config 'identity_aliases' must be a YAML mapping of "
-                "'<secondary-identity>: <primary-identity>' entries.",
+                "'<secondary-identity>: <primary-identity>' entries."
+            )
+            raise ErrorWithStatus(
+                "Config 'identity_aliases' is not a valid mapping. Check the unit logs and act "
+                "accordingly.",
                 BlockedStatus,
             )
 
         for identity in (*aliases, *aliases.values()):
             if not isinstance(identity, str) or not identity.strip():
-                raise ErrorWithStatus(
+                self.logger.error(
                     "Config 'identity_aliases' identities must be non-empty strings; quote any "
-                    "value that YAML would otherwise read as a number or boolean.",
+                    "value that YAML would otherwise read as a number or boolean."
+                )
+                raise ErrorWithStatus(
+                    "Config 'identity_aliases' has invalid identities. Check the unit logs and "
+                    "act accordingly.",
                     BlockedStatus,
                 )
 
@@ -1081,9 +1092,13 @@ class MlflowCharm(CharmBase):
         # and a primary value would chain, so it is rejected rather than resolved ambiguously:
         chained_identities = set(aliases) & set(aliases.values())
         if chained_identities:
-            raise ErrorWithStatus(
+            self.logger.error(
                 f"Config 'identity_aliases' uses {sorted(chained_identities)} as both an alias "
-                "and a primary identity; aliases must map directly to a primary identity.",
+                "and a primary identity; aliases must map directly to a primary identity."
+            )
+            raise ErrorWithStatus(
+                "Config 'identity_aliases' has a chained alias. Check the unit logs and act "
+                "accordingly.",
                 BlockedStatus,
             )
 
