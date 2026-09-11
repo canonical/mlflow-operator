@@ -29,11 +29,9 @@ from mlflow import MlflowException
 from mlflow.server.auth import authenticate_request_basic_auth, store
 from werkzeug.datastructures import Authorization
 
-
 # TODO: remove once multi-tenancy is completed:
 HARDCODED_TEST_IDENTITY = "charm-test-user"
 HARDCODED_TEST_WORKSPACE = "default"
-
 
 # NOTE: there environment variables correspond to charm configs and are guaranteed to always be up
 # to date because the charm reloads the tracking server on config changes:
