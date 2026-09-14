@@ -36,3 +36,21 @@ options:
       it to e.g. "mlflow-userid" for a standalone deployment.
     type: string
     default: kubeflow-userid
+  identity_aliases:
+    description: |
+      Optional flat mapping from "secondary" identities received via the trusted user-ID header
+      (an IAM identity email, a programmatic access client ID, or an in-mesh K8s namespace name
+      such as a Kubeflow Profile's) to the "primary" identity already used as an MLflow user's
+      username. Several secondary identities may alias onto the same primary identity, and thus the
+      same MLflow user, for use cases where more identities should map to one user.
+
+      By convention a user's primary identity is its own MLflow username, so most identities need
+      no entry; any unmapped identity resolves to a just-in-time MLflow user of its own. Editing
+      this map never creates or removes users, it only changes how identities resolve to them.
+
+      Expressed as YAML, for example:
+
+        svc-alice-ci: alice@example.com
+        kubeflow-profile-for-dan: dan@example.com
+    type: string
+    default: ""

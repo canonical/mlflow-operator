@@ -9,8 +9,9 @@ authenticates every request from the user-ID header that the surrounding charm e
 stack and service mesh) sets securely, and falls back to HTTP Basic auth only for the in-pod
 callers reaching the server over localhost (the charm super-admin and the metrics exporter).
 
-The header name is read from the ``IDENTITY_HEADER_NAME`` environment variable, set by the charm
-from its ``identity_header_name`` config.
+The header name is read from the ``IDENTITY_HEADER_NAME`` environment variable, and the optional
+identity-alias map from the ``IDENTITY_ALIASES`` environment variable, both set by the charm from
+its ``identity_header_name`` and ``identity_aliases`` config options, respectively.
 
 See https://mlflow.org/docs/3.15.1/self-hosting/security/custom/#using-a-function for details about
 custom authentication in MLflow.
@@ -18,6 +19,7 @@ custom authentication in MLflow.
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 
@@ -31,10 +33,11 @@ from werkzeug.datastructures import Authorization
 HARDCODED_TEST_IDENTITY = "charm-test-user"
 HARDCODED_TEST_WORKSPACE = "default"
 
-
-def _identity_header_name() -> str:
-    """Return the name of the user-ID header to read, as configured by the charm."""
-    return os.environ["IDENTITY_HEADER_NAME"]
+# NOTE: these environment variables correspond to charm configs and are guaranteed to always be up
+# to date because the charm reloads the tracking server on config changes:
+_IDENTITY_HEADER_NAME = os.environ["IDENTITY_HEADER_NAME"]
+_RAW_IDENTITY_ALIASES = os.environ["IDENTITY_ALIASES"]
+_IDENTITY_ALIASES = json.loads(_RAW_IDENTITY_ALIASES) if _RAW_IDENTITY_ALIASES else {}
 
 
 def _ensure_user_exists(username: str) -> None:
@@ -74,13 +77,17 @@ def authenticate_request() -> Authorization | Response:
     Returns a werkzeug ``Authorization`` naming the resolved MLflow user on success, or a 401
     ``Response`` when no identity header and no valid Basic credentials are present.
     """
-    identity = request.headers.get(_identity_header_name())
+    identity = request.headers.get(_IDENTITY_HEADER_NAME)
     if identity:
-        # ensuring that the MLflow user whose username matches the identity header's value either
-        # already exists or is successfully created, for downstream permission resolution to work:
-        _ensure_user_exists(identity)
+        # resolving the identity to its primary identity, which is the MLflow username: the
+        # identity is the username unless a charm-maintained alias remaps a secondary identity
+        # onto a primary one:
+        username = _IDENTITY_ALIASES.get(identity, identity)
+        # ensuring that the MLflow user for the resolved username either already exists or is
+        # successfully created, for downstream permission resolution to work:
+        _ensure_user_exists(username)
         # authenticating the request as the identified MLflow user:
-        return Authorization("basic", {"username": identity})
+        return Authorization("basic", {"username": username})
 
     # authenticating with Basic credentials validated against the auth database when the identity
     # header is not present (only in-pod localhost callers such as the charm super-admin and the
