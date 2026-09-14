@@ -105,6 +105,7 @@ EXPECTED_AUTH_ENVIRONMENT = {
     "MLFLOW_AUTH_CONFIG_PATH": "/var/lib/pebble/default/auth/basic_auth.ini",
     "MLFLOW_FLASK_SERVER_SECRET_KEY": EXPECTED_FLASK_SECRET_KEY,
     "IDENTITY_HEADER_NAME": "kubeflow-userid",
+    "IDENTITY_ALIASES": "{}",
     "PYTHONPATH": "/var/lib/pebble/default/auth",
     "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
 }
@@ -819,6 +820,107 @@ class TestCharm:
         envs = harness.charm._generate_environment()
         assert "AWS_CA_BUNDLE" not in envs
         assert envs == expected_environment
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "raw_config, expected_aliases",
+        [
+            ("", {}),
+            ("   \n  ", {}),
+            ("# only a comment", {}),
+            ("svc-alice-ci: alice@example.com", {"svc-alice-ci": "alice@example.com"}),
+            (
+                "svc-alice-ci: alice@example.com\nkubeflow-profile-for-dan: dan@example.com",
+                {
+                    "svc-alice-ci": "alice@example.com",
+                    "kubeflow-profile-for-dan": "dan@example.com",
+                },
+            ),
+            (
+                "svc-a: alice@example.com\nsvc-b: alice@example.com",
+                {"svc-a": "alice@example.com", "svc-b": "alice@example.com"},
+            ),
+        ],
+        ids=["empty", "blank", "comment-only", "single", "distinct", "many-to-one"],
+    )
+    def test_get_identity_aliases_parses_valid_config(
+        self, harness: Harness, raw_config, expected_aliases
+    ):
+        harness.update_config({"identity_aliases": raw_config})
+        harness.begin()
+        assert harness.charm._get_identity_aliases() == expected_aliases
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "raw_config",
+        [
+            "- not\n- a\n- mapping",
+            "just-a-scalar",
+            "svc-alice-ci: 123",
+            "svc-alice-ci: true",
+            "'': alice@example.com",
+            "svc-alice-ci: ''",
+            "svc-alice-ci: [a, b]",
+            "alice@example.com: bob@example.com\nsvc-ci: alice@example.com",
+            "'unterminated",
+        ],
+        ids=[
+            "list",
+            "scalar",
+            "non-string-value",
+            "boolean-value",
+            "empty-key",
+            "empty-value",
+            "list-value",
+            "chained-alias",
+            "malformed-yaml",
+        ],
+    )
+    def test_get_identity_aliases_rejects_invalid_config(
+        self, harness: Harness, caplog, raw_config
+    ):
+        harness.update_config({"identity_aliases": raw_config})
+        harness.begin()
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(ErrorWithStatus) as exc_info:
+                harness.charm._get_identity_aliases()
+        assert exc_info.value.status_type is BlockedStatus
+        # the status stays short and points at the logs, which carry the full detail:
+        assert "Check the unit logs" in exc_info.value.status.message
+        assert caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
+    @patch("charm.MlflowCharm._get_artifact_store_data")
+    def test_generate_environment_includes_identity_aliases(
+        self, mock_get_artifact_store_data, harness: Harness
+    ):
+        """The parsed alias map is carried in the layer environment as JSON for the auth module."""
+        mock_get_artifact_store_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "bucket": "",
+            "tls_ca_chain": None,
+            "region": "",
+        }
+        harness.update_config({"identity_aliases": "svc-alice-ci: alice@example.com"})
+        harness.begin()
+
+        envs = harness.charm._generate_environment()
+
+        assert json.loads(envs["IDENTITY_ALIASES"]) == {"svc-alice-ci": "alice@example.com"}
 
     @patch(
         "charm.KubernetesServicePatch",
