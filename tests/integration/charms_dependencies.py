@@ -40,3 +40,14 @@ KUBEFLOW_PROFILES = CharmSpec(
     },
     trust=True,
 )
+
+# for multi-tenancy, to configure workspace grants for users:
+DATA_INTEGRATOR = CharmSpec(
+    charm="data-integrator",
+    channel="latest/edge",
+    config={
+        "entity-name": "my-username",
+        "entity-permissions": '{"my-tenant": "admin"}',
+    },
+    trust=False,
+)

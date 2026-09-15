@@ -54,6 +54,11 @@ from charms.resource_dispatcher.v0.kubernetes_manifests import (
     KubernetesManifest,
     KubernetesManifestRequirerWrapper,
 )
+from dpcharmlibs.interfaces import (
+    RequirerCommonModel,
+    ResourceProviderEventHandler,
+    ResourceProviderModel,
+)
 from jinja2 import Template
 from lightkube import Client
 from lightkube.models.core_v1 import ServicePort
@@ -149,6 +154,24 @@ MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
 AUTH_SECRET_LABEL = "mlflow-auth-credentials"
 
 RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "relational-db"
+
+# the mlflow-client relation provisions, for a requirer (such as data-integrator), an MLflow user
+# with the per-workspace tiers (or global super-admin) it requests via `entity-permissions`:
+MLFLOW_CLIENT_RELATION_NAME = "mlflow-client"
+# access tier applied to a mlflow-client workspace grant that carries no explicit tier; kept in
+# sync with the reconcile script's own DEFAULT_TIER:
+MLFLOW_CLIENT_DEFAULT_TIER = "edit"
+# the two `resource_type` values a mlflow-client requirer may set on each `entity-permissions`
+# entry: a per-workspace access grant, or a single global super-admin grant:
+MLFLOW_CLIENT_WORKSPACE_RESOURCE_TYPE = "workspace"
+MLFLOW_CLIENT_SUPER_ADMIN_RESOURCE_TYPE = "super-admin"
+# the access tiers accepted on a workspace grant (kept in sync with the reconcile script's TIERS):
+MLFLOW_CLIENT_TIERS = frozenset({"read-only", "member", "edit", "admin"})
+
+# the RBAC reconcile script the charm runs in the workload container for the mlflow-client
+# requirers, over the whole desired set passed as a JSON argument. Kept as a standalone module
+# (rather than an inline string) so it can be edited and linted; see the module's own docstring:
+MLFLOW_CLIENT_RECONCILE_SOURCE_PATH = "src/mlflow_client_reconcile.py"
 
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
@@ -289,6 +312,17 @@ class MlflowCharm(CharmBase):
         self.framework.observe(self.on["s3-credentials"].relation_broken, self._on_event)
 
         self.s3 = S3Requirer(self, relation_name="s3-credentials")
+
+        # provider of the mlflow-client relation, provisioning MLflow users for requirers
+        # such as data-integrator; requests are reconciled by `_on_event` (via the generic
+        # relation-changed observation above) and revoked by the relation-broken handler below:
+        self.mlflow_client_provider = ResourceProviderEventHandler(
+            self, MLFLOW_CLIENT_RELATION_NAME, RequirerCommonModel
+        )
+        self.framework.observe(
+            self.on[MLFLOW_CLIENT_RELATION_NAME].relation_broken,
+            self._on_mlflow_client_relation_broken,
+        )
 
     @property
     def container(self):
@@ -1157,6 +1191,143 @@ class MlflowCharm(CharmBase):
         )
         self.container.push(AUTH_CONFIG_CONTAINER_PATH, auth_config, make_dirs=True)
 
+    def _reconcile_mlflow_client_provisioning(self, exclude_relation_id: Optional[int] = None):
+        """Provision the MLflow access requested over every mlflow-client relation.
+
+        Gathers all requests across the mlflow-client relations (optionally skipping one that is
+        being removed), reconciles - in the workload, on the leader only - each requested user with
+        its per-workspace grants or its global super-admin promotion, pruning any charm-owned role
+        no longer requested and demoting any charm-promoted super-admin no longer requested, and
+        acknowledges each requirer by echoing back its entity name.
+
+        Args:
+            exclude_relation_id: relation to skip, set when reconciling on its removal so that the
+                departing requirer's grants are pruned.
+        """
+        if not self.unit.is_leader():
+            return
+
+        users = []
+        # responses to publish once the whole desired set has been provisioned successfully:
+        responses = []
+        for relation in self.model.relations[MLFLOW_CLIENT_RELATION_NAME]:
+            if relation.id == exclude_relation_id:
+                continue
+            for request in self.mlflow_client_provider.requests(relation):
+                user = self._build_mlflow_client_user(request)
+                if user is None:
+                    continue
+                users.append(user)
+                responses.append((
+                    relation.id,
+                    ResourceProviderModel(
+                        request_id=request.request_id,
+                        # NOTE: while `entity_name` in the provider's response is not used to
+                        # provide clients with that information, as clients themselves set it for
+                        # the provider on the requirer's side in the first place and can therefore
+                        # already be informed about its value by the requirer, including it here,
+                        # in the provider's response, is nevertheless necessary for the requirer to
+                        # correlate the response with its request (using some shared secret behind
+                        # the scenes) and for the functionality of the employed library:
+                        entity_name=request.entity_name,
+                    ),
+                ))
+
+        # skipping an empty reconcile unless a removal is being processed, so that a transient
+        # empty request set does not prune grants that are still in use:
+        if users or exclude_relation_id is not None:
+            self._exec_mlflow_client_reconcile(users)
+
+        for relation_id, response in responses:
+            self.mlflow_client_provider.set_response(relation_id, response)
+
+    def _build_mlflow_client_user(self, request) -> Optional[dict]:
+        """Turn a mlflow-client request into a reconcile user entry, or None to skip it.
+
+        Parses the request's `entity-permissions` into either a set of per-workspace grants
+        (`resource_type == "workspace"`, one tier each) or a single global super-admin promotion
+        (`resource_type == "super-admin"`). Requests are skipped (and logged) when they are empty,
+        claim the charm's own super-admin username, mix super-admin with workspace grants, or carry
+        an unknown resource type or tier - so invalid input never reaches the workload.
+        """
+        username = request.entity_name
+        if not username:
+            return None
+        if username == MLFLOW_SUPER_ADMIN_USERNAME:
+            self.logger.warning(
+                "Ignoring mlflow-client request claiming the charm's reserved super-admin username."
+            )
+            return None
+
+        super_admin = False
+        grants = []
+        for permission in request.entity_permissions or []:
+            if permission.resource_type == MLFLOW_CLIENT_SUPER_ADMIN_RESOURCE_TYPE:
+                super_admin = True
+            elif permission.resource_type == MLFLOW_CLIENT_WORKSPACE_RESOURCE_TYPE:
+                tier = (
+                    permission.privileges[0]
+                    if permission.privileges
+                    else MLFLOW_CLIENT_DEFAULT_TIER
+                )
+                if tier not in MLFLOW_CLIENT_TIERS:
+                    self.logger.error(f"Ignoring mlflow-client request with unknown tier '{tier}'.")
+                    return None
+                grants.append([permission.resource_name, tier])
+            else:
+                self.logger.error(
+                    "Ignoring mlflow-client request with unknown resource type "
+                    f"'{permission.resource_type}'."
+                )
+                return None
+
+        if super_admin and grants:
+            self.logger.error(
+                "Ignoring mlflow-client request combining super-admin with workspace grants."
+            )
+            return None
+        if not super_admin and not grants:
+            return None
+        return {"username": username, "super_admin": super_admin, "grants": grants}
+
+    def _exec_mlflow_client_reconcile(self, users: list) -> None:
+        """Run the RBAC reconcile script in the workload for the given desired user set."""
+        payload = json.dumps({"users": users, "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME})
+        reconcile_script = Path(MLFLOW_CLIENT_RECONCILE_SOURCE_PATH).read_text()
+        process = self.container.exec(
+            ["python3", "-c", reconcile_script, payload],
+            service_context=self._container_name,
+        )
+        try:
+            process.wait_output()
+        except ExecError as error:
+            self.logger.error(f"Failed to reconcile mlflow-client access: {error.stderr}")
+            raise ErrorWithStatus(
+                "Failed to reconcile mlflow-client access; will retry.", WaitingStatus
+            )
+
+    def _on_mlflow_client_relation_broken(self, event) -> None:
+        """Revoke a departing mlflow-client requirer's access on relation removal.
+
+        The requested workspaces and MLflow user are retained (other requirers or externally
+        authenticated users may rely on them); only this requirer's charm-owned grants are pruned
+        (and its super-admin promotion revoked), by reconciling with the departing relation excluded.
+        """
+        if not self.unit.is_leader():
+            return
+
+        if not self.container.can_connect():
+            event.defer()
+            return
+
+        try:
+            self._reconcile_mlflow_client_provisioning(exclude_relation_id=event.relation.id)
+        except ErrorWithStatus as err:
+            self.model.unit.status = err.status
+            self.logger.info(f"Event {event} stopped early with message: {str(err)}")
+            if isinstance(err.status, WaitingStatus):
+                event.defer()
+
     def _reconcile_policy_resource_manager(self):
         if not self.unit.is_leader():
             return
@@ -1362,6 +1533,20 @@ class MlflowCharm(CharmBase):
                 self.poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
             )
             self._send_ingress_info(interfaces)
+
+            # NOTE: MLflow clients' workspace grants are reconciled here, on every holistic charm
+            # reconcile with an idempotent approach, rather than by observing the provider
+            # library's per-request events, because:
+            # - the library splits the request lifecycle across three mutually-exclusive events,
+            # `resource_entity_requested` (initial request), `resource_entity_permissions_changed`
+            # (later grant edits) and `relation_broken` (removal), and this way not only are they
+            # all handled in every case at once, but grant edits even take effect even without
+            # recreating the relation
+            # - this ensures workspace grants are re-provisioned even after events unrelated to the
+            # mlflow_client relation, such as workload restarts or backend-store re-relations,
+            # which avoids drifts in MLflow's auth state (which lives in the backend store)
+            if self.model.relations[MLFLOW_CLIENT_RELATION_NAME]:
+                self._reconcile_mlflow_client_provisioning()
 
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
