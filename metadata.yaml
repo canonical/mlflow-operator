@@ -136,6 +136,14 @@ requires:
     description: |
       Subscribe this charm into a service mesh to enforce authorization policies.
 provides:
+  mlflow-client:
+    interface: mlflow_client
+    description: |
+      Provisions, for a requirer such as data-integrator, an MLflow user the given username and the
+      given workspace grants, and returns no information, since the username is same the as
+      requested instead of being generated and MLflow users are externally authenticated by the IAM
+      stack, with the tracking server trusting its identities, meaning neither an MLflow password
+      is to be issued nor a direct MLflow endpoint is to be returned.
   metrics-endpoint:
     interface: prometheus_scrape
   grafana-dashboard:
