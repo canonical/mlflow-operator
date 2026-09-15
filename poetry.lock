@@ -526,18 +526,18 @@ files = [
 
 [[package]]
 name = "boto3"
-version = "1.43.97"
+version = "1.43.96"
 description = "The AWS SDK for Python (Boto3)"
 optional = false
 python-versions = ">=3.10"
 groups = ["charm"]
 files = [
-    {file = "boto3-1.43.97-py3-none-any.whl", hash = "sha256:420b45f566d3b49c6c1f021c50f47f66ea99ef05b1872d80b472c536542b321e"},
-    {file = "boto3-1.43.97.tar.gz", hash = "sha256:ffe9a93a6b4b2c1b59f4f5e07c18d2acfe8f68c320a1a12251d4ea8570b9bdfe"},
+    {file = "boto3-1.43.96-py3-none-any.whl", hash = "sha256:73f0386fcc412ce5ad3ae4245e2a405e69e889988dd77e91b82e3b66404f3fee"},
+    {file = "boto3-1.43.96.tar.gz", hash = "sha256:30fb2b5467ef5175ed48f43c06c435eec5da841594a5d7653c4da679df0740fc"},
 ]
 
 [package.dependencies]
-botocore = ">=1.43.97,<1.44.0"
+botocore = ">=1.43.96,<1.44.0"
 jmespath = ">=0.7.1,<2.0.0"
 s3transfer = ">=0.19.0,<0.20.0"
 
@@ -546,14 +546,14 @@ crt = ["botocore[crt] (>=1.21.0,<2.0a0)"]
 
 [[package]]
 name = "botocore"
-version = "1.43.97"
+version = "1.43.96"
 description = "Low-level, data-driven core of boto 3."
 optional = false
 python-versions = ">=3.10"
 groups = ["charm"]
 files = [
-    {file = "botocore-1.43.97-py3-none-any.whl", hash = "sha256:6b2beefd4f515aa7bfc614c945493a19315577ff31b464abbc9e33b7aff5112c"},
-    {file = "botocore-1.43.97.tar.gz", hash = "sha256:7c0e18686367e98de49826d8ac9ae951ce0915c172969a5d96b768c9afa9e979"},
+    {file = "botocore-1.43.96-py3-none-any.whl", hash = "sha256:c21153a07b97e8497f4ffa83e340a055f3f479b074e6eedf7d0562a9bc861cac"},
+    {file = "botocore-1.43.96.tar.gz", hash = "sha256:3ef7c8c40738bb42a40eb0ac3dc2d9f1698946541874ae9b505e49f289272805"},
 ]
 
 [package.dependencies]
@@ -582,7 +582,7 @@ version = "0.3.0"
 description = "Shared utilities for Charmed Service Mesh."
 optional = false
 python-versions = ">=3.10"
-groups = ["charm"]
+groups = ["charm", "integration"]
 files = [
     {file = "canonical_service_mesh-0.3.0-py3-none-any.whl", hash = "sha256:fe6cd6bdd839db0917c3fd586568311c25a36bfa692be9c7d7c02a716a4a2672"},
     {file = "canonical_service_mesh-0.3.0.tar.gz", hash = "sha256:d0f3dcd0b584f217b229f0805547b2db3843de4c2dce831a6192903612cd51ee"},
@@ -722,19 +722,19 @@ pycparser = {version = "*", markers = "implementation_name != \"PyPy\""}
 
 [[package]]
 name = "charmed-kubeflow-chisme"
-version = "0.4.29"
+version = "0.4.31"
 description = "A collection of helpers for Charms maintained by the Charmed Kubeflow team"
 optional = false
 python-versions = ">=3.9"
 groups = ["charm", "integration"]
 files = [
-    {file = "charmed_kubeflow_chisme-0.4.29-py3-none-any.whl", hash = "sha256:e498d3771e306c3cf7b849ad9254a20d5adb93a929e712fc09e88b084d462ac6"},
-    {file = "charmed_kubeflow_chisme-0.4.29.tar.gz", hash = "sha256:de2793a275a90b5515fc2b1419ca639527070fe8ffd55a0789ce62daacca435c"},
+    {file = "charmed_kubeflow_chisme-0.4.31-py3-none-any.whl", hash = "sha256:ee49319b391cf26b123bd46050683629e61ddc7457712597a35957de2b03520c"},
+    {file = "charmed_kubeflow_chisme-0.4.31.tar.gz", hash = "sha256:12edd9937a5a71c349890c459a7c49a7a4fe5a4968c5b44240cc0235b2f9058d"},
 ]
 
 [package.dependencies]
 aiohttp = ">=3.8,<4.0"
-charmed-service-mesh-helpers = ">=0.3.0"
+canonical-service-mesh = ">=0.3.0"
 deepdiff = "<=6.2.1"
 httpx = "<0.28.0"
 jinja2 = "*"
@@ -743,48 +743,13 @@ kubernetes = ">=30.1.0"
 lightkube = ">0.10.0"
 lightkube-extensions = ">=0.3.0"
 object-storage-charmlib = ">=1.0.0"
-ops = ">1.2.0"
+ops = ">=3"
 "ruamel.yaml" = "*"
 serialized-data-interface = "*"
 tenacity = "*"
 
 [package.extras]
 test = ["black", "pytest"]
-
-[[package]]
-name = "charmed-service-mesh-helpers"
-version = "0.6.0"
-description = "Helpers for the Service Mesh charms."
-optional = false
-python-versions = "~=3.8"
-groups = ["charm", "integration"]
-files = [
-    {file = "charmed_service_mesh_helpers-0.6.0-py3-none-any.whl", hash = "sha256:7160e5c1585efd2e369ccc6257c8e5964bbc52bce21a053ccba010e29b1fb12a"},
-    {file = "charmed_service_mesh_helpers-0.6.0.tar.gz", hash = "sha256:2a606679c467c68744d439641aa8fe9fc533eebfaea97fc3662e87266fd0d786"},
-]
-
-[package.dependencies]
-ops = ">=2.5,<3.0"
-pydantic = ">=2"
-
-[package.extras]
-dev = ["codespell", "coverage[toml]", "pyright", "pytest", "ruff"]
-
-[[package]]
-name = "charmlibs-interfaces-istio-ingress-route"
-version = "1.0.2"
-description = "The charmlibs.interfaces.istio_ingress_route package."
-optional = false
-python-versions = ">=3.10"
-groups = ["charm"]
-files = [
-    {file = "charmlibs_interfaces_istio_ingress_route-1.0.2-py3-none-any.whl", hash = "sha256:f8a7235403acef406053677a7a74019cd6278e94a17bba2f86cd0b3704a449e0"},
-    {file = "charmlibs_interfaces_istio_ingress_route-1.0.2.tar.gz", hash = "sha256:da46c3ad5549277d4571e01d7232c2f19fe4579af9a92f558efa226530bfc72b"},
-]
-
-[package.dependencies]
-ops = ">=2.23.1,<4"
-pydantic = ">=2,<3"
 
 [[package]]
 name = "charmlibs-interfaces-service-mesh"
@@ -1435,6 +1400,23 @@ dev = ["coverage (==7.2.7)", "pytest (==7.4.2)", "pytest-cov (==4.1.0)", "pytest
 docs = ["myst-parser (==0.18.0)", "sphinx (==5.1.1)"]
 ssh = ["paramiko (>=2.4.3)"]
 websockets = ["websocket-client (>=1.3.0)"]
+
+[[package]]
+name = "dpcharmlibs-interfaces"
+version = "1.2.0"
+description = "The dpcharmlibs.interfaces package."
+optional = false
+python-versions = ">=3.10"
+groups = ["charm"]
+files = [
+    {file = "dpcharmlibs_interfaces-1.2.0-py3-none-any.whl", hash = "sha256:468dd5bbb7a0b0f37123782f16fb58df68ca491d67ed82dfd958fb27e9384d64"},
+    {file = "dpcharmlibs_interfaces-1.2.0.tar.gz", hash = "sha256:28e1336f62d2d1239c87f468230e871369478a59c3393176ef54ad8ed045b8f5"},
+]
+
+[package.dependencies]
+cryptography = ">=48.0.0"
+ops = ">=3,<4"
+pydantic = ">=2.11,<3"
 
 [[package]]
 name = "executing"
@@ -2123,14 +2105,14 @@ parser = ["pyhcl (>=0.4.4,<0.5.0)"]
 
 [[package]]
 name = "idna"
-version = "3.20"
+version = "3.19"
 description = "Internationalized Domain Names in Applications (IDNA)"
 optional = false
 python-versions = ">=3.9"
 groups = ["charm", "integration"]
 files = [
-    {file = "idna-3.20-py3-none-any.whl", hash = "sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c"},
-    {file = "idna-3.20.tar.gz", hash = "sha256:a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44"},
+    {file = "idna-3.19-py3-none-any.whl", hash = "sha256:815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4"},
+    {file = "idna-3.19.tar.gz", hash = "sha256:5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15"},
 ]
 
 [package.extras]
@@ -3406,14 +3388,14 @@ typing-extensions = ">=4.5.0"
 
 [[package]]
 name = "ops"
-version = "2.23.5"
+version = "3.8.2"
 description = "The Python library behind great charms"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.10"
 groups = ["charm", "integration"]
 files = [
-    {file = "ops-2.23.5-py3-none-any.whl", hash = "sha256:d18ccdb56db17c4ee51c4a3dfcb930f09da0fe411ae1551559e0a7b60aa3b1d0"},
-    {file = "ops-2.23.5.tar.gz", hash = "sha256:270dc1581ed437205cbb385354e778e9ed302c5a4b89b0ef8a738a16d6516aff"},
+    {file = "ops-3.8.2-py3-none-any.whl", hash = "sha256:dcead2241d17921441123425072dd6adddf5f337dc6d6fd2b3ba1fd60a0af822"},
+    {file = "ops-3.8.2.tar.gz", hash = "sha256:a516e76a76fdfd4a37f26f2b9956c332b56bda72014c8565ceb4f6deb137407f"},
 ]
 
 [package.dependencies]
@@ -3422,8 +3404,8 @@ PyYAML = "==6.*"
 websocket-client = "==1.*"
 
 [package.extras]
-testing = ["ops-scenario (==7.23.5)"]
-tracing = ["ops-tracing (==2.23.5)"]
+testing = ["ops-scenario (==8.8.2)"]
+tracing = ["ops-tracing (==3.8.2)"]
 
 [[package]]
 name = "ordered-set"
@@ -3737,14 +3719,14 @@ xmp = ["defusedxml"]
 
 [[package]]
 name = "platformdirs"
-version = "4.11.10"
+version = "4.11.9"
 description = "A small Python package for determining appropriate platform-specific dirs, e.g. a `user data dir`."
 optional = false
 python-versions = ">=3.10"
 groups = ["fmt"]
 files = [
-    {file = "platformdirs-4.11.10-py3-none-any.whl", hash = "sha256:973c4c082b964958c71588448488d2b14fb253893dfbdb82325a14c84e540e8f"},
-    {file = "platformdirs-4.11.10.tar.gz", hash = "sha256:9cd351c078ccf7dda1fdc5f8ccb9d8f5258984c63990e6df3627dde0b70b51d0"},
+    {file = "platformdirs-4.11.9-py3-none-any.whl", hash = "sha256:0a3958f58a9e30321eaef0a424dd0b77cce242886b36b8aa992f9731ef2d59c1"},
+    {file = "platformdirs-4.11.9.tar.gz", hash = "sha256:e2c66a8d384596cd98e3c4aea2d761df7bac95d9d8a2cc3946daa8cdafdaebc1"},
 ]
 
 [[package]]
@@ -5394,14 +5376,14 @@ testing = ["coverage (>=7.6.0)", "pytest", "pytest-cov"]
 
 [[package]]
 name = "wcwidth"
-version = "0.8.4"
+version = "0.8.3"
 description = "Measures the displayed width of unicode strings in a terminal"
 optional = false
 python-versions = ">=3.8"
 groups = ["integration"]
 files = [
-    {file = "wcwidth-0.8.4-py3-none-any.whl", hash = "sha256:2097bb1d28a0ba8fe177c2eb607317f9b1627b03f33ebebfd3da670b337a65ba"},
-    {file = "wcwidth-0.8.4.tar.gz", hash = "sha256:2dae09efa25253ae2874188e86d6861af3b1652aef4118cdf3f0bda288a957fb"},
+    {file = "wcwidth-0.8.3-py3-none-any.whl", hash = "sha256:d5b73dba6158a595ec9370350e7f2637bcac8d6c5e4fde34f30fcffb6103a5e4"},
+    {file = "wcwidth-0.8.3.tar.gz", hash = "sha256:d128512515fbf4612e0ff21fd6380399210318b7b54a9af59dff8454cf9730eb"},
 ]
 
 [[package]]
@@ -5773,4 +5755,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "b16ebc60116bb43dc4e500ff576416aa3b6816c1e2ded1eaf21cf4059feb9cb0"
+content-hash = "ea8989434c7fe27d91649dff79e0e9e34c79e29802f1ada4bdc24e4a90cd74d0"
