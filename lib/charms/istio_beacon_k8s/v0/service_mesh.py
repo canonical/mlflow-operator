@@ -151,7 +151,10 @@ from typing import Dict, List, Literal, Optional, Set, Type, Union
 
 import httpx
 import pydantic
-from charmed_service_mesh_helpers.models import (
+# TODO: replace this file with the up-to-date version of this charm library that natively imports
+# from `charmed_service_mesh_helpers.models` in place of `canonical_service_mesh.models.istio`,
+# which was just a temporary, manual fix to unblock development:
+from canonical_service_mesh.models.istio import (
     AuthorizationPolicySpec,
     From,
     Operation,
