@@ -47,7 +47,10 @@ DATA_INTEGRATOR = CharmSpec(
     channel="latest/edge",
     config={
         "entity-name": "my-username",
-        "entity-permissions": '{"my-tenant": "admin"}',
+        "entity-permissions": (
+            '[{"resource_name": "my-tenant", "resource_type": "workspace", '
+            '"privileges": ["admin"]}]'
+        ),
     },
     trust=False,
 )
