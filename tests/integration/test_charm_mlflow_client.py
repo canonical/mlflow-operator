@@ -36,8 +36,9 @@ WORKSPACE_HEADER_NAME = "X-MLFLOW-WORKSPACE"
 # the (user, tenant, tier) the requirer requests over the relation (matches DATA_INTEGRATOR): the
 # single workspace->tier grant it configures via `entity-permissions`:
 TEST_USERNAME = DATA_INTEGRATOR.config["entity-name"]
-_grants = json.loads(DATA_INTEGRATOR.config["entity-permissions"])
-TEST_WORKSPACE, TEST_TIER = next(iter(_grants.items()))
+_grant = json.loads(DATA_INTEGRATOR.config["entity-permissions"])[0]
+TEST_WORKSPACE = _grant["resource_name"]
+TEST_TIER = _grant["privileges"][0]
 
 
 def _port_forward_tracking_server(model_name: str, port: str) -> subprocess.Popen:
