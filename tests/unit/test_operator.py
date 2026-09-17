@@ -2180,7 +2180,7 @@ class TestMlflowClientProvider:
         add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
 
         request = self._request("alice", [self._permission("workspace", "team-a")])
-        provider = self._provider(harness, [request])
+        _ = self._provider(harness, [request])
         exec_mock = self._stub_exec(harness)
 
         harness.charm._reconcile_mlflow_client_provisioning()
@@ -2327,7 +2327,7 @@ class TestMlflowClientProvider:
 
         harness.charm._reconcile_mlflow_client_provisioning(exclude_relation_id=99)
 
-        # a removal reconcile runs even with an empty desired set, so the departed grants are pruned:
+        # a removal reconcile runs even with an empty desired set, so departed grants are pruned:
         exec_mock.assert_called_once()
         assert self._payload(exec_mock) == {
             "users": [],

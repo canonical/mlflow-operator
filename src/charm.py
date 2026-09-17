@@ -1280,7 +1280,8 @@ class MlflowCharm(CharmBase):
 
         The requested workspaces and MLflow user are retained (other requirers or externally
         authenticated users may rely on them); only this requirer's charm-owned grants are pruned
-        (and its super-admin promotion revoked), by reconciling with the departing relation excluded.
+        (and its super-admin promotion revoked), by reconciling with the departing relation
+        excluded.
         """
         if not self.unit.is_leader():
             return
