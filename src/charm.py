@@ -12,16 +12,12 @@ from urllib.parse import urlparse
 
 import botocore.exceptions
 import yaml
+from canonical_service_mesh.k8s.resource_manager import PolicyResourceManager
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charmed_kubeflow_chisme.pebble import update_layer
 from charmed_kubeflow_chisme.service_mesh import generate_allow_all_authorization_policy
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.istio_beacon_k8s.v0.service_mesh import (
-    MeshType,
-    PolicyResourceManager,
-    ServiceMeshConsumer,
-)
 from charms.istio_ingress_k8s.v0.istio_ingress_route import (
     BackendRef,
     HTTPPathMatch,
@@ -52,6 +48,7 @@ from dpcharmlibs.interfaces import (
     ResourceProviderEventHandler,
     ResourceProviderModel,
 )
+from dpcharmlibs.interfaces.service_mesh import MeshType, ServiceMeshConsumer
 from jinja2 import Template
 from lightkube import Client
 from lightkube.models.core_v1 import ServicePort
