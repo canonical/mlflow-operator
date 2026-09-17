@@ -139,7 +139,7 @@ usernames_by_id = {user.id: user.username for user in store.list_users()}
 for role in store.list_roles([SYSTEM_WORKSPACE]):
     if not role.name.startswith(SUPER_ADMIN_ROLE_PREFIX) or role.name in wanted_super_admin_roles:
         continue
-    username = usernames_by_id.get(int(role.name[len(SUPER_ADMIN_ROLE_PREFIX) :]))  # conflicting whitespace before colon among linters, so noqa: E203,E501
+    username = usernames_by_id.get(int(role.name[len(SUPER_ADMIN_ROLE_PREFIX) :]))  # conflicting whitespace before colon among linters, so: # noqa: E203,E501
     if username and username != protected_admin:
         store.update_user(username, is_admin=False)
     store.delete_role(role.id)
