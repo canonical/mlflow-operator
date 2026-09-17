@@ -2201,7 +2201,9 @@ class TestMlflowClientProvider:
         harness.begin()
         add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
 
-        provider = self._provider(harness, [self._request("alice", [self._permission("nonsense")])])
+        provider = self._provider(
+            harness, [self._request("alice", [self._permission("nonsense")])]
+        )
         exec_mock = self._stub_exec(harness)
 
         harness.charm._reconcile_mlflow_client_provisioning()

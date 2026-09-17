@@ -1187,20 +1187,22 @@ class MlflowCharm(CharmBase):
                 if user is None:
                     continue
                 users.append(user)
-                responses.append((
-                    relation.id,
-                    ResourceProviderModel(
-                        request_id=request.request_id,
-                        # NOTE: while `entity_name` in the provider's response is not used to
-                        # provide clients with that information, as clients themselves set it for
-                        # the provider on the requirer's side in the first place and can therefore
-                        # already be informed about its value by the requirer, including it here,
-                        # in the provider's response, is nevertheless necessary for the requirer to
-                        # correlate the response with its request (using some shared secret behind
-                        # the scenes) and for the functionality of the employed library:
-                        entity_name=request.entity_name,
-                    ),
-                ))
+                responses.append(
+                    (
+                        relation.id,
+                        ResourceProviderModel(
+                            request_id=request.request_id,
+                            # NOTE: while `entity_name` in the provider's response is not used to
+                            # provide clients with that information, as clients themselves set it for
+                            # the provider on the requirer's side in the first place and can therefore
+                            # already be informed about its value by the requirer, including it here,
+                            # in the provider's response, is nevertheless necessary for the requirer to
+                            # correlate the response with its request (using some shared secret behind
+                            # the scenes) and for the functionality of the employed library:
+                            entity_name=request.entity_name,
+                        ),
+                    )
+                )
 
         # skipping an empty reconcile unless a removal is being processed, so that a transient
         # empty request set does not prune grants that are still in use:
@@ -1240,7 +1242,9 @@ class MlflowCharm(CharmBase):
                     else MLFLOW_CLIENT_DEFAULT_TIER
                 )
                 if tier not in MLFLOW_CLIENT_TIERS:
-                    self.logger.error(f"Ignoring mlflow-client request with unknown tier '{tier}'.")
+                    self.logger.error(
+                        f"Ignoring mlflow-client request with unknown tier '{tier}'."
+                    )
                     return None
                 grants.append([permission.resource_name, tier])
             else:
