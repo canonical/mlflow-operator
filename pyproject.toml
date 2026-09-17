@@ -48,7 +48,8 @@ optional = true
 [tool.poetry.group.charm.dependencies]
 charmed-kubeflow-chisme = "^0.4.31"
 canonical-service-mesh = "^0.3.0"
-dpcharmlibs-interfaces = ">=1.2.0"
+charmlibs-interfaces-service-mesh = "^1.0.2"
+dpcharmlibs-interfaces = "^1.2.0"
 lightkube-extensions = "^0.3.0"
 lightkube-models = ">=1.25.4.4"
 ops = "^3"

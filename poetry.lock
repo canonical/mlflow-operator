@@ -752,6 +752,23 @@ tenacity = "*"
 test = ["black", "pytest"]
 
 [[package]]
+name = "charmlibs-interfaces-service-mesh"
+version = "1.0.2"
+description = "The charmlibs.interfaces.service_mesh package."
+optional = false
+python-versions = ">=3.10"
+groups = ["charm"]
+files = [
+    {file = "charmlibs_interfaces_service_mesh-1.0.2-py3-none-any.whl", hash = "sha256:d4b07fadad0e229b27a101ff9eea484eb6073ef4f5efd249ba0fe434582da55f"},
+    {file = "charmlibs_interfaces_service_mesh-1.0.2.tar.gz", hash = "sha256:30eebe3456f95afaff3cc7efb3c731da065d3c4e9bfde3d135523cd684ac61ac"},
+]
+
+[package.dependencies]
+canonical-service-mesh = "<1"
+ops = ">=2.23.1,<4"
+pydantic = ">=2,<3"
+
+[[package]]
 name = "charset-normalizer"
 version = "3.5.1"
 description = "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet."
@@ -5738,4 +5755,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "12fd37ec44a3081ab3d7649d0681e8786fbc7bc9b3a31afd0f1d363562ce1f81"
+content-hash = "ea8989434c7fe27d91649dff79e0e9e34c79e29802f1ada4bdc24e4a90cd74d0"
