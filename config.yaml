@@ -54,3 +54,13 @@ options:
         kubeflow-profile-for-dan: dan@example.com
     type: string
     default: ""
+  istio_waypoint_principal:
+    description: |
+      The SPIFFE principal of the platform namespace's waypoint proxy, e.g.
+      "cluster.local/ns/<namespace>/sa/<model>-istio-beacon-k8s-waypoint". This allows in-mesh
+      clients that reach the MLflow tracking server through the waypoint.
+
+      Only relevant when the charm is related over `service-mesh`. When left empty, the charm does
+      not create an authorization policy for the tracking server.
+    type: string
+    default: ""

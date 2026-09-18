@@ -11,11 +11,12 @@ import pytest
 import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charmed_kubeflow_chisme.pebble import update_layer
-from charms.istio_ingress_k8s.v0.istio_ingress_route import (
+from charmlibs.interfaces.istio_ingress_route import (
     HTTPPathMatchType,
     IstioIngressRouteConfig,
     ProtocolType,
 )
+from charmlibs.interfaces.service_mesh import UnitPolicy
 from charms.resource_dispatcher.v0.kubernetes_manifests import KUBERNETES_MANIFESTS_FIELD
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Service
@@ -25,6 +26,7 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 from charm import (
     AUTH_CONFIG_CONTAINER_PATH,
     AUTH_MODULE_CONTAINER_PATH,
+    METRICS_RELATION_NAME,
     MLFLOW_SUPER_ADMIN_USERNAME,
     PODDEFAULTS_FILES,
     S3_CA_BUNDLE_CONTAINER_PATH,
@@ -88,6 +90,10 @@ SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 EXPECTED_SERVER_HOST = "0.0.0.0"
 EXPECTED_SERVER_METRICS_PATH = "/metrics"
 EXPECTED_SERVER_PORT = 5000
+EXPECTED_EXPORTER_PORT = 8000
+
+CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL = "istio_waypoint_principal"
+WAYPOINT_PRINCIPAL = "cluster.local/ns/kubeflow/sa/kubeflow-istio-beacon-k8s-waypoint"
 EXPECTED_S3_ENDPOINT = (
     f"{'https' if OBJECT_STORAGE_DATA_NORMALIZED['secure'] else 'http'}://"
     f"{OBJECT_STORAGE_DATA_NORMALIZED['host']}:{OBJECT_STORAGE_DATA_NORMALIZED['port']}"
@@ -1414,6 +1420,10 @@ class TestCharm:
             add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
 
         mock_policy_manager = MagicMock()
+        tracking_server_policy = MagicMock()
+        harness.charm._build_tracking_server_authorization_policy = MagicMock(
+            return_value=tracking_server_policy
+        )
 
         with patch.object(
             MlflowCharm,
@@ -1427,10 +1437,36 @@ class TestCharm:
             mock_policy_manager.reconcile.assert_called_once_with(
                 policies=[],
                 mesh_type=harness.charm._mesh.mesh_type,
-                raw_policies=[harness.charm._allow_all_policy],
+                raw_policies=[tracking_server_policy],
             )
         else:
             mock_policy_manager.reconcile.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_policy_resource_manager_no_principals(self, harness: Harness):
+        """With no policy to apply, reconciliation clears any previously created policy."""
+        harness.begin()
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+
+        mock_policy_manager = MagicMock()
+        harness.charm._build_tracking_server_authorization_policy = MagicMock(return_value=None)
+
+        with patch.object(
+            MlflowCharm,
+            "_policy_resource_manager",
+            new_callable=PropertyMock,
+            return_value=mock_policy_manager,
+        ):
+            harness.charm._reconcile_policy_resource_manager()
+
+        mock_policy_manager.reconcile.assert_called_once_with(
+            policies=[],
+            mesh_type=harness.charm._mesh.mesh_type,
+            raw_policies=[],
+        )
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1468,6 +1504,80 @@ class TestCharm:
             )
         else:
             mock_policy_manager.reconcile.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "raw_config, expected_principal",
+        [
+            ("", None),
+            ("   \n  ", None),
+            (WAYPOINT_PRINCIPAL, WAYPOINT_PRINCIPAL),
+            (f"  {WAYPOINT_PRINCIPAL}  ", WAYPOINT_PRINCIPAL),
+        ],
+        ids=["empty", "blank", "single", "surrounding-whitespace"],
+    )
+    def test_get_tracking_server_waypoint_principal(
+        self, harness: Harness, raw_config, expected_principal
+    ):
+        """The config value is trimmed to one waypoint principal."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: raw_config})
+        harness.begin()
+        assert harness.charm._get_tracking_server_waypoint_principal() == expected_principal
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_build_tracking_server_authorization_policy_none_when_no_principals(
+        self, harness: Harness
+    ):
+        """With no configured principals, no tracking server authorization policy is created."""
+        harness.begin()
+        assert harness.charm._build_tracking_server_authorization_policy() is None
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_build_tracking_server_authorization_policy_restricts_to_principals(
+        self, harness: Harness
+    ):
+        """Configured principals are the only sources allowed to reach the tracking server port."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: WAYPOINT_PRINCIPAL})
+        harness.begin()
+        policy = harness.charm._build_tracking_server_authorization_policy()
+
+        assert policy.metadata.name == f"{CHARM_NAME}-tracking-server-access"
+        assert policy.metadata.namespace == MODEL_NAME
+        assert policy.spec["action"] == "ALLOW"
+        assert policy.spec["selector"]["matchLabels"] == {"app.kubernetes.io/name": CHARM_NAME}
+
+        rules = policy.spec["rules"]
+        assert len(rules) == 1
+        assert rules[0]["from"] == [{"source": {"principals": [WAYPOINT_PRINCIPAL]}}]
+        # the only allowed destination is the tracking server port (as a string, per Istio):
+        assert rules[0]["to"] == [{"operation": {"ports": [str(EXPECTED_SERVER_PORT)]}}]
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.ServiceMeshConsumer")
+    def test_metrics_unit_policy_registered_with_service_mesh(
+        self, service_mesh_consumer: MagicMock, harness: Harness
+    ):
+        """The exporter port is exposed to the meshed metrics consumer via a UnitPolicy."""
+        harness.begin()
+        _, policies_kwarg = service_mesh_consumer.call_args
+        registered_policies = policies_kwarg["policies"]
+        assert len(registered_policies) == 1
+        metrics_policy = registered_policies[0]
+        assert isinstance(metrics_policy, UnitPolicy)
+        assert metrics_policy.relation == METRICS_RELATION_NAME
+        assert metrics_policy.ports == [EXPECTED_EXPORTER_PORT]
 
     @patch(
         "charm.KubernetesServicePatch",
