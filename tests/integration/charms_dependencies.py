@@ -45,12 +45,6 @@ KUBEFLOW_PROFILES = CharmSpec(
 DATA_INTEGRATOR = CharmSpec(
     charm="data-integrator",
     channel="latest/edge",
-    config={
-        "entity-name": "my-username",
-        "entity-permissions": (
-            '[{"resource_name": "my-tenant", "resource_type": "workspace", '
-            '"privileges": ["admin"]}]'
-        ),
-    },
+    config={},
     trust=False,
 )

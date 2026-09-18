@@ -28,7 +28,7 @@ from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, stop_after_delay, wait_fixed
 
-# TODO: remove once multi-tenancy is completed:
+# TODO: remove if authentication via IAM charms is implemented in integration tests:
 from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY  # isort:skip
 
 logger = logging.getLogger(__name__)
@@ -109,14 +109,14 @@ class _PortForward:
 def _assert_tracking_server_reachable(url: str):
     response = requests.get(
         url,
-        # TODO: remove once multi-tenancy is completed:
+        # TODO: remove if authentication via IAM charms is implemented in integration tests:
         headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
     )
     assert response.status_code == 200
 
 
 @pytest.mark.skip(reason="TODO: restore once we have something on stable for MLflow 3")
-class TestUpgrade:
+class TestMinorUpgrade:
     @pytest.mark.abort_on_fail
     async def test_deploy_old_version(self, ops_test: OpsTest):
         """Deploy the older charm version with its backend and artifact stores."""
