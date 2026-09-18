@@ -90,6 +90,11 @@ SECRETS_FILES = [
     "src/secrets/mlflow-minio-artifact.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
+SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE = "Missing istio_waypoint_principal config"
+SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE = (
+    "The service-mesh relation is present but config 'istio_waypoint_principal' is not set. "
+    "Set it to the SPIFFE principal of the platform namespace's waypoint proxy."
+)
 # path inside the workload container where the artifact store's TLS CA bundle is written to be then
 # referenced by the AWS_CA_BUNDLE environment variable, so that the tracking server can trust the
 # store's TLS certificate - NOTE: under Pebble's home directory, writable by the non-root user:
@@ -949,6 +954,18 @@ class MlflowCharm(CharmBase):
                 BlockedStatus,
             )
 
+    def _check_service_mesh_waypoint_principal_configured(self) -> None:
+        """Block when service mesh is enabled without a tracking-server waypoint principal."""
+        if (
+            self.model.get_relation(SERVICE_MESH_RELATION_NAME)
+            and not self._get_tracking_server_waypoint_principal()
+        ):
+            self.logger.error(SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE)
+            raise ErrorWithStatus(
+                SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
+                BlockedStatus,
+            )
+
     def _generate_environment(self) -> dict:
         """Return environment variables for the `mlflow server` command.
 
@@ -1305,6 +1322,8 @@ class MlflowCharm(CharmBase):
             interfaces = self._get_interfaces()
 
             self._check_no_conflicting_ingress_relations()
+
+            self._check_service_mesh_waypoint_principal_configured()
 
             self._ensure_bucket_exists()
 

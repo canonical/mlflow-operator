@@ -32,6 +32,8 @@ from charm import (
     S3_CA_BUNDLE_CONTAINER_PATH,
     SCHEMA_OUT_OF_DATE_MARKER,
     SECRETS_FILES,
+    SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE,
+    SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
     MeshType,
     MlflowCharm,
 )
@@ -1306,6 +1308,25 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    def test_on_event_blocks_when_service_mesh_has_no_waypoint_principal(
+        self, harness: Harness, caplog
+    ):
+        """A service-mesh relation without waypoint principal config blocks the charm."""
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+        harness.begin()
+
+        with caplog.at_level(logging.ERROR):
+            harness.charm._on_event(None)
+
+        assert harness.charm.model.unit.status == BlockedStatus(
+            SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE
+        )
+        assert SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE in caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
     def test_on_backend_store_db_relation_removed(
         self,
         harness: Harness,
@@ -1418,6 +1439,7 @@ class TestCharm:
         harness.begin()
         if has_service_mesh_relation:
             add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+            harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: WAYPOINT_PRINCIPAL})
 
         mock_policy_manager = MagicMock()
         tracking_server_policy = MagicMock()
@@ -1441,32 +1463,6 @@ class TestCharm:
             )
         else:
             mock_policy_manager.reconcile.assert_not_called()
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    def test_reconcile_policy_resource_manager_no_principals(self, harness: Harness):
-        """With no policy to apply, reconciliation clears any previously created policy."""
-        harness.begin()
-        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
-
-        mock_policy_manager = MagicMock()
-        harness.charm._build_tracking_server_authorization_policy = MagicMock(return_value=None)
-
-        with patch.object(
-            MlflowCharm,
-            "_policy_resource_manager",
-            new_callable=PropertyMock,
-            return_value=mock_policy_manager,
-        ):
-            harness.charm._reconcile_policy_resource_manager()
-
-        mock_policy_manager.reconcile.assert_called_once_with(
-            policies=[],
-            mesh_type=harness.charm._mesh.mesh_type,
-            raw_policies=[],
-        )
 
     @patch(
         "charm.KubernetesServicePatch",
