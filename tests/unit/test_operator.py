@@ -25,6 +25,8 @@ from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 from charm import (
     AUTH_CONFIG_CONTAINER_PATH,
     AUTH_MODULE_CONTAINER_PATH,
+    MLFLOW_CLIENT_DEFAULT_TIER,
+    MLFLOW_CLIENT_RELATION_NAME,
     MLFLOW_SUPER_ADMIN_USERNAME,
     PODDEFAULTS_FILES,
     S3_CA_BUNDLE_CONTAINER_PATH,
@@ -2060,3 +2062,331 @@ class TestCharm:
             assert len(submitted_config.listeners) == 1
             assert submitted_config.listeners[0].port == expected_port
             assert submitted_config.listeners[0].protocol == ProtocolType.HTTP
+
+
+class TestMlflowClientProvider:
+    """Tests for the mlflow-client relation provider."""
+
+    @staticmethod
+    def _permission(resource_type, resource_name="", privileges=None):
+        """Build a stand-in for one requirer `entity-permissions` entry."""
+        return MagicMock(
+            resource_type=resource_type,
+            resource_name=resource_name,
+            privileges=privileges if privileges is not None else [],
+        )
+
+    @staticmethod
+    def _request(entity_name, permissions, request_id="rid-1"):
+        """Build a stand-in mlflow-client request carrying the given entity permissions."""
+        return MagicMock(
+            entity_name=entity_name,
+            entity_permissions=permissions,
+            request_id=request_id,
+            salt="salt-1",
+        )
+
+    @staticmethod
+    def _provider(harness, requests):
+        """Attach a mock mlflow-client provider returning the given requests, and return it."""
+        provider = MagicMock()
+        provider.requests.return_value = requests
+        harness.charm.mlflow_client_provider = provider
+        return provider
+
+    @staticmethod
+    def _stub_exec(harness):
+        """Replace the workload exec with a successful mock and return it."""
+        process = MagicMock()
+        process.wait_output.return_value = ("", "")
+        exec_mock = MagicMock(return_value=process)
+        harness.charm.container.exec = exec_mock
+        return exec_mock
+
+    @staticmethod
+    def _payload(exec_mock):
+        """Return the JSON-decoded reconcile payload the workload exec was called with."""
+        return json.loads(exec_mock.call_args.args[0][3])
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_provisions_workspace_grants_and_responds(self, harness: Harness):
+        harness.begin()
+        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+
+        request = self._request(
+            "alice",
+            [
+                self._permission("workspace", "analytics-team", ["admin"]),
+                self._permission("workspace", "data-team", ["read-only"]),
+            ],
+        )
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_provisioning()
+
+        # the reconcile script runs once in the workload, with the per-user desired set as a JSON
+        # argument, in the workload service's context (inheriting the tracking server environment):
+        exec_mock.assert_called_once()
+        assert exec_mock.call_args.args[0][:2] == ["python3", "-c"]
+        assert self._payload(exec_mock) == {
+            "users": [
+                {
+                    "username": "alice",
+                    "super_admin": False,
+                    "grants": [["analytics-team", "admin"], ["data-team", "read-only"]],
+                }
+            ],
+            "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
+        }
+        assert exec_mock.call_args.kwargs["service_context"] == "mlflow-server"
+
+        # the requirer is acknowledged by echoing back its entity name (no password, as MLflow
+        # users are externally authenticated), with no other descriptive field on the response:
+        provider.set_response.assert_called_once()
+        response_relation_id, response = provider.set_response.call_args.args
+        assert response_relation_id == relation_id
+        assert response.entity_name == "alice"
+        assert response.entity_password is None
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_provisions_super_admin(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+
+        request = self._request("root", [self._permission("super-admin", "*")])
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_provisioning()
+
+        assert self._payload(exec_mock)["users"] == [
+            {"username": "root", "super_admin": True, "grants": []}
+        ]
+        provider.set_response.assert_called_once()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_defaults_tier_when_unset(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+
+        request = self._request("alice", [self._permission("workspace", "team-a")])
+        _ = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_provisioning()
+
+        assert self._payload(exec_mock)["users"] == [
+            {
+                "username": "alice",
+                "super_admin": False,
+                "grants": [["team-a", MLFLOW_CLIENT_DEFAULT_TIER]],
+            }
+        ]
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_unknown_resource_type(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+
+        provider = self._provider(
+            harness, [self._request("alice", [self._permission("nonsense")])]
+        )
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_provisioning()
+
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_unknown_tier(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+
+        request = self._request("alice", [self._permission("workspace", "team-a", ["root"])])
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_provisioning()
+
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_super_admin_mixed_with_grants(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+
+        request = self._request(
+            "alice",
+            [
+                self._permission("super-admin", "*"),
+                self._permission("workspace", "team-a", ["edit"]),
+            ],
+        )
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_provisioning()
+
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_reserved_super_admin_username(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+
+        request = self._request(
+            MLFLOW_SUPER_ADMIN_USERNAME, [self._permission("super-admin", "*")]
+        )
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_provisioning()
+
+        # a request claiming the charm's own super-admin username is refused: never reaching the
+        # workload nor being acknowledged:
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_when_not_leader(self, harness: Harness):
+        harness.set_leader(False)
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+
+        provider = MagicMock()
+        harness.charm.mlflow_client_provider = provider
+        exec_mock = MagicMock()
+        harness.charm.container.exec = exec_mock
+
+        harness.charm._reconcile_mlflow_client_provisioning()
+
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_exec_when_empty_and_no_exclusion(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+
+        provider = MagicMock()
+        provider.requests.return_value = []
+        harness.charm.mlflow_client_provider = provider
+        exec_mock = MagicMock()
+        harness.charm.container.exec = exec_mock
+
+        harness.charm._reconcile_mlflow_client_provisioning()
+
+        # an empty desired set without a removal in progress must not run the snippet, so that a
+        # transient empty request set never prunes roles that are still in use:
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_prunes_on_exclusion_even_when_empty(self, harness: Harness):
+        harness.begin()
+
+        provider = MagicMock()
+        provider.requests.return_value = []
+        harness.charm.mlflow_client_provider = provider
+        process = MagicMock()
+        process.wait_output.return_value = ("", "")
+        exec_mock = MagicMock(return_value=process)
+        harness.charm.container.exec = exec_mock
+
+        harness.charm._reconcile_mlflow_client_provisioning(exclude_relation_id=99)
+
+        # a removal reconcile runs even with an empty desired set, so departed grants are pruned:
+        exec_mock.assert_called_once()
+        assert self._payload(exec_mock) == {
+            "users": [],
+            "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
+        }
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_excludes_departing_relation(self, harness: Harness):
+        harness.begin()
+        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+
+        request = self._request("alice", [self._permission("workspace", "team-a", ["edit"])])
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_provisioning(exclude_relation_id=relation_id)
+
+        # the departing relation is skipped, so nothing is provisioned or returned for it and the
+        # script runs with an empty desired set to prune its grants:
+        assert self._payload(exec_mock)["users"] == []
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_exec_reconcile_raises_waiting_on_exec_error(self, harness: Harness, caplog):
+        harness.begin()
+        process = MagicMock()
+        process.wait_output.side_effect = ExecError(
+            command=["python3"], exit_code=1, stdout="", stderr="secret-uri-boom"
+        )
+        harness.charm.container.exec = MagicMock(return_value=process)
+
+        users = [{"username": "alice", "super_admin": False, "grants": [["team-a", "edit"]]}]
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(ErrorWithStatus) as exc_info:
+                harness.charm._exec_mlflow_client_reconcile(users)
+
+        assert exc_info.value.status_type is WaitingStatus
+        # the raw stderr (which can carry credentials) is not leaked into the user-facing status:
+        assert "secret-uri-boom" not in str(exc_info.value.status.message)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_relation_broken_reconciles_excluding_relation(self, harness: Harness):
+        harness.begin()
+        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+
+        reconcile_mock = MagicMock()
+        harness.charm._reconcile_mlflow_client_provisioning = reconcile_mock
+
+        harness.remove_relation(relation_id)
+
+        reconcile_mock.assert_called_once_with(exclude_relation_id=relation_id)
