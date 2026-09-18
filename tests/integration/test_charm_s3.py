@@ -64,7 +64,7 @@ from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import Retrying, retry, retry_if_exception_type, stop_after_delay, wait_fixed
 
-# TODO: remove once multi-tenancy is completed:
+# TODO: remove if authentication via IAM charms is implemented in integration tests:
 from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY, TEST_WORKSPACE  # isort:skip
 
 logger = logging.getLogger(__name__)
@@ -155,7 +155,7 @@ async def assert_ui_is_accessible(ops_test: OpsTest):
     """Verify that UI is accessible through the ingress gateway."""
     await assert_path_reachable_through_ingress(
         http_path=HTTP_PATH,
-        # TODO: remove once multi-tenancy is completed:
+        # TODO: remove if authentication via IAM charms is implemented in integration tests:
         headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
         namespace=ops_test.model.name,
         expected_content_type="text/html",
@@ -368,7 +368,7 @@ class TestCharm:
         client = MlflowClient(tracking_uri=url)
         response = requests.get(
             url,
-            # TODO: remove once multi-tenancy is completed:
+            # TODO: remove if authentication via IAM charms is implemented in integration tests:
             headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
         )
         assert response.status_code == 200
@@ -406,7 +406,7 @@ class TestCharm:
         # getting information about the current, implicitly authenticated MLflow user:
         current_user_response = requests.get(
             f"http://localhost:{mlflow_port}/api/2.0/mlflow/users/current",
-            # TODO: remove once multi-tenancy is completed:
+            # TODO: remove if authentication via IAM charms is implemented in integration tests:
             headers={IDENTITY_HEADER_NAME: identity},
         )
         assert current_user_response.status_code == 200
@@ -419,7 +419,7 @@ class TestCharm:
         current_roles_response = requests.get(
             f"http://localhost:{mlflow_port}/api/3.0/mlflow/users/roles/list",
             params={"username": current_user_username},
-            # TODO: remove once multi-tenancy is completed:
+            # TODO: remove if authentication via IAM charms is implemented in integration tests:
             headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
         )
         assert current_roles_response.status_code == 200
@@ -485,7 +485,7 @@ class TestCharm:
         # getting information about the current, implicitly authenticated MLflow user:
         current_user_response = requests.get(
             f"http://localhost:{mlflow_port}/api/2.0/mlflow/users/current",
-            # TODO: remove once multi-tenancy is completed:
+            # TODO: remove if authentication via IAM charms is implemented in integration tests:
             headers={IDENTITY_HEADER_NAME: identity},
         )
         assert current_user_response.status_code == 200
@@ -501,7 +501,7 @@ class TestCharm:
         current_roles_response = requests.get(
             f"http://localhost:{mlflow_port}/api/3.0/mlflow/users/roles/list",
             params={"username": current_user_username},
-            # TODO: remove once multi-tenancy is completed:
+            # TODO: remove if authentication via IAM charms is implemented in integration tests:
             headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
         )
         assert current_roles_response.status_code == 200
@@ -663,11 +663,11 @@ class TestCharm:
                 f'payload=\'{{"name":"{experiment_name}"}}\'; '
                 "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors "
                 f"-X POST '{tracking_uri}/api/2.0/mlflow/experiments/create' "
-                # TODO: remove once multi-tenancy is completed:
+                # TODO: remove if authentication via IAM charms is implemented in integration tests:
                 f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
                 "-H 'Content-Type: application/json' -d \"$payload\" >/dev/null; "
                 "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors -G "
-                # TODO: remove once multi-tenancy is completed:
+                # TODO: remove if authentication via IAM charms is implemented in integration tests:
                 f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
                 f"'{tracking_uri}/api/2.0/mlflow/experiments/get-by-name' "
                 f"--data-urlencode 'experiment_name={experiment_name}'"
