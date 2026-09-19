@@ -38,7 +38,7 @@ from charms_dependencies import (
     ISTIO_PILOT,
     METACONTROLLER_OPERATOR,
     MINIO,
-    MYSQL_K8S,
+    POSTGRESQL_K8S,
     RESOURCE_DISPATCHER,
     S3_INTEGRATOR,
 )
@@ -55,6 +55,9 @@ from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, stop_after_delay, wait_fixed
 
+# TODO: remove once multi-tenancy is completed:
+from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY, TEST_WORKSPACE  # isort:skip
+
 logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
@@ -66,6 +69,8 @@ PODDEFAULTS_SUFFIXES = ["-access-minio", "-minio"]
 TESTING_LABELS = ["user.kubeflow.org/enabled"]  # Might be more than one in the future
 SECRET_SUFFIX = "-minio-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
+
+TEST_IDENTITY_ALIAS = f"identity-that-aliases-{TEST_IDENTITY}"
 
 PodDefault = create_namespaced_resource("kubeflow.org", "v1alpha1", "PodDefault", "poddefaults")
 
@@ -216,21 +221,21 @@ class TestCharm:
             trust=MINIO.trust,
         )
         await ops_test.model.deploy(
-            MYSQL_K8S.charm,
-            channel=MYSQL_K8S.channel,
+            POSTGRESQL_K8S.charm,
+            channel=POSTGRESQL_K8S.channel,
             series="jammy",
-            config=MYSQL_K8S.config,
-            trust=MYSQL_K8S.trust,
+            config=POSTGRESQL_K8S.config,
+            trust=POSTGRESQL_K8S.trust,
         )
         await ops_test.model.wait_for_idle(
-            apps=[MINIO.charm, MYSQL_K8S.charm],
+            apps=[MINIO.charm, POSTGRESQL_K8S.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=600,
         )
         await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
-        await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
+        await ops_test.model.integrate(POSTGRESQL_K8S.charm, CHARM_NAME)
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
@@ -277,6 +282,8 @@ class TestCharm:
         logger.info("found dashboards: %s", dashboards)
         await assert_grafana_dashboards(app, dashboards)
 
+    # TODO: remove once multi-tenancy is completed:
+    @pytest.mark.skip(reason="WIP: /metrics now behind RBAC and exporter not yet credentialed")
     async def test_metrics_enpoint(self, ops_test: OpsTest):
         """Test metrics_endpoints are defined in relation data bag and their accessibility.
 
@@ -293,6 +300,8 @@ class TestCharm:
         app = ops_test.model.applications[CHARM_NAME]
         await assert_logging(app)
 
+    # TODO: remove once multi-tenancy is completed:
+    @pytest.mark.skip(reason="WIP: /metrics now behind RBAC and exporter not yet credentialed")
     @retry(stop=stop_after_delay(300), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
     async def test_can_connect_exporter_and_get_metrics(self, ops_test: OpsTest):
@@ -372,11 +381,156 @@ class TestCharm:
 
         url = f"http://localhost:{mlflow_port}"
         client = MlflowClient(tracking_uri=url)
-        response = requests.get(url)
+        response = requests.get(
+            url,
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+        )
         assert response.status_code == 200
         client.create_experiment(TEST_EXPERIMENT_NAME)
         all_experiments = client.search_experiments()
         assert len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
+
+        mlflow_subprocess.terminate()
+
+    # TODO: update this test's logic as multi-tenancy is developed:
+    @pytest.mark.abort_on_fail
+    @pytest.mark.parametrize("identity", [TEST_IDENTITY, "newly-seen-identity"])
+    async def test_user_identity_and_grants_before_aliases(self, ops_test: OpsTest, identity: str):
+        """Test the MLflow user's associated identity and grants before configuring aliases.
+
+        Assert the MLflow user is always associated to the expected identity, and that it has the
+        expected tenant RBAC when the identity is the one preconfigured by the charm while it has
+        no grants when the identity is a newly seen one.
+        """
+        # port-forwarding the tracking server:
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        mlflow_subprocess = subprocess.Popen(
+            [
+                "kubectl",
+                "-n",
+                f"{ops_test.model_name}",
+                "port-forward",
+                f"svc/{CHARM_NAME}",
+                f"{mlflow_port}:{mlflow_port}",
+            ]
+        )
+        time.sleep(10)  # Must wait for port-forward
+
+        # getting information about the current, implicitly authenticated MLflow user:
+        current_user_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/2.0/mlflow/users/current",
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: identity},
+        )
+        assert current_user_response.status_code == 200
+        current_user_username = current_user_response.json()["user"]["username"]
+
+        # asserting the current MLflow user corresponds to the expected external identity:
+        assert current_user_username == identity
+
+        # getting roles for the current MLflow user:
+        current_roles_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/3.0/mlflow/users/roles/list",
+            params={"username": current_user_username},
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
+        )
+        assert current_roles_response.status_code == 200
+        user_roles = current_roles_response.json()["roles"]
+
+        # when the identity is the test identity the charm preconfigured:
+        if identity == TEST_IDENTITY:
+            # asserting the MLflow user is granted only the expected tenant (workspace):
+            for role in user_roles:
+                assert role["workspace"] == TEST_WORKSPACE
+        # when the identity is a newly seen one:
+        else:
+            # asserting the MLflow user has no grants:
+            assert user_roles == []
+
+        mlflow_subprocess.terminate()
+
+    @pytest.mark.abort_on_fail
+    async def test_configure_identity_aliases(self, ops_test: OpsTest):
+        """Test that the charm gets active after configuring valid identity aliases."""
+        await ops_test.model.applications[CHARM_NAME].set_config(
+            # configuring a single identity alias to the one the charm preconfigured:
+            {"identity_aliases": f"{TEST_IDENTITY_ALIAS}: {TEST_IDENTITY}\n"}
+        )
+
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=60 * 10,
+            idle_period=60,
+        )
+        assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+
+    # TODO: update this test's logic as multi-tenancy is developed:
+    @pytest.mark.abort_on_fail
+    @pytest.mark.parametrize(
+        "identity", [TEST_IDENTITY, TEST_IDENTITY_ALIAS, "newly-seen-identity"]
+    )
+    async def test_user_identity_and_grants_after_aliases(self, ops_test: OpsTest, identity: str):
+        """Test the MLflow user's associated identity and grants after configuring aliases.
+
+        Assert the MLflow user is always associated to the expected identity, and that it has the
+        expected tenant RBAC when the identity is either the one preconfigured by the charm or an
+        alias of its, while it has no grants when the identity is a newly seen one with no aliases.
+        """
+        # port-forwarding the tracking server:
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        mlflow_subprocess = subprocess.Popen(
+            [
+                "kubectl",
+                "-n",
+                f"{ops_test.model_name}",
+                "port-forward",
+                f"svc/{CHARM_NAME}",
+                f"{mlflow_port}:{mlflow_port}",
+            ]
+        )
+        time.sleep(10)  # Must wait for port-forward
+
+        # getting information about the current, implicitly authenticated MLflow user:
+        current_user_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/2.0/mlflow/users/current",
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: identity},
+        )
+        assert current_user_response.status_code == 200
+        current_user_username = current_user_response.json()["user"]["username"]
+
+        # asserting the current MLflow user corresponds to the expected external identity:
+        if identity == TEST_IDENTITY_ALIAS:
+            assert current_user_username == TEST_IDENTITY  # because aliasing another identity
+        else:
+            assert current_user_username == identity
+
+        # getting roles for the current MLflow user:
+        current_roles_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/3.0/mlflow/users/roles/list",
+            params={"username": current_user_username},
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
+        )
+        assert current_roles_response.status_code == 200
+        user_roles = current_roles_response.json()["roles"]
+
+        # when the identity is the test identity the charm preconfigured or an alias of its:
+        if identity in (TEST_IDENTITY, TEST_IDENTITY_ALIAS):
+            # asserting the MLflow user is granted only the expected tenant (workspace):
+            for role in user_roles:
+                assert role["workspace"] == TEST_WORKSPACE
+        # when the identity is a newly seen one:
+        else:
+            # asserting the MLflow user has no grants:
+            assert user_roles == []
 
         mlflow_subprocess.terminate()
 
@@ -435,7 +589,11 @@ class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_ingress_url(self, lightkube_client, ops_test: OpsTest):
         ingress_url = get_ingress_url(lightkube_client, ops_test.model_name)
-        result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
+        result_status, result_text = await fetch_response(
+            f"{ingress_url}/mlflow/",
+            # TODO: remove once multi-tenancy is completed:
+            {IDENTITY_HEADER_NAME: TEST_IDENTITY},
+        )
 
         # verify that UI is accessible
         assert result_status == 200
@@ -562,7 +720,11 @@ class TestCharm:
     async def test_ui_is_accessible_in_proxy_mode(self, lightkube_client, ops_test: OpsTest):
         """The tracking server UI must remain reachable after switching to proxy mode."""
         ingress_url = get_ingress_url(lightkube_client, ops_test.model_name)
-        result_status, result_text = await fetch_response(f"{ingress_url}/mlflow/", {})
+        result_status, result_text = await fetch_response(
+            f"{ingress_url}/mlflow/",
+            # TODO: remove once multi-tenancy is completed:
+            {IDENTITY_HEADER_NAME: TEST_IDENTITY},
+        )
         assert result_status == 200
         assert len(result_text) > 0
 

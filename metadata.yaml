@@ -27,7 +27,7 @@ resources:
     upstream-source: docker.io/charmedkubeflow/mlflow-prometheus-exporter:3.15.1-340fe92-20260826095012
 requires:
   relational-db:
-    interface: mysql_client
+    interface: postgresql_client
   s3-credentials:
     interface: s3
     optional: true
