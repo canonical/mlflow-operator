@@ -374,7 +374,9 @@ class TestCharm:
         assert response.status_code == 200
         client.create_experiment(TEST_EXPERIMENT_NAME)
         all_experiments = client.search_experiments()
-        assert len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
+        assert (
+            len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
+        )
 
         mlflow_subprocess.terminate()
 

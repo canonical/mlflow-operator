@@ -477,10 +477,11 @@ class TestCharm:
             (WORKSPACE_WITH_ADMIN_ACCESS, True, 200),
             (WORKSPACE_WITH_READ_ONLY_ACCESS, False, 200),
             (WORKSPACE_WITH_READ_ONLY_ACCESS, True, 403),
-        ]
+        ],
     )
     async def test_configured_workspace_grants_take_effect(
-        self, ops_test: OpsTest,
+        self,
+        ops_test: OpsTest,
         selected_workspace: str,
         is_write_operation: bool,
         expected_response_status_code: int,
@@ -600,6 +601,7 @@ class TestCharm:
 
         # while port-forwarding the tracking server for ease of access:
         with _PortForward(ops_test.model_name, tracking_server_port) as tracking_server_url:
+
             @retry(stop=stop_after_delay(60), wait=wait_fixed(5), reraise=True)
             def _assert_workspace_grants_revoked():
                 roles = requests.get(
@@ -611,7 +613,8 @@ class TestCharm:
                 roles = roles.json()["roles"]
                 for role in roles:
                     assert role["workspace"] not in (
-                        WORKSPACE_WITH_ADMIN_ACCESS, WORKSPACE_WITH_READ_ONLY_ACCESS
+                        WORKSPACE_WITH_ADMIN_ACCESS,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS,
                     )
 
             _assert_workspace_grants_revoked()
@@ -680,7 +683,8 @@ class TestCharm:
                 # asserting the MLflow user is granted only the expected tenants (workspaces):
                 for role in user_roles:
                     assert role["workspace"] in (
-                        WORKSPACE_WITH_ADMIN_ACCESS, WORKSPACE_WITH_READ_ONLY_ACCESS
+                        WORKSPACE_WITH_ADMIN_ACCESS,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS,
                     )
             # when the identity is a newly seen one:
             else:
@@ -752,7 +756,8 @@ class TestCharm:
                 # asserting the MLflow user is granted only the expected tenants (workspaces):
                 for role in user_roles:
                     assert role["workspace"] in (
-                        WORKSPACE_WITH_ADMIN_ACCESS, WORKSPACE_WITH_READ_ONLY_ACCESS
+                        WORKSPACE_WITH_ADMIN_ACCESS,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS,
                     )
             # when the identity is a newly seen one:
             else:
