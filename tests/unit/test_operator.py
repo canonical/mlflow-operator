@@ -1461,6 +1461,11 @@ class TestCharm:
                 mesh_type=harness.charm._mesh.mesh_type,
                 raw_policies=[tracking_server_policy],
             )
+            registered_policies = harness.charm._mesh._policies
+            assert len(registered_policies) == 1
+            assert isinstance(registered_policies[0], UnitPolicy)
+            assert registered_policies[0].relation == METRICS_RELATION_NAME
+            assert registered_policies[0].ports == [EXPECTED_EXPORTER_PORT]
         else:
             mock_policy_manager.reconcile.assert_not_called()
 
