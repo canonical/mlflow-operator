@@ -1312,7 +1312,7 @@ class MlflowCharm(CharmBase):
         return {
             "username": username,
             "is_super_admin": is_super_admin,
-            "workspace_grants": workspace_grants
+            "workspace_grants": workspace_grants,
         }
 
     def _exec_mlflow_client_reconcile(self, users_grants_across_workspaces: list) -> None:
