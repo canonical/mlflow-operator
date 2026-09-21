@@ -435,7 +435,7 @@ class TestCharm:
             }
         )
 
-@pytest.mark.abort_on_fail
+    @pytest.mark.abort_on_fail
     async def test_configured_workspace_grants_are_defined(self, ops_test: OpsTest):
         """The configured workspace grants are defined for the test user."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
