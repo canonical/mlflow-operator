@@ -60,7 +60,9 @@ options:
       "cluster.local/ns/<namespace>/sa/<model>-istio-beacon-k8s-waypoint". This allows in-mesh
       clients that reach the MLflow tracking server through the waypoint.
 
-      Only relevant when the charm is related over `service-mesh`. When left empty, the charm does
-      not create an authorization policy for the tracking server.
+      Only relevant when the charm is related over `service-mesh`. When left empty without a
+      `service-mesh` relation, the charm does not create an authorization policy for the tracking
+      server. When `service-mesh` is related, this option must be set; otherwise the charm is
+      blocked until the waypoint principal is configured.
     type: string
     default: ""
