@@ -380,7 +380,7 @@ class TestCharm:
         # while port-forwarding MinIO for ease of access:
         with _PortForward(ops_test.model_name, port, charm_name=MINIO.charm) as minio_url:
             minio_client = Minio(
-                f"{minio_url}",
+                minio_url.split("http://")[1],  # excluding the URL schema
                 access_key=access_key,
                 secret_key=secret_key,
                 region="us-east-1",  # Must be set otherwise it is not working
