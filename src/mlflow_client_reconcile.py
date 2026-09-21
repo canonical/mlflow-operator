@@ -1,7 +1,7 @@
 # Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""RBAC reconcile script run inside the MLflow workload for the mlflow-client requirers.
+"""RBAC reconcile script run inside the MLflow workload for mlflow-client requirers.
 
 Executed by the charm over the whole desired set of users, passed as a single JSON argument: a
 mapping with a ``users`` list (each ``{username, super_admin, grants}``, where ``grants`` is a list
@@ -12,7 +12,7 @@ the requested tier in each. It then prunes any charm-owned role no longer reques
 charm-promoted super-admin no longer requested.
 
 NOTE:
-- it is idempotent (every mutation tolerates an "already exists" outcome);
+- it is idempotent (it is tolerated that users, workspaces and/or grants may already exist)
 - it drives the auth and workspace stores directly (no running server needed), via the same
   environment the tracking server uses, inherited by running it in the workload service context;
 - it owns only roles under dedicated prefixes, never MLflow's reserved `__user_<id>__` synthetic
