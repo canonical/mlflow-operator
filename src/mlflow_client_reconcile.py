@@ -1,15 +1,16 @@
 # Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""RBAC reconcile script run inside the MLflow workload for mlflow-client requirers.
+"""RBAC reconcile script run by the charm inside the tracking server for mlflow-client requirers.
 
-Executed by the charm over the whole desired set of users, passed as a single JSON argument: a
-mapping with a ``users`` list (each ``{username, super_admin, grants}``, where ``grants`` is a list
-of ``[workspace, tier]`` pairs) and the ``protected_admin`` username to never demote. For each user
-it get-or-creates the user and either promotes it to a global super-admin (the MLflow ``is_admin``
-flag) or get-or-creates the requested workspaces and one charm-owned, workspace-scoped role granting
-the requested tier in each. It then prunes any charm-owned role no longer requested and demotes any
-charm-promoted super-admin no longer requested.
+Executed over the whole desired set of user grants across workspaces, passed as a JSON argument: a
+mapping with a ``users`` list (each ``{username, is_super_admin, workspace_grants}``, where
+``workspace_grants`` is a list of ``[workspace, tier]`` pairs) and the ``protected_admin`` username
+to never demote. For each user it get-or-creates the user and either promotes it to a global
+super-admin (the MLflow ``is_admin`` flag) or get-or-creates the requested workspaces and one
+charm-owned, workspace-scoped role granting the requested tier in each. It then prunes any
+charm-owned role no longer requested and demotes any charm-promoted super-admin no longer
+requested.
 
 NOTE:
 - it is idempotent (it is tolerated that users, workspaces and/or grants may already exist)
@@ -105,7 +106,7 @@ wanted_roles = {}
 wanted_super_admin_roles = set()
 for entry in payload["users"]:
     user = _get_or_create_user(entry["username"])
-    if entry["super_admin"]:
+    if entry["is_super_admin"]:
         store.update_user(entry["username"], is_admin=True)
         _tolerate_already_exists(
             workspace_store.create_workspace, Workspace(name=SYSTEM_WORKSPACE, description=None)
@@ -115,7 +116,7 @@ for entry in payload["users"]:
         wanted_super_admin_roles.add(marker_name)
         continue
     role_name = ROLE_PREFIX + str(user.id)
-    for workspace, tier in entry["grants"]:
+    for workspace, tier in entry["workspace_grants"]:
         _tolerate_already_exists(
             workspace_store.create_workspace, Workspace(name=workspace, description=None)
         )
