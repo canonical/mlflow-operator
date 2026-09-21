@@ -43,7 +43,7 @@ SYSTEM_WORKSPACE = "charm-mlflow-system"
 DEFAULT_TIER = "edit"
 # every concrete (non-workspace) MLflow resource type, so type-wide tiers cover them all, from:
 # https://github.com/mlflow/mlflow/blob/v3.15.1/mlflow/server/auth/permissions.py#L111-L121
-# NOTE: keep this list up to date with the linked upstream source, when upgrading MLflow versions:
+# NOTE: keep this list up to date with the linked upstream source, when upgrading MLflow:
 RESOURCE_TYPES = (
     "experiment",
     "registered_model",
@@ -54,7 +54,7 @@ RESOURCE_TYPES = (
     "gateway_model_definition",
     "mcp_server",
 )
-TIERS = {
+TIERS_TO_NATIVE_GRANTS = {
     "admin": [("workspace", "*", "MANAGE")],
     "edit": [("workspace", "*", "USE")] + [(t, "*", "EDIT") for t in RESOURCE_TYPES],
     "member": [("workspace", "*", "USE")],
@@ -121,7 +121,8 @@ for entry in payload["users"]:
             workspace_store.create_workspace, Workspace(name=workspace, description=None)
         )
         role = _get_or_create_role(role_name, workspace)
-        for resource_type, resource_pattern, permission in TIERS.get(tier, TIERS[DEFAULT_TIER]):
+        native_grants_for_the_tier = TIERS_TO_NATIVE_GRANTS.get(tier, TIERS_TO_NATIVE_GRANTS[DEFAULT_TIER])
+        for resource_type, resource_pattern, permission in native_grants_for_the_tier:
             _tolerate_already_exists(
                 store.add_role_permission, role.id, resource_type, resource_pattern, permission
             )
