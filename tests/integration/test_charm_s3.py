@@ -117,7 +117,8 @@ GATEWAY_RESOURCE = create_namespaced_resource(
 class _PortForward:
     """Context manager wrapping a `kubectl port-forward` to the tracking server's K8s Service."""
 
-    def __init__(self, namespace: str, port: int):
+    def __init__(self, namespace: str, port: int, charm_name: str = CHARM_NAME):
+        self._charm_name = charm_name
         self._namespace = namespace
         self._port = port
         self._process = None
@@ -129,7 +130,7 @@ class _PortForward:
                 "-n",
                 self._namespace,
                 "port-forward",
-                f"svc/{CHARM_NAME}",
+                f"svc/{self._charm_name}",
                 f"{self._port}:{self._port}",
             ]
         )
@@ -374,18 +375,15 @@ class TestCharm:
 
     @pytest.mark.abort_on_fail
     async def test_relate_data_integrator(self, ops_test: OpsTest):
-        """Deploy the requirer with a (user, tenant, tier) request and relate it to MLflow."""
-        data_integrator_charm = DATA_INTEGRATOR.charm
-        deploy_kwargs = {
-            "application_name": DATA_INTEGRATOR.charm,
-            "config": DATA_INTEGRATOR.config,
-        }
-        if data_integrator_charm == DATA_INTEGRATOR.charm:
-            deploy_kwargs["channel"] = DATA_INTEGRATOR.channel
-
-        await ops_test.model.deploy(data_integrator_charm, **deploy_kwargs)
+        """Deploy a data-integrator instance, for user grants in subsequent tests."""
+        await ops_test.model.deploy(
+            DATA_INTEGRATOR.charm,
+            channel=DATA_INTEGRATOR.channel,
+            config=DATA_INTEGRATOR.config,
+            trust=DATA_INTEGRATOR.trust,
+        )
         await ops_test.model.wait_for_idle(
-            apps=[CHARM_NAME, DATA_INTEGRATOR.charm], status="blocked", timeout=600, idle_period=60
+            apps=[DATA_INTEGRATOR.charm], status="blocked", timeout=600, idle_period=60
         )
 
     @pytest.mark.abort_on_fail
