@@ -639,7 +639,9 @@ class TestCharm:
             client = MlflowClient(tracking_uri=tracking_server_url)
             client.create_experiment(TEST_EXPERIMENT_NAME)
             all_experiments = client.search_experiments()
-            assert len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
+            assert (
+                len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
+            )
 
     @pytest.mark.abort_on_fail
     @pytest.mark.parametrize("identity", [TEST_IDENTITY, "newly-seen-identity"])
