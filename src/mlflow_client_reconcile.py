@@ -40,10 +40,8 @@ from mlflow.server.auth import store
 from mlflow.server.auth.config import read_auth_config
 from mlflow.server.workspace_helpers import _get_workspace_store
 
-# prefix of the workspace-scoped roles the charm owns for per-workspace client grants:
-ROLE_PREFIX = "charm-mlflow-client-"
-# prefix of the marker roles the charm owns to record which users it promoted to super-admin:
-SUPER_ADMIN_ROLE_PREFIX = "charm-mlflow-super-admin-"
+ROLE_PREFIX_FOR_SUPER_ADMIN = "charm-mlflow-super-admin-"
+ROLE_PREFIX_FOR_WORKSPACE_WIDE = "charm-mlflow-client-"
 # reserved workspace hosting the super-admin marker roles (a marker role needs a workspace to live
 # in, while a super-admin is otherwise not tied to any workspace):
 SYSTEM_WORKSPACE = "charm-mlflow-system"
@@ -118,11 +116,11 @@ for entry in payload["users"]:
         _tolerate_already_exists(
             workspace_store.create_workspace, Workspace(name=SYSTEM_WORKSPACE, description=None)
         )
-        marker_name = SUPER_ADMIN_ROLE_PREFIX + str(user.id)
+        marker_name = ROLE_PREFIX_FOR_SUPER_ADMIN + str(user.id)
         _get_or_create_role(marker_name, SYSTEM_WORKSPACE)
         wanted_super_admin_roles.add(marker_name)
         continue
-    role_name = ROLE_PREFIX + str(user.id)
+    role_name = ROLE_PREFIX_FOR_WORKSPACE_WIDE + str(user.id)
     for workspace, tier in entry["workspace_grants"]:
         _tolerate_already_exists(
             workspace_store.create_workspace, Workspace(name=workspace, description=None)
@@ -138,7 +136,7 @@ for entry in payload["users"]:
 
 # prune the charm-owned per-workspace roles that are no longer requested:
 for role in store.list_roles():
-    if role.name.startswith(ROLE_PREFIX) and role.name not in wanted_roles.get(
+    if role.name.startswith(ROLE_PREFIX_FOR_WORKSPACE_WIDE) and role.name not in wanted_roles.get(
         role.workspace, set()
     ):
         store.delete_role(role.id)
@@ -146,9 +144,13 @@ for role in store.list_roles():
 # prune the super-admin markers no longer requested, demoting their users (never the charm's own):
 usernames_by_id = {user.id: user.username for user in store.list_users()}
 for role in store.list_roles([SYSTEM_WORKSPACE]):
-    if not role.name.startswith(SUPER_ADMIN_ROLE_PREFIX) or role.name in wanted_super_admin_roles:
+    if (
+        not role.name.startswith(ROLE_PREFIX_FOR_SUPER_ADMIN)
+        or role.name in wanted_super_admin_roles
+    ):
         continue
-    username = usernames_by_id.get(int(role.name[len(SUPER_ADMIN_ROLE_PREFIX) :]))  # noqa: E203
+    user_id = int(role.name[len(ROLE_PREFIX_FOR_SUPER_ADMIN) :])  # noqa: E203
+    username = usernames_by_id.get(user_id)
     if username and username != protected_admin:
         store.update_user(username, is_admin=False)
     store.delete_role(role.id)
