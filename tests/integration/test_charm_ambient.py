@@ -393,12 +393,25 @@ class TestCharm:
     @pytest.mark.abort_on_fail
     async def test_relate_data_integrator(self, ops_test: OpsTest):
         """Deploy a data-integrator instance, for user grants in subsequent tests."""
-        await ops_test.model.deploy(
+        # TODO: remove this command and restore the command below once
+        # https://github.com/canonical/data-integrator/pull/328 lands on main, that is on channel
+        # "latest/edge", and mind that an explicit Juju-CLI deploy is temporarily required because
+        # python-libjuju's `Model.deploy()` breaks with this temporary channel format:
+        ops_test.juju(
+            "deploy",
             DATA_INTEGRATOR.charm,
-            channel=DATA_INTEGRATOR.channel,
-            config=DATA_INTEGRATOR.config,
-            trust=DATA_INTEGRATOR.trust,
+            "--trust",
+            "--channel",
+            "latest/edge/mlflow-client",
+            "--revision",
+            "521",
         )
+        # await ops_test.model.deploy(
+        #     DATA_INTEGRATOR.charm,
+        #     channel=DATA_INTEGRATOR.channel,
+        #     config=DATA_INTEGRATOR.config,
+        #     trust=DATA_INTEGRATOR.trust,
+        # )
         await ops_test.model.wait_for_idle(
             apps=[DATA_INTEGRATOR.charm], status="blocked", timeout=600, idle_period=60
         )
