@@ -2225,7 +2225,7 @@ class TestMlflowClientProvider:
     )
     def test_reconcile_provisions_workspace_grants_and_responds(self, harness: Harness):
         harness.begin()
-        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         request = self._request(
             "alice",
@@ -2269,7 +2269,7 @@ class TestMlflowClientProvider:
     )
     def test_reconcile_provisions_super_admin(self, harness: Harness):
         harness.begin()
-        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         request = self._request("root", [self._permission("super-admin", "*")])
         provider = self._provider(harness, [request])
@@ -2288,7 +2288,7 @@ class TestMlflowClientProvider:
     )
     def test_reconcile_defaults_tier_when_unset(self, harness: Harness):
         harness.begin()
-        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         request = self._request("alice", [self._permission("workspace", "team-a")])
         _ = self._provider(harness, [request])
@@ -2310,7 +2310,7 @@ class TestMlflowClientProvider:
     )
     def test_reconcile_skips_unknown_resource_type(self, harness: Harness):
         harness.begin()
-        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         provider = self._provider(
             harness, [self._request("alice", [self._permission("nonsense")])]
@@ -2328,7 +2328,7 @@ class TestMlflowClientProvider:
     )
     def test_reconcile_skips_unknown_tier(self, harness: Harness):
         harness.begin()
-        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         request = self._request("alice", [self._permission("workspace", "team-a", ["root"])])
         provider = self._provider(harness, [request])
@@ -2345,7 +2345,7 @@ class TestMlflowClientProvider:
     )
     def test_reconcile_skips_super_admin_mixed_with_grants(self, harness: Harness):
         harness.begin()
-        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         request = self._request(
             "alice",
@@ -2368,7 +2368,7 @@ class TestMlflowClientProvider:
     )
     def test_reconcile_skips_reserved_super_admin_username(self, harness: Harness):
         harness.begin()
-        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         request = self._request(
             MLFLOW_SUPER_ADMIN_USERNAME, [self._permission("super-admin", "*")]
@@ -2390,7 +2390,7 @@ class TestMlflowClientProvider:
     def test_reconcile_skips_when_not_leader(self, harness: Harness):
         harness.set_leader(False)
         harness.begin()
-        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         provider = MagicMock()
         harness.charm.mlflow_client_provider = provider
@@ -2408,7 +2408,7 @@ class TestMlflowClientProvider:
     )
     def test_reconcile_skips_exec_when_empty_and_no_exclusion(self, harness: Harness):
         harness.begin()
-        add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         provider = MagicMock()
         provider.requests.return_value = []
@@ -2453,7 +2453,7 @@ class TestMlflowClientProvider:
     )
     def test_reconcile_excludes_departing_relation(self, harness: Harness):
         harness.begin()
-        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         request = self._request("alice", [self._permission("workspace", "team-a", ["edit"])])
         provider = self._provider(harness, [request])
@@ -2493,7 +2493,7 @@ class TestMlflowClientProvider:
     )
     def test_relation_broken_reconciles_excluding_relation(self, harness: Harness):
         harness.begin()
-        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_NAME)
+        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         reconcile_mock = MagicMock()
         harness.charm._reconcile_mlflow_client_provisioning = reconcile_mock
