@@ -47,7 +47,8 @@ optional = true
 
 [tool.poetry.group.charm.dependencies]
 charmed-kubeflow-chisme = "^0.4.28"
-charmed-service-mesh-helpers = "^0.4.0"
+canonical-service-mesh = "^0.3.0"
+charmlibs-interfaces-service-mesh = "^1.0.2"
 lightkube-extensions = "^0.3.0"
 lightkube-models = ">=1.25.4.4"
 ops = "^2.17.1"
@@ -59,6 +60,7 @@ object-storage-charmlib = "^1.0.0"
 pyyaml = "^6.0.1"
 serialized-data-interface = "^0.7.0"
 tenacity = "^9.0.0"
+charmlibs-interfaces-istio-ingress-route = "^1.0.2"
 
 [tool.poetry.group.fmt]
 optional = true

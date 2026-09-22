@@ -12,17 +12,21 @@ from urllib.parse import urlparse
 
 import botocore.exceptions
 import yaml
+from canonical_service_mesh.enums import Action
+from canonical_service_mesh.k8s.resource_manager import PolicyResourceManager
+from canonical_service_mesh.k8s.types.istio import AuthorizationPolicy
+from canonical_service_mesh.models.istio import (
+    AuthorizationPolicySpec,
+    From,
+    Operation,
+    Rule,
+    Source,
+    To,
+    WorkloadSelector,
+)
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charmed_kubeflow_chisme.pebble import update_layer
-from charmed_kubeflow_chisme.service_mesh import generate_allow_all_authorization_policy
-from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
-from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.istio_beacon_k8s.v0.service_mesh import (
-    MeshType,
-    PolicyResourceManager,
-    ServiceMeshConsumer,
-)
-from charms.istio_ingress_k8s.v0.istio_ingress_route import (
+from charmlibs.interfaces.istio_ingress_route import (
     BackendRef,
     HTTPPathMatch,
     HTTPRoute,
@@ -36,6 +40,9 @@ from charms.istio_ingress_k8s.v0.istio_ingress_route import (
     URLRewriteFilter,
     URLRewriteSpec,
 )
+from charmlibs.interfaces.service_mesh import MeshType, ServiceMeshConsumer, UnitPolicy
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
     DashboardLink,
     KubeflowDashboardLinksRequirer,
@@ -50,6 +57,7 @@ from charms.resource_dispatcher.v0.kubernetes_manifests import (
 from jinja2 import Template
 from lightkube import Client
 from lightkube.models.core_v1 import ServicePort
+from lightkube.models.meta_v1 import ObjectMeta
 from object_storage import S3Requirer
 from ops import ActionEvent, SecretNotFoundError, main
 from ops.charm import CharmBase
@@ -82,6 +90,11 @@ SECRETS_FILES = [
     "src/secrets/mlflow-minio-artifact.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
+SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE = "Missing istio_waypoint_principal config"
+SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE = (
+    "The service-mesh relation is present but config 'istio_waypoint_principal' is not set. "
+    "Set it to the SPIFFE principal of the platform namespace's waypoint proxy."
+)
 # path inside the workload container where the artifact store's TLS CA bundle is written to be then
 # referenced by the AWS_CA_BUNDLE environment variable, so that the tracking server can trust the
 # store's TLS certificate - NOTE: under Pebble's home directory, writable by the non-root user:
@@ -249,12 +262,17 @@ class MlflowCharm(CharmBase):
 
         # for an ambient-mode service mesh:
 
-        self._mesh = ServiceMeshConsumer(self)
-
-        # Allow all policy needed to allow requests from all user namespaces
-        self._allow_all_policy = generate_allow_all_authorization_policy(
-            app_name=self.app.name,
-            namespace=self.model.name,
+        self._mesh = ServiceMeshConsumer(
+            self,
+            policies=[
+                # allow the related metrics consumer (e.g. the OpenTelemetry collector) to reach
+                # the Prometheus exporter port; the mesh generates the authorization policy from
+                # this relation:
+                UnitPolicy(
+                    relation=METRICS_RELATION_NAME,
+                    ports=[int(self._exporter_port)],
+                ),
+            ],
         )
 
         self.ambient_mode_ingress = IstioIngressRouteRequirer(
@@ -334,7 +352,8 @@ class MlflowCharm(CharmBase):
             lightkube_client=Client(field_manager=f"{self.app.name}-{self.model.name}"),
             labels={
                 "app.kubernetes.io/instance": f"{self.app.name}-{self.model.name}",
-                "kubernetes-resource-handler-scope": f"{self.app.name}-allow-all",
+                # The manager selects and cleans up policies using this ownership scope.
+                "kubernetes-resource-handler-scope": f"{self.app.name}-tracking-server-access",
             },
             logger=self.logger,
         )
@@ -935,6 +954,18 @@ class MlflowCharm(CharmBase):
                 BlockedStatus,
             )
 
+    def _check_service_mesh_waypoint_principal_configured(self) -> None:
+        """Block when service mesh is enabled without a tracking-server waypoint principal."""
+        if (
+            self.model.get_relation(SERVICE_MESH_RELATION_NAME)
+            and not self._get_tracking_server_waypoint_principal()
+        ):
+            self.logger.error(SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE)
+            raise ErrorWithStatus(
+                SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
+                BlockedStatus,
+            )
+
     def _generate_environment(self) -> dict:
         """Return environment variables for the `mlflow server` command.
 
@@ -1130,9 +1161,54 @@ class MlflowCharm(CharmBase):
         if not self.unit.is_leader():
             return
         if self.model.get_relation(SERVICE_MESH_RELATION_NAME):
+            # this only manages the waypoint (in-mesh) allowance for the tracking server; each
+            # related ingress's gateway is allowed to reach the tracking server port by a separate
+            # AuthorizationPolicy that the istio-ingress-k8s charm creates automatically, one per
+            # related ingress.
+            tracking_server_policy = self._build_tracking_server_authorization_policy()
             self._policy_resource_manager.reconcile(
-                policies=[], mesh_type=self._mesh.mesh_type, raw_policies=[self._allow_all_policy]
+                policies=[],
+                mesh_type=self._mesh.mesh_type,
+                raw_policies=[tracking_server_policy] if tracking_server_policy else [],
             )
+
+    def _get_tracking_server_waypoint_principal(self) -> Optional[str]:
+        """Return the SPIFFE principal of the platform waypoint proxy, from config."""
+        principal = self.model.config.get("istio_waypoint_principal") or ""
+        return principal.strip() or None
+
+    def _build_tracking_server_authorization_policy(self) -> Optional[AuthorizationPolicy]:
+        """Build the authorization policy allowing in-mesh access to the tracking server port.
+
+        Only the platform waypoint proxy's principal is configured here: it is the identity the
+        tracking server's ztunnel sees for in-mesh traffic. Ingress traffic is allowed separately,
+        by an AuthorizationPolicy that the istio-ingress-k8s charm creates automatically for each
+        related ingress (permitting that gateway's workload to reach the tracking server port).
+        Returns None when no waypoint principal is configured, so no policy is created.
+        """
+        waypoint_principal = self._get_tracking_server_waypoint_principal()
+        if not waypoint_principal:
+            return None
+
+        spec = AuthorizationPolicySpec(
+            selector=WorkloadSelector(
+                matchLabels={"app.kubernetes.io/name": self.app.name},
+            ),
+            action=Action.allow,
+            rules=[
+                Rule(
+                    from_=[From(source=Source(principals=[waypoint_principal]))],
+                    to=[To(operation=Operation(ports=[str(self._tracking_server_port)]))],
+                ),
+            ],
+        )
+        return AuthorizationPolicy(
+            metadata=ObjectMeta(
+                name=f"{self.app.name}-tracking-server-access",
+                namespace=self.model.name,
+            ),
+            spec=spec.model_dump(by_alias=True, exclude_unset=True, exclude_none=True),
+        )
 
     def _remove_authorization_policies(self, _):
         if not self.unit.is_leader():
@@ -1246,6 +1322,8 @@ class MlflowCharm(CharmBase):
             interfaces = self._get_interfaces()
 
             self._check_no_conflicting_ingress_relations()
+
+            self._check_service_mesh_waypoint_principal_configured()
 
             self._ensure_bucket_exists()
 
