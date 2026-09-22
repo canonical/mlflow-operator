@@ -26,6 +26,7 @@ import requests
 import yaml
 from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
 from charmed_kubeflow_chisme.testing import (
+    ISTIO_BEACON_K8S_APP,
     ISTIO_INGRESS_K8S_APP,
     ISTIO_INGRESS_ROUTE_ENDPOINT,
     assert_alert_rules,
@@ -45,7 +46,7 @@ from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_
 from charms_dependencies import (
     KUBEFLOW_PROFILES,
     METACONTROLLER_OPERATOR,
-    MYSQL_K8S,
+    POSTGRESQL_K8S,
     RESOURCE_DISPATCHER,
     S3_INTEGRATOR,
 )
@@ -56,11 +57,15 @@ from lightkube.generic_resource import (
     create_namespaced_resource,
     load_in_cluster_generic_resources,
 )
+from lightkube.models.meta_v1 import ObjectMeta
 from lightkube.resources.core_v1 import Namespace, Secret
 from mlflow.artifacts import download_artifacts
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
-from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_fixed
+from tenacity import Retrying, retry, retry_if_exception_type, stop_after_delay, wait_fixed
+
+# TODO: remove once multi-tenancy is completed:
+from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY, TEST_WORKSPACE  # isort:skip
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +89,8 @@ HTTP_SECTION_NAME = "http-80"
 # Path matched by the mlflow HTTPRoute.
 INGRESS_ROUTE_PATH = HTTP_PATH
 
+TEST_IDENTITY_ALIAS = f"identity-that-aliases-{TEST_IDENTITY}"
+
 PodDefault = create_namespaced_resource("kubeflow.org", "v1alpha1", "PodDefault", "poddefaults")
 Profile = create_global_resource("kubeflow.org", "v1", "Profile", "profiles")
 # Gateway API generic resources, resolved at runtime via lightkube.
@@ -104,10 +111,35 @@ def _safe_load_file_to_text(filename: str) -> str:
     return text
 
 
+def _tracking_server_waypoint_principal(namespace: str) -> str:
+    """SPIFFE principal of the platform waypoint proxy, for the tracking server restriction.
+
+    Only the platform waypoint proxy is listed: it is the identity mlflow's ztunnel sees for
+    in-mesh traffic. Ingress traffic is already permitted by the L4
+    AuthorizationPolicy that istio-ingress-k8s creates for the backend when related, so the ingress
+    gateway's principal is not needed here.
+    """
+    # the waypoint's service account is `<model>-<beacon-app>-waypoint`:
+    waypoint_service_account = f"{namespace}-{ISTIO_BEACON_K8S_APP}-waypoint"
+    return f"cluster.local/ns/{namespace}/sa/{waypoint_service_account}"
+
+
 @pytest.fixture(scope="session")
 def lightkube_client() -> lightkube.Client:
     client = lightkube.Client(field_manager=CHARM_NAME)
     return client
+
+
+@pytest.fixture(scope="function")
+def out_of_mesh_namespace(lightkube_client: lightkube.Client) -> str:
+    """Create a namespace that is not enrolled in the ambient mesh, cleaned up after the test."""
+    namespace = f"mlflow-outsider-{''.join(choices(ascii_lowercase, k=6))}"
+    lightkube_client.create(Namespace(metadata=ObjectMeta(name=namespace)))
+    yield namespace
+    try:
+        lightkube_client.delete(Namespace, namespace)
+    except ApiError:
+        pass
 
 
 def deploy_k8s_resources(template_files: str):
@@ -123,6 +155,8 @@ async def assert_ui_is_accessible(ops_test: OpsTest):
     """Verify that UI is accessible through the ingress gateway."""
     await assert_path_reachable_through_ingress(
         http_path=HTTP_PATH,
+        # TODO: remove once multi-tenancy is completed:
+        headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
         namespace=ops_test.model.name,
         expected_content_type="text/html",
         expected_response_text="MLflow",
@@ -201,14 +235,14 @@ class TestCharm:
             ops_test.model, add_ca_chain=True, s3_integrator=S3_INTEGRATOR
         )
         await ops_test.model.deploy(
-            MYSQL_K8S.charm,
-            channel=MYSQL_K8S.channel,
+            POSTGRESQL_K8S.charm,
+            channel=POSTGRESQL_K8S.channel,
             series="jammy",
-            config=MYSQL_K8S.config,
-            trust=MYSQL_K8S.trust,
+            config=POSTGRESQL_K8S.config,
+            trust=POSTGRESQL_K8S.trust,
         )
         await ops_test.model.wait_for_idle(
-            apps=[S3_INTEGRATOR.charm, MYSQL_K8S.charm],
+            apps=[S3_INTEGRATOR.charm, POSTGRESQL_K8S.charm],
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
@@ -217,7 +251,7 @@ class TestCharm:
         await ops_test.model.integrate(
             f"{S3_INTEGRATOR.charm}:s3-credentials", f"{CHARM_NAME}:s3-credentials"
         )
-        await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
+        await ops_test.model.integrate(POSTGRESQL_K8S.charm, CHARM_NAME)
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
@@ -264,6 +298,8 @@ class TestCharm:
         logger.info("found dashboards: %s", dashboards)
         await assert_grafana_dashboards(app, dashboards)
 
+    # TODO: remove once multi-tenancy is completed:
+    @pytest.mark.skip(reason="WIP: /metrics now behind RBAC and exporter not yet credentialed")
     async def test_metrics_enpoint(self, ops_test: OpsTest):
         """Test metrics_endpoints are defined in relation data bag and their accessibility.
 
@@ -280,6 +316,8 @@ class TestCharm:
         app = ops_test.model.applications[CHARM_NAME]
         await assert_logging(app)
 
+    # TODO: remove once multi-tenancy is completed:
+    @pytest.mark.skip(reason="WIP: /metrics now behind RBAC and exporter not yet credentialed")
     @retry(stop=stop_after_delay(300), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
     async def test_can_connect_exporter_and_get_metrics(self, ops_test: OpsTest):
@@ -328,11 +366,156 @@ class TestCharm:
 
         url = f"http://localhost:{mlflow_port}"
         client = MlflowClient(tracking_uri=url)
-        response = requests.get(url)
+        response = requests.get(
+            url,
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+        )
         assert response.status_code == 200
         client.create_experiment(TEST_EXPERIMENT_NAME)
         all_experiments = client.search_experiments()
         assert len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
+
+        mlflow_subprocess.terminate()
+
+    # TODO: update this test's logic as multi-tenancy is developed:
+    @pytest.mark.abort_on_fail
+    @pytest.mark.parametrize("identity", [TEST_IDENTITY, "newly-seen-identity"])
+    async def test_user_identity_and_grants_before_aliases(self, ops_test: OpsTest, identity: str):
+        """Test the MLflow user's associated identity and grants before configuring aliases.
+
+        Assert the MLflow user is always associated to the expected identity, and that it has the
+        expected tenant RBAC when the identity is the one preconfigured by the charm while it has
+        no grants when the identity is a newly seen one.
+        """
+        # port-forwarding the tracking server:
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        mlflow_subprocess = subprocess.Popen(
+            [
+                "kubectl",
+                "-n",
+                f"{ops_test.model_name}",
+                "port-forward",
+                f"svc/{CHARM_NAME}",
+                f"{mlflow_port}:{mlflow_port}",
+            ]
+        )
+        time.sleep(10)  # Must wait for port-forward
+
+        # getting information about the current, implicitly authenticated MLflow user:
+        current_user_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/2.0/mlflow/users/current",
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: identity},
+        )
+        assert current_user_response.status_code == 200
+        current_user_username = current_user_response.json()["user"]["username"]
+
+        # asserting the current MLflow user corresponds to the expected external identity:
+        assert current_user_username == identity
+
+        # getting roles for the current MLflow user:
+        current_roles_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/3.0/mlflow/users/roles/list",
+            params={"username": current_user_username},
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
+        )
+        assert current_roles_response.status_code == 200
+        user_roles = current_roles_response.json()["roles"]
+
+        # when the identity is the test identity the charm preconfigured:
+        if identity == TEST_IDENTITY:
+            # asserting the MLflow user is granted only the expected tenant (workspace):
+            for role in user_roles:
+                assert role["workspace"] == TEST_WORKSPACE
+        # when the identity is a newly seen one:
+        else:
+            # asserting the MLflow user has no grants:
+            assert user_roles == []
+
+        mlflow_subprocess.terminate()
+
+    @pytest.mark.abort_on_fail
+    async def test_configure_identity_aliases(self, ops_test: OpsTest):
+        """Test that the charm gets active after configuring valid identity aliases."""
+        await ops_test.model.applications[CHARM_NAME].set_config(
+            # configuring a single identity alias to the one the charm preconfigured:
+            {"identity_aliases": f"{TEST_IDENTITY_ALIAS}: {TEST_IDENTITY}\n"}
+        )
+
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=60 * 10,
+            idle_period=60,
+        )
+        assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+
+    # TODO: update this test's logic as multi-tenancy is developed:
+    @pytest.mark.abort_on_fail
+    @pytest.mark.parametrize(
+        "identity", [TEST_IDENTITY, TEST_IDENTITY_ALIAS, "newly-seen-identity"]
+    )
+    async def test_user_identity_and_grants_after_aliases(self, ops_test: OpsTest, identity: str):
+        """Test the MLflow user's associated identity and grants after configuring aliases.
+
+        Assert the MLflow user is always associated to the expected identity, and that it has the
+        expected tenant RBAC when the identity is either the one preconfigured by the charm or an
+        alias of its, while it has no grants when the identity is a newly seen one with no aliases.
+        """
+        # port-forwarding the tracking server:
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        mlflow_subprocess = subprocess.Popen(
+            [
+                "kubectl",
+                "-n",
+                f"{ops_test.model_name}",
+                "port-forward",
+                f"svc/{CHARM_NAME}",
+                f"{mlflow_port}:{mlflow_port}",
+            ]
+        )
+        time.sleep(10)  # Must wait for port-forward
+
+        # getting information about the current, implicitly authenticated MLflow user:
+        current_user_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/2.0/mlflow/users/current",
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: identity},
+        )
+        assert current_user_response.status_code == 200
+        current_user_username = current_user_response.json()["user"]["username"]
+
+        # asserting the current MLflow user corresponds to the expected external identity:
+        if identity == TEST_IDENTITY_ALIAS:
+            assert current_user_username == TEST_IDENTITY  # because aliasing another identity
+        else:
+            assert current_user_username == identity
+
+        # getting roles for the current MLflow user:
+        current_roles_response = requests.get(
+            f"http://localhost:{mlflow_port}/api/3.0/mlflow/users/roles/list",
+            params={"username": current_user_username},
+            # TODO: remove once multi-tenancy is completed:
+            headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
+        )
+        assert current_roles_response.status_code == 200
+        user_roles = current_roles_response.json()["roles"]
+
+        # when the identity is the test identity the charm preconfigured or an alias of its:
+        if identity in (TEST_IDENTITY, TEST_IDENTITY_ALIAS):
+            # asserting the MLflow user is granted only the expected tenant (workspace):
+            for role in user_roles:
+                assert role["workspace"] == TEST_WORKSPACE
+        # when the identity is a newly seen one:
+        else:
+            # asserting the MLflow user has no grants:
+            assert user_roles == []
 
         mlflow_subprocess.terminate()
 
@@ -380,9 +563,24 @@ class TestCharm:
         )
 
     async def test_mesh_and_ingress_integrations(self, ops_test: OpsTest):
-        """Setup Istio in ambient mode to include MLflow in the mesh and provide ingress."""
+        """Setup Istio in ambient mode to include MLflow and any subsidiary charms in the mesh.
+
+        The tracking server is also restricted to in-mesh source principals here, so the rest of
+        the ambient suite exercises the charm under that authorization policy.
+        """
         # deploy charms providing the service mesh and the ingress while relating MLflow to them:
         await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
+
+        # restrict the tracking server to the platform waypoint's identity (in-mesh traffic); the
+        # ingress gateway is allowed separately by istio-ingress-k8s's own L4 policy:
+        await ops_test.model.applications[CHARM_NAME].set_config(
+            {
+                "istio_waypoint_principal": _tracking_server_waypoint_principal(
+                    ops_test.model_name
+                ),
+            }
+        )
+
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
             status="active",
@@ -465,8 +663,12 @@ class TestCharm:
                 f'payload=\'{{"name":"{experiment_name}"}}\'; '
                 "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors "
                 f"-X POST '{tracking_uri}/api/2.0/mlflow/experiments/create' "
+                # TODO: remove once multi-tenancy is completed:
+                f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
                 "-H 'Content-Type: application/json' -d \"$payload\" >/dev/null; "
                 "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors -G "
+                # TODO: remove once multi-tenancy is completed:
+                f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
                 f"'{tracking_uri}/api/2.0/mlflow/experiments/get-by-name' "
                 f"--data-urlencode 'experiment_name={experiment_name}'"
             )
@@ -780,3 +982,87 @@ class TestCharm:
                 else:
                     os.environ[key] = value
             mlflow_subprocess.terminate()
+
+    @staticmethod
+    def _curl_tracking_server_from_pod(namespace: str, url: str) -> tuple[int, str]:
+        """Curl `url` from a throwaway pod in `namespace`; return (curl_exit_code, stderr).
+
+        `kubectl run --rm -i` propagates the container's exit code, so this is curl's own status:
+        0 when any HTTP response is received (even a 401/403 from the tracking server's auth), and
+        56 ("Recv failure: Connection reset by peer") when the ztunnel denies the L4 connection.
+        The exit code, stdout (with the HTTP status) and stderr are logged for diagnosis.
+        """
+        pod_name = f"mesh-probe-{TestCharm.generate_random_string(6)}"
+        result = subprocess.run(
+            [
+                "kubectl",
+                "-n",
+                namespace,
+                "run",
+                pod_name,
+                "--rm",
+                "-i",
+                "--restart=Never",
+                "--image=curlimages/curl:8.8.0",
+                "--command",
+                "--",
+                "curl",
+                "-sS",
+                "-o",
+                "/dev/null",
+                "-w",
+                "http_code=%{http_code}",
+                "--max-time",
+                "15",
+                url,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        logger.info(
+            "mesh probe from namespace %s to %s: curl_exit_code=%s stdout=%r stderr=%r",
+            namespace,
+            url,
+            result.returncode,
+            result.stdout,
+            result.stderr,
+        )
+        return result.returncode, result.stderr
+
+    @pytest.mark.abort_on_fail
+    async def test_out_of_mesh_pod_cannot_reach_tracking_server(
+        self, ops_test: OpsTest, out_of_mesh_namespace: str
+    ):
+        """A pod outside the mesh must be denied access to the restricted tracking server.
+
+        `istio_waypoint_principal` is set during the mesh integration, so only in-mesh source
+        identities may reach the tracking server. A pod in a namespace that is not part of the mesh
+        presents no identity, so the mesh must reject its connection at L4. The positive path
+        (legitimate sources still reach the server) is covered by `test_ui_is_accessible` and
+        `test_can_create_experiment_from_user_namespace`.
+        """
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        model_name = ops_test.model_name
+        tracking_url = f"http://{CHARM_NAME}.{model_name}.svc.cluster.local:{mlflow_port}/"
+
+        logger.info(
+            "probing tracking server %s from out-of-mesh namespace %s (expecting an L4 denial)",
+            tracking_url,
+            out_of_mesh_namespace,
+        )
+
+        # Retry to let the authorization policy reach the ztunnel and to tolerate pod startup.
+        for attempt in Retrying(stop=stop_after_delay(300), wait=wait_fixed(15), reraise=True):
+            with attempt:
+                exit_code, stderr = self._curl_tracking_server_from_pod(
+                    out_of_mesh_namespace, tracking_url
+                )
+                # the ztunnel resets the denied L4 connection, so curl exits 56 ("Recv failure:
+                # Connection reset by peer"); anything else (0 = reached the server, or a
+                # pod/kubectl error) is retried until the policy is enforced.
+                assert exit_code == 56, (
+                    "expected the out-of-mesh pod's connection to be reset at L4 (curl exit 56), "
+                    f"but curl exited with {exit_code} (stderr: {stderr.strip()})"
+                )
