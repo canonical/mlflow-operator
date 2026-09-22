@@ -470,9 +470,9 @@ class TestCharm:
                 role_permissions = role["permissions"]
                 role_workspace = role["workspace"]
                 for permission in role_permissions:
-                    if role_workspace == WORKSPACE_WITH_ADMIN_ACCESS_UPDATED:
+                    if role_workspace == WORKSPACE_WITH_ADMIN_ACCESS:
                         assert permission["permission"] == "MANAGE"
-                    elif role_workspace == WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED:
+                    elif role_workspace == WORKSPACE_WITH_READ_ONLY_ACCESS:
                         assert permission["permission"] == "READ"
                     else:
                         assert False, f"Unexpected workspace '{role_workspace}' in granted roles."
@@ -628,6 +628,8 @@ class TestCharm:
                     assert role["workspace"] not in (
                         WORKSPACE_WITH_ADMIN_ACCESS,
                         WORKSPACE_WITH_READ_ONLY_ACCESS,
+                        WORKSPACE_WITH_ADMIN_ACCESS_UPDATED,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED,
                     )
 
             _assert_workspace_grants_revoked()
@@ -695,8 +697,8 @@ class TestCharm:
                 # asserting the MLflow user is granted only the expected tenants (workspaces):
                 for role in user_roles:
                     assert role["workspace"] in (
-                        WORKSPACE_WITH_ADMIN_ACCESS,
-                        WORKSPACE_WITH_READ_ONLY_ACCESS,
+                        WORKSPACE_WITH_ADMIN_ACCESS_UPDATED,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED,
                     )
             # when the identity is a newly seen one:
             else:
@@ -769,6 +771,8 @@ class TestCharm:
                     assert role["workspace"] in (
                         WORKSPACE_WITH_ADMIN_ACCESS,
                         WORKSPACE_WITH_READ_ONLY_ACCESS,
+                        WORKSPACE_WITH_ADMIN_ACCESS_UPDATED,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED,
                     )
             # when the identity is a newly seen one:
             else:
