@@ -475,14 +475,15 @@ class TestCharm:
             assert roles.status_code == 200
             roles = roles.json()["roles"]
             for role in roles:
-                workspace = role["workspace"]
-                if workspace == WORKSPACE_WITH_ADMIN_ACCESS:
-                    assert "admin" in role["permissions"]  # it might as well include others
-                elif workspace == WORKSPACE_WITH_READ_ONLY_ACCESS:
-                    assert role["permissions"] == ["read"]  # strictly the only one
-                else:
-                    assert False, f"Unexpected workspace '{workspace}' in granted roles."
-
+                role_permissions = role["permissions"]
+                role_workspace = role["workspace"]
+                for permission in role_permissions:
+                    if role_workspace == WORKSPACE_WITH_ADMIN_ACCESS_UPDATED:
+                        assert permission["permission"] == "MANAGE"
+                    elif role_workspace == WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED:
+                        assert permission["permission"] == "READ"
+                    else:
+                        assert False, f"Unexpected workspace '{role_workspace}' in granted roles."
     @pytest.mark.abort_on_fail
     @pytest.mark.parametrize(
         "selected_workspace,is_write_operation,expected_response_status_code",
@@ -597,13 +598,15 @@ class TestCharm:
             assert roles.status_code == 200
             roles = roles.json()["roles"]
             for role in roles:
-                workspace = role["workspace"]
-                if workspace == WORKSPACE_WITH_ADMIN_ACCESS_UPDATED:
-                    assert "admin" in role["permissions"]  # it might as well include others
-                elif workspace == WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED:
-                    assert role["permissions"] == ["read"]  # strictly the only one
-                else:
-                    assert False, f"Unexpected workspace '{workspace}' in granted roles."
+                role_permissions = role["permissions"]
+                role_workspace = role["workspace"]
+                for permission in role_permissions:
+                    if role_workspace == WORKSPACE_WITH_ADMIN_ACCESS_UPDATED:
+                        assert permission["permission"] == "MANAGE"
+                    elif role_workspace == WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED:
+                        assert permission["permission"] == "READ"
+                    else:
+                        assert False, f"Unexpected workspace '{role_workspace}' in granted roles."
 
     @pytest.mark.abort_on_fail
     async def test_removing_relation_revokes_workspace_grants(self, ops_test: OpsTest):
