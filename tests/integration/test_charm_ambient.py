@@ -456,12 +456,10 @@ class TestCharm:
         assert result.results.get("ok") in (True, "True")
         mlflow_credentials = result.results["mlflow"]
         assert mlflow_credentials["username"] == TEST_IDENTITY
-        assert json.loads(mlflow_credentials["grants"]) == json.dumps(
-            {
-                WORKSPACE_WITH_ADMIN_ACCESS_UPDATED: GRANTS_FOR_ADMIN,
-                WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED: GRANTS_FOR_READ_ONLY,
-            }
-        )
+        assert json.loads(mlflow_credentials["grants"]) == {
+            WORKSPACE_WITH_ADMIN_ACCESS: GRANTS_FOR_ADMIN,
+            WORKSPACE_WITH_READ_ONLY_ACCESS: GRANTS_FOR_READ_ONLY,
+        }
 
     @pytest.mark.abort_on_fail
     async def test_configured_workspace_grants_are_defined(self, ops_test: OpsTest):
@@ -580,12 +578,10 @@ class TestCharm:
         assert result.results.get("ok") in (True, "True")
         mlflow_credentials = result.results["mlflow"]
         assert mlflow_credentials["username"] == TEST_IDENTITY
-        assert json.loads(mlflow_credentials["grants"]) == json.dumps(
-            {
-                WORKSPACE_WITH_ADMIN_ACCESS_UPDATED: GRANTS_FOR_ADMIN,
-                WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED: GRANTS_FOR_READ_ONLY,
-            }
-        )
+        assert json.loads(mlflow_credentials["grants"]) == {
+            WORKSPACE_WITH_ADMIN_ACCESS_UPDATED: GRANTS_FOR_ADMIN,
+            WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED: GRANTS_FOR_READ_ONLY,
+        }
 
     @pytest.mark.abort_on_fail
     async def test_updated_workspace_grants_are_defined(self, ops_test: OpsTest):
