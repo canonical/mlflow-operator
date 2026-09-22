@@ -1319,10 +1319,10 @@ class MlflowCharm(CharmBase):
         """Reconcile users' grants across workspaces in the tracking server's container.
 
         Run a Python script in the tracking server's container to reconcile users' grants across
-        workspaces as per the given, desired set of grants. This is necessary in case external
-        super-admins intentionally or unadvertedly deleted the charm's super-admin, ensuring it is
-        recreated if necessary even when the charm can no longer authenticate to MLflow via calls
-        to the traffic server.
+        workspaces as per the given, desired set of grants. The script acts directly on MLflow's
+        auth store instead of calling the tracking server's HTTP API, so that the reconcile never
+        has to authenticate to MLflow and keeps working even if the charm's super-admin was changed
+        or deleted (intentionally or inadvertently) by an external super-admin.
         """
         payload = json.dumps(
             {
