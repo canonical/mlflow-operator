@@ -12,11 +12,6 @@ from urllib.parse import urlparse
 
 import botocore.exceptions
 import yaml
-from canonical_service_mesh import (
-    MeshType,
-    PolicyResourceManager,
-    ServiceMeshConsumer,
-)
 from canonical_service_mesh.enums import Action
 from canonical_service_mesh.k8s.resource_manager import PolicyResourceManager
 from canonical_service_mesh.k8s.types.istio import AuthorizationPolicy
@@ -29,17 +24,10 @@ from canonical_service_mesh.models.istio import (
     To,
     WorkloadSelector,
 )
-from canonical_service_mesh.k8s.resource_manager import PolicyResourceManager
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charmed_kubeflow_chisme.pebble import update_layer
+from charmlibs.interfaces.service_mesh import MeshType, ServiceMeshConsumer, UnitPolicy
 from charmlibs.interfaces.istio_ingress_route import (
-from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
-from charmed_kubeflow_chisme.pebble import update_layer
-from charmed_kubeflow_chisme.service_mesh import generate_allow_all_authorization_policy
-from charmlibs.interfaces.service_mesh import MeshType, ServiceMeshConsumer
-from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
-from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.istio_ingress_k8s.v0.istio_ingress_route import (
     BackendRef,
     HTTPPathMatch,
     HTTPRoute,
@@ -53,7 +41,6 @@ from charms.istio_ingress_k8s.v0.istio_ingress_route import (
     URLRewriteFilter,
     URLRewriteSpec,
 )
-from charmlibs.interfaces.service_mesh import MeshType, ServiceMeshConsumer, UnitPolicy
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
