@@ -26,7 +26,6 @@ from canonical_service_mesh.models.istio import (
 )
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charmed_kubeflow_chisme.pebble import update_layer
-from charmlibs.interfaces.service_mesh import MeshType, ServiceMeshConsumer, UnitPolicy
 from charmlibs.interfaces.istio_ingress_route import (
     BackendRef,
     HTTPPathMatch,
@@ -41,6 +40,7 @@ from charmlibs.interfaces.istio_ingress_route import (
     URLRewriteFilter,
     URLRewriteSpec,
 )
+from charmlibs.interfaces.service_mesh import MeshType, ServiceMeshConsumer, UnitPolicy
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
