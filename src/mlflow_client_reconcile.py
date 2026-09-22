@@ -3,14 +3,23 @@
 
 """RBAC reconcile script run by the charm inside the tracking server for mlflow-client requirers.
 
-Executed over the whole desired set of user grants across workspaces, passed as a JSON argument: a
-mapping with a ``users`` list (each ``{username, is_super_admin, workspace_grants}``, where
-``workspace_grants`` is a list of ``[workspace, tier]`` pairs) and the ``protected_admin`` username
-to never demote. For each user it get-or-creates the user and either promotes it to a global
-super-admin (the MLflow ``is_admin`` flag) or get-or-creates the requested workspaces and one
-charm-owned, workspace-scoped role granting the requested tier in each. It then prunes any
-charm-owned role no longer requested and demotes any charm-promoted super-admin no longer
-requested.
+This script is executed by passing the whole desired set of users' grants across workspaces as a
+JSON argument in the following format:
+- "users": a list of mappings where each mapping represents a user and contains the following keys:
+    - "username":          the requested username
+    - "is_super_admin":    whether the requested username is to be promoted to a global super-admin
+    - "workspace_grants":  a list of [workspace, tier] pairs representing the user's grants in each
+                           workspace
+- "protected_admin": the reserved username for the charm's super-admin, to never demote
+
+For each user requested, it get-or-creates the corresponding user and either promotes it to a
+global super-admin, when "is_super_admin" is set, or it get-or-creates the requested workspaces and
+the respective workspace-scoped roles that grant the user the requested tier in each, to eventually
+prune any charm-owned (i.e., previously created by the charm) roles no longer requested and demote
+any charm-promoted (i.e., previously promoted by the charm) super-admins no longer requested. Roles
+and super-admins not previously created and promoted by the charm are left untouched, as they may
+have been created externally by delegated admins and super-admins on the client side and are
+to be managed by external users, without having the charm interfere with them.
 
 NOTE:
 - it is idempotent (it is tolerated that users, workspaces and/or grants may already exist)
