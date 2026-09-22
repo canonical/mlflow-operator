@@ -466,6 +466,7 @@ class TestCharm:
                 headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
             )
             assert roles.status_code == 200
+            roles = roles.json()["roles"]
             for role in roles:
                 role_permissions = role["permissions"]
                 role_workspace = role["workspace"]
