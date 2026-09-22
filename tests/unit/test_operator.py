@@ -2237,7 +2237,7 @@ class TestMlflowClientProvider:
         provider = self._provider(harness, [request])
         exec_mock = self._stub_exec(harness)
 
-        harness.charm._reconcile_mlflow_client_provisioning()
+        harness.charm._reconcile_mlflow_client_grants()
 
         # the reconcile script runs once in the workload, with the per-user desired set as a JSON
         # argument, in the workload service's context (inheriting the tracking server environment):
@@ -2275,7 +2275,7 @@ class TestMlflowClientProvider:
         provider = self._provider(harness, [request])
         exec_mock = self._stub_exec(harness)
 
-        harness.charm._reconcile_mlflow_client_provisioning()
+        harness.charm._reconcile_mlflow_client_grants()
 
         assert self._payload(exec_mock)["users"] == [
             {"username": "root", "super_admin": True, "grants": []}
@@ -2294,7 +2294,7 @@ class TestMlflowClientProvider:
         _ = self._provider(harness, [request])
         exec_mock = self._stub_exec(harness)
 
-        harness.charm._reconcile_mlflow_client_provisioning()
+        harness.charm._reconcile_mlflow_client_grants()
 
         assert self._payload(exec_mock)["users"] == [
             {
@@ -2317,7 +2317,7 @@ class TestMlflowClientProvider:
         )
         exec_mock = self._stub_exec(harness)
 
-        harness.charm._reconcile_mlflow_client_provisioning()
+        harness.charm._reconcile_mlflow_client_grants()
 
         exec_mock.assert_not_called()
         provider.set_response.assert_not_called()
@@ -2334,7 +2334,7 @@ class TestMlflowClientProvider:
         provider = self._provider(harness, [request])
         exec_mock = self._stub_exec(harness)
 
-        harness.charm._reconcile_mlflow_client_provisioning()
+        harness.charm._reconcile_mlflow_client_grants()
 
         exec_mock.assert_not_called()
         provider.set_response.assert_not_called()
@@ -2357,7 +2357,7 @@ class TestMlflowClientProvider:
         provider = self._provider(harness, [request])
         exec_mock = self._stub_exec(harness)
 
-        harness.charm._reconcile_mlflow_client_provisioning()
+        harness.charm._reconcile_mlflow_client_grants()
 
         exec_mock.assert_not_called()
         provider.set_response.assert_not_called()
@@ -2376,7 +2376,7 @@ class TestMlflowClientProvider:
         provider = self._provider(harness, [request])
         exec_mock = self._stub_exec(harness)
 
-        harness.charm._reconcile_mlflow_client_provisioning()
+        harness.charm._reconcile_mlflow_client_grants()
 
         # a request claiming the charm's own super-admin username is refused: never reaching the
         # workload nor being acknowledged:
@@ -2397,7 +2397,7 @@ class TestMlflowClientProvider:
         exec_mock = MagicMock()
         harness.charm.container.exec = exec_mock
 
-        harness.charm._reconcile_mlflow_client_provisioning()
+        harness.charm._reconcile_mlflow_client_grants()
 
         exec_mock.assert_not_called()
         provider.set_response.assert_not_called()
@@ -2416,7 +2416,7 @@ class TestMlflowClientProvider:
         exec_mock = MagicMock()
         harness.charm.container.exec = exec_mock
 
-        harness.charm._reconcile_mlflow_client_provisioning()
+        harness.charm._reconcile_mlflow_client_grants()
 
         # an empty desired set without a removal in progress must not run the snippet, so that a
         # transient empty request set never prunes roles that are still in use:
@@ -2438,7 +2438,7 @@ class TestMlflowClientProvider:
         exec_mock = MagicMock(return_value=process)
         harness.charm.container.exec = exec_mock
 
-        harness.charm._reconcile_mlflow_client_provisioning(exclude_relation_id=99)
+        harness.charm._reconcile_mlflow_client_grants(exclude_relation_id=99)
 
         # a removal reconcile runs even with an empty desired set, so departed grants are pruned:
         exec_mock.assert_called_once()
@@ -2459,7 +2459,7 @@ class TestMlflowClientProvider:
         provider = self._provider(harness, [request])
         exec_mock = self._stub_exec(harness)
 
-        harness.charm._reconcile_mlflow_client_provisioning(exclude_relation_id=relation_id)
+        harness.charm._reconcile_mlflow_client_grants(exclude_relation_id=relation_id)
 
         # the departing relation is skipped, so nothing is provisioned or returned for it and the
         # script runs with an empty desired set to prune its grants:
@@ -2496,7 +2496,7 @@ class TestMlflowClientProvider:
         relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
         reconcile_mock = MagicMock()
-        harness.charm._reconcile_mlflow_client_provisioning = reconcile_mock
+        harness.charm._reconcile_mlflow_client_grants = reconcile_mock
 
         harness.remove_relation(relation_id)
 
