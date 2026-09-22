@@ -121,8 +121,8 @@ for entry in payload["users"]:
             workspace_store.create_workspace, Workspace(name=workspace, description=None)
         )
         role = _get_or_create_role(role_name, workspace)
-        native_grants_for_the_tier = TIERS_TO_NATIVE_GRANTS.get(tier, TIERS_TO_NATIVE_GRANTS[DEFAULT_TIER])
-        for resource_type, resource_pattern, permission in native_grants_for_the_tier:
+        native_grants = TIERS_TO_NATIVE_GRANTS.get(tier, TIERS_TO_NATIVE_GRANTS[DEFAULT_TIER])
+        for resource_type, resource_pattern, permission in native_grants:
             _tolerate_already_exists(
                 store.add_role_permission, role.id, resource_type, resource_pattern, permission
             )
