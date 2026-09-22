@@ -2481,7 +2481,8 @@ class TestMlflowClientProvider:
         users = [
             {
                 "username": "alice",
-                "is_super_admin": False, "workspace_grants": [["team-a", "edit"]],
+                "is_super_admin": False,
+                "workspace_grants": [["team-a", "edit"]],
             },
         ]
         with caplog.at_level(logging.ERROR):
