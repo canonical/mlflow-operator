@@ -380,7 +380,7 @@ class TestCharm:
         # https://github.com/canonical/data-integrator/pull/328 lands on main, that is on channel
         # "latest/edge", and mind that an explicit Juju-CLI deploy is temporarily required because
         # python-libjuju's `Model.deploy()` breaks with this temporary channel format:
-        ops_test.juju(
+        await ops_test.juju(
             "deploy",
             DATA_INTEGRATOR.charm,
             "--trust",
