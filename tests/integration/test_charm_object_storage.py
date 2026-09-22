@@ -381,7 +381,7 @@ class TestCharm:
             assert found, f"The '{default_bucket_name}' bucket does not exist"
 
     @pytest.mark.abort_on_fail
-    async def test_relate_data_integrator(self, ops_test: OpsTest):
+    async def test_deploy_data_integrator(self, ops_test: OpsTest):
         """Deploy a data-integrator instance, for user grants in subsequent tests."""
         # TODO: remove this command and restore the command below once
         # https://github.com/canonical/data-integrator/pull/328 lands on main, that is on channel
