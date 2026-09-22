@@ -2247,8 +2247,8 @@ class TestMlflowClientProvider:
             "users": [
                 {
                     "username": "alice",
-                    "super_admin": False,
-                    "grants": [["analytics-team", "admin"], ["data-team", "read-only"]],
+                    "is_super_admin": False,
+                    "workspace_grants": [["analytics-team", "admin"], ["data-team", "read-only"]],
                 }
             ],
             "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
@@ -2278,7 +2278,7 @@ class TestMlflowClientProvider:
         harness.charm._reconcile_mlflow_client_grants()
 
         assert self._payload(exec_mock)["users"] == [
-            {"username": "root", "super_admin": True, "grants": []}
+            {"username": "root", "is_super_admin": True, "workspace_grants": []}
         ]
         provider.set_response.assert_called_once()
 
@@ -2299,8 +2299,8 @@ class TestMlflowClientProvider:
         assert self._payload(exec_mock)["users"] == [
             {
                 "username": "alice",
-                "super_admin": False,
-                "grants": [["team-a", MLFLOW_CLIENT_DEFAULT_TIER]],
+                "is_super_admin": False,
+                "workspace_grants": [["team-a", MLFLOW_CLIENT_DEFAULT_TIER]],
             }
         ]
 
@@ -2478,7 +2478,12 @@ class TestMlflowClientProvider:
         )
         harness.charm.container.exec = MagicMock(return_value=process)
 
-        users = [{"username": "alice", "super_admin": False, "grants": [["team-a", "edit"]]}]
+        users = [
+            {
+                "username": "alice",
+                "is_super_admin": False, "workspace_grants": [["team-a", "edit"]],
+            },
+        ]
         with caplog.at_level(logging.ERROR):
             with pytest.raises(ErrorWithStatus) as exc_info:
                 harness.charm._exec_mlflow_client_reconcile(users)
