@@ -23,7 +23,8 @@ to be managed by external users, without having the charm interfere with them. F
 roles created by the charm are always distinguished by means of dedicated name prefixes (but never
 MLflow's reserved `__user_<id>__` synthetic roles, which back client self-service grants) and
 super-admins promoted by the charm are always tracked by means of marker roles under a reserved
-workspace.
+workspace (a marker role needs a workspace to live in, while a super-admin is otherwise not tied to
+any workspace).
 
 NOTE: since this script get-or-creates users, workspaces and roles, it is idempotent (i.e., it
 tolerates that users, workspaces and/or grants already exist).
@@ -42,9 +43,7 @@ from mlflow.server.workspace_helpers import _get_workspace_store
 
 ROLE_PREFIX_FOR_SUPER_ADMIN = "charm-mlflow-super-admin-"
 ROLE_PREFIX_FOR_WORKSPACE_WIDE = "charm-mlflow-client-"
-# reserved workspace hosting the super-admin marker roles (a marker role needs a workspace to live
-# in, while a super-admin is otherwise not tied to any workspace):
-SYSTEM_WORKSPACE = "charm-mlflow-system"
+WORKSPACE_FOR_SUPER_ADMIN_MARKER_ROLES = "charm-mlflow-system"
 DEFAULT_TIER = "edit"
 # every concrete (non-workspace) MLflow resource type, so type-wide tiers cover them all, from:
 # https://github.com/mlflow/mlflow/blob/v3.15.1/mlflow/server/auth/permissions.py#L111-L121
@@ -114,10 +113,11 @@ for entry in payload["users"]:
     if entry["is_super_admin"]:
         store.update_user(entry["username"], is_admin=True)
         _tolerate_already_exists(
-            workspace_store.create_workspace, Workspace(name=SYSTEM_WORKSPACE, description=None)
+            workspace_store.create_workspace,
+            Workspace(name=WORKSPACE_FOR_SUPER_ADMIN_MARKER_ROLES, description=None),
         )
         marker_name = ROLE_PREFIX_FOR_SUPER_ADMIN + str(user.id)
-        _get_or_create_role(marker_name, SYSTEM_WORKSPACE)
+        _get_or_create_role(marker_name, WORKSPACE_FOR_SUPER_ADMIN_MARKER_ROLES)
         wanted_super_admin_roles.add(marker_name)
         continue
     role_name = ROLE_PREFIX_FOR_WORKSPACE_WIDE + str(user.id)
@@ -143,7 +143,7 @@ for role in store.list_roles():
 
 # prune the super-admin markers no longer requested, demoting their users (never the charm's own):
 usernames_by_id = {user.id: user.username for user in store.list_users()}
-for role in store.list_roles([SYSTEM_WORKSPACE]):
+for role in store.list_roles([WORKSPACE_FOR_SUPER_ADMIN_MARKER_ROLES]):
     if (
         not role.name.startswith(ROLE_PREFIX_FOR_SUPER_ADMIN)
         or role.name in wanted_super_admin_roles
