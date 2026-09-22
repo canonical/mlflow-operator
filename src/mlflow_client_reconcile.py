@@ -19,16 +19,14 @@ prune any charm-owned (i.e., previously created by the charm) roles no longer re
 any charm-promoted (i.e., previously promoted by the charm) super-admins no longer requested. Roles
 and super-admins not previously created and promoted by the charm are left untouched, as they may
 have been created externally by delegated admins and super-admins on the client side and are
-to be managed by external users, without having the charm interfere with them.
+to be managed by external users, without having the charm interfere with them. For this reason,
+roles created by the charm are always distinguished by means of dedicated name prefixes (but never
+MLflow's reserved `__user_<id>__` synthetic roles, which back client self-service grants) and
+super-admins promoted by the charm are always tracked by means of marker roles under a reserved
+workspace.
 
-NOTE:
-- it is idempotent (it is tolerated that users, workspaces and/or grants may already exist)
-- it drives the auth and workspace stores directly (no running server needed), via the same
-  environment the tracking server uses, inherited by running it in the workload service context;
-- it owns only roles under dedicated prefixes, never MLflow's reserved `__user_<id>__` synthetic
-  roles (which back client self-service grants), and retains workspaces and users on pruning;
-- charm-promoted super-admins are tracked by a marker role under a reserved workspace, so only
-  users the charm itself promoted are ever demoted, and never the charm's own super-admin.
+NOTE: since this script get-or-creates users, workspaces and roles, it is idempotent (i.e., it
+tolerates that users, workspaces and/or grants already exist).
 """
 
 import json
