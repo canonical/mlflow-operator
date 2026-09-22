@@ -484,6 +484,7 @@ class TestCharm:
                         assert permission["permission"] == "READ"
                     else:
                         assert False, f"Unexpected workspace '{role_workspace}' in granted roles."
+
     @pytest.mark.abort_on_fail
     @pytest.mark.parametrize(
         "selected_workspace,is_write_operation,expected_response_status_code",
