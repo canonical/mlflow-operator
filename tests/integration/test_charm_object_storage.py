@@ -80,10 +80,10 @@ RESOURCE_TYPE_FOR_SUPER_ADMIN = "super-admin"
 RESOURCE_TYPE_FOR_WORKSPACE = "workspace"
 TEST_IDENTITY_ALIAS = f"identity-that-aliases-{TEST_IDENTITY}"
 UPSTREAM_WORKSPACE_HEADER_NAME = "X-MLFLOW-WORKSPACE"
-WORKSPACE_WITH_ADMIN_ACCESS = "my-writable-workspace"
-WORKSPACE_WITH_ADMIN_ACCESS_UPDATED = "my-reconfigured-writable-workspace"
-WORKSPACE_WITH_READ_ONLY_ACCESS = "my-read-only-workspace"
-WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED = "my-reconfigured-read-only-workspace"
+WORKSPACE_WITH_ADMIN_ACCESS_INITIAL = "my-initial-writable-workspace"
+WORKSPACE_WITH_ADMIN_ACCESS_FINAL = "my-final-writable-workspace"
+WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL = "my-initial-read-only-workspace"
+WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL = "my-final-read-only-workspace"
 
 PodDefault = create_namespaced_resource("kubeflow.org", "v1alpha1", "PodDefault", "poddefaults")
 
@@ -416,12 +416,12 @@ class TestCharm:
                     [
                         {
                             "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
-                            "resource_name": WORKSPACE_WITH_ADMIN_ACCESS,
+                            "resource_name": WORKSPACE_WITH_ADMIN_ACCESS_INITIAL,
                             "privileges": [GRANTS_FOR_ADMIN],
                         },
                         {
                             "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
-                            "resource_name": WORKSPACE_WITH_READ_ONLY_ACCESS,
+                            "resource_name": WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL,
                             "privileges": [GRANTS_FOR_READ_ONLY],
                         },
                     ]
@@ -447,8 +447,8 @@ class TestCharm:
         mlflow_credentials = result.results["mlflow"]
         assert mlflow_credentials["username"] == TEST_IDENTITY
         assert json.loads(mlflow_credentials["grants"]) == {
-            WORKSPACE_WITH_ADMIN_ACCESS: GRANTS_FOR_ADMIN,
-            WORKSPACE_WITH_READ_ONLY_ACCESS: GRANTS_FOR_READ_ONLY,
+            WORKSPACE_WITH_ADMIN_ACCESS_INITIAL: GRANTS_FOR_ADMIN,
+            WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL: GRANTS_FOR_READ_ONLY,
         }
 
     @pytest.mark.abort_on_fail
@@ -478,9 +478,9 @@ class TestCharm:
                 role_permissions = role["permissions"]
                 role_workspace = role["workspace"]
                 for permission in role_permissions:
-                    if role_workspace == WORKSPACE_WITH_ADMIN_ACCESS:
+                    if role_workspace == WORKSPACE_WITH_ADMIN_ACCESS_INITIAL:
                         assert permission["permission"] == "MANAGE"
-                    elif role_workspace == WORKSPACE_WITH_READ_ONLY_ACCESS:
+                    elif role_workspace == WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL:
                         assert permission["permission"] == "READ"
                     else:
                         assert False, f"Unexpected workspace '{role_workspace}' in granted roles."
@@ -489,10 +489,10 @@ class TestCharm:
     @pytest.mark.parametrize(
         "selected_workspace,is_write_operation,expected_response_status_code",
         [
-            (WORKSPACE_WITH_ADMIN_ACCESS, False, 200),
-            (WORKSPACE_WITH_ADMIN_ACCESS, True, 200),
-            (WORKSPACE_WITH_READ_ONLY_ACCESS, False, 200),
-            (WORKSPACE_WITH_READ_ONLY_ACCESS, True, 403),
+            (WORKSPACE_WITH_ADMIN_ACCESS_INITIAL, False, 200),
+            (WORKSPACE_WITH_ADMIN_ACCESS_INITIAL, True, 200),
+            (WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL, False, 200),
+            (WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL, True, 403),
         ],
     )
     async def test_configured_workspace_grants_take_effect(
@@ -540,12 +540,12 @@ class TestCharm:
                     [
                         {
                             "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
-                            "resource_name": WORKSPACE_WITH_ADMIN_ACCESS_UPDATED,
+                            "resource_name": WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
                             "privileges": [GRANTS_FOR_ADMIN],
                         },
                         {
                             "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
-                            "resource_name": WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED,
+                            "resource_name": WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
                             "privileges": [GRANTS_FOR_READ_ONLY],
                         },
                     ]
@@ -571,8 +571,8 @@ class TestCharm:
         mlflow_credentials = result.results["mlflow"]
         assert mlflow_credentials["username"] == TEST_IDENTITY
         assert json.loads(mlflow_credentials["grants"]) == {
-            WORKSPACE_WITH_ADMIN_ACCESS_UPDATED: GRANTS_FOR_ADMIN,
-            WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED: GRANTS_FOR_READ_ONLY,
+            WORKSPACE_WITH_ADMIN_ACCESS_FINAL: GRANTS_FOR_ADMIN,
+            WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL: GRANTS_FOR_READ_ONLY,
         }
 
     @pytest.mark.abort_on_fail
@@ -602,9 +602,9 @@ class TestCharm:
                 role_permissions = role["permissions"]
                 role_workspace = role["workspace"]
                 for permission in role_permissions:
-                    if role_workspace == WORKSPACE_WITH_ADMIN_ACCESS_UPDATED:
+                    if role_workspace == WORKSPACE_WITH_ADMIN_ACCESS_FINAL:
                         assert permission["permission"] == "MANAGE"
-                    elif role_workspace == WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED:
+                    elif role_workspace == WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL:
                         assert permission["permission"] == "READ"
                     else:
                         assert False, f"Unexpected workspace '{role_workspace}' in granted roles."
@@ -634,10 +634,10 @@ class TestCharm:
                 roles = roles.json()["roles"]
                 for role in roles:
                     assert role["workspace"] not in (
-                        WORKSPACE_WITH_ADMIN_ACCESS,
-                        WORKSPACE_WITH_READ_ONLY_ACCESS,
-                        WORKSPACE_WITH_ADMIN_ACCESS_UPDATED,
-                        WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED,
+                        WORKSPACE_WITH_ADMIN_ACCESS_INITIAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL,
+                        WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
                     )
 
             _assert_workspace_grants_revoked()
@@ -708,8 +708,8 @@ class TestCharm:
                 # asserting the MLflow user is granted only the expected tenants (workspaces):
                 for role in user_roles:
                     assert role["workspace"] in (
-                        WORKSPACE_WITH_ADMIN_ACCESS_UPDATED,
-                        WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED,
+                        WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
                     )
             # when the identity is a newly seen one:
             else:
@@ -781,8 +781,8 @@ class TestCharm:
                 # asserting the MLflow user is granted only the expected tenants (workspaces):
                 for role in user_roles:
                     assert role["workspace"] in (
-                        WORKSPACE_WITH_ADMIN_ACCESS_UPDATED,
-                        WORKSPACE_WITH_READ_ONLY_ACCESS_UPDATED,
+                        WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
                     )
             # when the identity is a newly seen one:
             else:
