@@ -104,7 +104,9 @@ protected_admin = payload["protected_admin"]
 
 config = read_auth_config()
 store.init_db(config.database_uri, read_db_uri=config.read_database_uri)
-workspace_store = _get_workspace_store()
+# the reconcile exec does not inherit the server's internal backend-store env var that
+# _get_workspace_store() reads, so point it at the same backend as the auth store explicitly:
+workspace_store = _get_workspace_store(tracking_uri=config.database_uri)
 
 wanted_roles = {}
 wanted_super_admin_roles = set()
