@@ -533,7 +533,7 @@ class TestCharm:
 
     @pytest.mark.abort_on_fail
     async def test_update_workspace_grants_of_user(self, ops_test: OpsTest):
-        """Configure workspace grants for the test user by relating data-integrator."""
+        """Update workspace grants for the test user by reconfiguring data-integrator."""
         await ops_test.model.applications[DATA_INTEGRATOR.charm].set_config(
             {
                 "entity-name": TEST_IDENTITY,
@@ -553,10 +553,6 @@ class TestCharm:
                 ),
             }
         )
-        await ops_test.model.integrate(
-            f"{DATA_INTEGRATOR.charm}:mlflow", f"{CHARM_NAME}:mlflow-client"
-        )
-
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME, DATA_INTEGRATOR.charm], status="active", timeout=600, idle_period=60
         )
