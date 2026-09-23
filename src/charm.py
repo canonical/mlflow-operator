@@ -1222,11 +1222,6 @@ class MlflowCharm(CharmBase):
                     )
                 )
 
-        # TODO(diagnostic): temporary logging to trace why live grant edits are not pruned; remove
-        self.logger.info(
-            "mlflow-client reconcile: users_grants_across_workspaces=%s",
-            users_grants_across_workspaces,
-        )
         # NOTE: an empty reconcile is skipped only as long as a relation removal is not being
         # processed, so that transient empty requests do not prune grants that are still in use:
         if users_grants_across_workspaces or exclude_relation_id is not None:
@@ -1328,9 +1323,7 @@ class MlflowCharm(CharmBase):
             service_context=self._container_name,
         )
         try:
-            stdout, _ = process.wait_output()
-            # TODO(diagnostic): temporary logging to trace the reconcile script's actions; remove
-            self.logger.info("mlflow-client reconcile script output: %s", stdout)
+            process.wait_output()
         except ExecError as error:
             self.logger.error(f"Failed to reconcile mlflow-client access: {error.stderr}")
             raise ErrorWithStatus(

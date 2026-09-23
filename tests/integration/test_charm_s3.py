@@ -98,6 +98,7 @@ RESOURCE_TYPE_FOR_SUPER_ADMIN = "super-admin"
 RESOURCE_TYPE_FOR_WORKSPACE = "workspace"
 TEST_IDENTITY_ALIAS = f"identity-that-aliases-{TEST_IDENTITY}"
 UPSTREAM_WORKSPACE_HEADER_NAME = "X-MLFLOW-WORKSPACE"
+WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED = "charm-mlflow-client-"
 WORKSPACE_WITH_ADMIN_ACCESS_INITIAL = "my-initial-writable-workspace"
 WORKSPACE_WITH_ADMIN_ACCESS_FINAL = "my-final-writable-workspace"
 WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL = "my-initial-read-only-workspace"
@@ -466,8 +467,12 @@ class TestCharm:
                 headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
             )
             assert roles.status_code == 200
-            roles = roles.json()["roles"]
-            for role in roles:
+            charm_managed_workspace_roles = [
+                role
+                for role in roles.json()["roles"]
+                if role["name"].startswith(WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED)
+            ]
+            for role in charm_managed_workspace_roles:
                 role_permissions = role["permissions"]
                 role_workspace = role["workspace"]
                 for permission in role_permissions:
@@ -587,8 +592,12 @@ class TestCharm:
                 headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
             )
             assert roles.status_code == 200
-            roles = roles.json()["roles"]
-            for role in roles:
+            charm_managed_workspace_roles = [
+                role
+                for role in roles.json()["roles"]
+                if role["name"].startswith(WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED)
+            ]
+            for role in charm_managed_workspace_roles:
                 role_permissions = role["permissions"]
                 role_workspace = role["workspace"]
                 for permission in role_permissions:
