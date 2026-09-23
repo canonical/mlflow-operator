@@ -690,8 +690,8 @@ class TestCharm:
                 # asserting the MLflow user is granted only the expected tenants (workspaces):
                 for role in charm_managed_workspace_roles:
                     assert role["workspace"] in (
-                        WORKSPACE_WITH_ADMIN_ACCESS_INITIAL,
-                        WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL,
+                        WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
                     )
             # when the identity is a newly seen one:
             else:
