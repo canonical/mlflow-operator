@@ -670,18 +670,23 @@ class TestCharm:
             assert current_roles_response.status_code == 200
             user_roles = current_roles_response.json()["roles"]
 
+            charm_managed_workspace_roles = [
+                role
+                for role in user_roles
+                if role["name"].startswith(WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED)
+            ]
             # when the identity is the test identity the charm preconfigured:
             if identity == TEST_IDENTITY:
                 # asserting the MLflow user is granted only the expected tenants (workspaces):
-                for role in user_roles:
+                for role in charm_managed_workspace_roles:
                     assert role["workspace"] in (
-                        WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
-                        WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
+                        WORKSPACE_WITH_ADMIN_ACCESS_INITIAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL,
                     )
             # when the identity is a newly seen one:
             else:
                 # asserting the MLflow user has no grants:
-                assert user_roles == []
+                assert charm_managed_workspace_roles == []
 
     @pytest.mark.abort_on_fail
     async def test_configure_identity_aliases(self, ops_test: OpsTest):
@@ -742,20 +747,23 @@ class TestCharm:
             assert current_roles_response.status_code == 200
             user_roles = current_roles_response.json()["roles"]
 
+            charm_managed_workspace_roles = [
+                role
+                for role in user_roles
+                if role["name"].startswith(WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED)
+            ]
             # when the identity is the test identity the charm preconfigured or an alias of its:
             if identity in (TEST_IDENTITY, TEST_IDENTITY_ALIAS):
                 # asserting the MLflow user is granted only the expected tenants (workspaces):
-                for role in user_roles:
+                for role in charm_managed_workspace_roles:
                     assert role["workspace"] in (
-                        WORKSPACE_WITH_ADMIN_ACCESS_INITIAL,
-                        WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL,
                         WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
                         WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
                     )
             # when the identity is a newly seen one:
             else:
                 # asserting the MLflow user has no grants:
-                assert user_roles == []
+                assert charm_managed_workspace_roles == []
 
     @pytest.mark.abort_on_fail
     async def test_deploy_resource_dispatcher(self, ops_test: OpsTest):
@@ -1331,8 +1339,12 @@ class TestCharm:
                     headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
                 )
                 assert roles.status_code == 200
-                roles = roles.json()["roles"]
-                for role in roles:
+                charm_managed_workspace_roles = [
+                    role
+                    for role in roles.json()["roles"]
+                    if role["name"].startswith(WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED)
+                ]
+                for role in charm_managed_workspace_roles:
                     assert role["workspace"] not in (
                         WORKSPACE_WITH_ADMIN_ACCESS_INITIAL,
                         WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL,
