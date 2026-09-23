@@ -582,9 +582,6 @@ class TestCharm:
             WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL: GRANTS_FOR_READ_ONLY,
         }
 
-    # the provider applies a live grant edit on a later reconcile, which can lag the requirer's
-    # relation-data write by a reconcile cycle, so retry until the updated grants propagate:
-    @retry(stop=stop_after_delay(600), wait=wait_fixed(10), reraise=True)
     @pytest.mark.abort_on_fail
     async def test_updated_workspace_grants_are_defined(self, ops_test: OpsTest):
         """The updated workspace grants are defined for the test user."""

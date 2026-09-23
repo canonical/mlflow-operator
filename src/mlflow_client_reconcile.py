@@ -137,11 +137,23 @@ for entry in payload["users"]:
         wanted_roles.setdefault(workspace, set()).add(role_name)
 
 # prune the charm-owned per-workspace roles that are no longer requested:
-for role in store.list_roles():
+# TODO(diagnostic): temporary tracing of why live grant edits are not pruned; revert to the plain
+# loop once resolved:
+_all_roles = store.list_roles()
+_charm_roles = [
+    (r.name, r.workspace) for r in _all_roles if r.name.startswith(ROLE_PREFIX_FOR_WORKSPACE_WIDE)
+]
+_pruned = []
+for role in _all_roles:
     if role.name.startswith(ROLE_PREFIX_FOR_WORKSPACE_WIDE) and role.name not in wanted_roles.get(
         role.workspace, set()
     ):
         store.delete_role(role.id)
+        _pruned.append((role.name, role.workspace))
+print(
+    "mlflow-client reconcile diag: wanted_roles=%s charm_roles=%s pruned=%s"
+    % ({_w: sorted(_n) for _w, _n in wanted_roles.items()}, _charm_roles, _pruned)
+)
 
 # prune the super-admin markers no longer requested, demoting their users (never the charm's own):
 usernames_by_id = {user.id: user.username for user in store.list_users()}
