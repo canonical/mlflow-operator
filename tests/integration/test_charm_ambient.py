@@ -643,8 +643,12 @@ class TestCharm:
             assert response.status_code == 200
 
             client = MlflowClient(tracking_uri=tracking_server_url)
-            client.create_experiment(TEST_EXPERIMENT_NAME)
-            all_experiments = client.search_experiments()
+            mlflow.set_workspace(WORKSPACE_WITH_ADMIN_ACCESS_FINAL)
+            try:
+                client.create_experiment(TEST_EXPERIMENT_NAME)
+                all_experiments = client.search_experiments()
+            finally:
+                mlflow.set_workspace(None)
             assert (
                 len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
             )
@@ -920,10 +924,12 @@ class TestCharm:
                 f'payload=\'{{"name":"{experiment_name}"}}\'; '
                 "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors "
                 f"-X POST '{tracking_uri}/api/2.0/mlflow/experiments/create' "
+                f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
                 # TODO: remove if authentication via IAM charms is implemented in integration tests:
                 f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
                 "-H 'Content-Type: application/json' -d \"$payload\" >/dev/null; "
                 "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors -G "
+                f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
                 # TODO: remove if authentication via IAM charms is implemented in integration tests:
                 f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
                 f"'{tracking_uri}/api/2.0/mlflow/experiments/get-by-name' "
@@ -1189,6 +1195,7 @@ class TestCharm:
         try:
             tracking_uri = f"http://localhost:{mlflow_port}"
             mlflow.set_tracking_uri(tracking_uri)
+            mlflow.set_workspace(WORKSPACE_WITH_ADMIN_ACCESS_FINAL)
 
             experiment_name = f"{TEST_EXPERIMENT_NAME}-proxy-{self.generate_random_string(6)}"
             experiment_id = mlflow.create_experiment(experiment_name)
@@ -1206,6 +1213,7 @@ class TestCharm:
             downloaded_path = download_artifacts(artifact_uri=f"runs:/{run_id}/{artifact_name}")
             assert Path(downloaded_path).read_text() == artifact_content
         finally:
+            mlflow.set_workspace(None)
             for key, value in saved_env_vars.items():
                 if value is not None:
                     os.environ[key] = value
