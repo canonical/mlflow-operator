@@ -519,6 +519,7 @@ class TestCharm:
             else:
                 response = requests.get(
                     f"{tracking_server_url}/api/2.0/mlflow/experiments/search",
+                    params={"max_results": 100},
                     headers=request_headers,
                 )
             assert response.status_code == expected_response_status_code, response.text
