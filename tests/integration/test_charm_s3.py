@@ -603,39 +603,6 @@ class TestCharm:
                         assert False, f"Unexpected workspace '{role_workspace}' in granted roles."
 
     @pytest.mark.abort_on_fail
-    async def test_removing_relation_revokes_workspace_grants(self, ops_test: OpsTest):
-        """Removing the relation prunes the user roles, revoking the user's workspace grants."""
-        await ops_test.model.applications[CHARM_NAME].remove_relation(
-            "mlflow-client", f"{DATA_INTEGRATOR.charm}:mlflow"
-        )
-        await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=600)
-
-        config = await ops_test.model.applications[CHARM_NAME].get_config()
-        tracking_server_port = config["mlflow_port"]["value"]
-
-        # while port-forwarding the tracking server for ease of access:
-        with _PortForward(ops_test.model_name, tracking_server_port) as tracking_server_url:
-
-            @retry(stop=stop_after_delay(60), wait=wait_fixed(5), reraise=True)
-            def _assert_workspace_grants_revoked():
-                roles = requests.get(
-                    f"{tracking_server_url}/api/3.0/mlflow/users/roles/list",
-                    params={"username": TEST_IDENTITY},
-                    headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
-                )
-                assert roles.status_code == 200
-                roles = roles.json()["roles"]
-                for role in roles:
-                    assert role["workspace"] not in (
-                        WORKSPACE_WITH_ADMIN_ACCESS_INITIAL,
-                        WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL,
-                        WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
-                        WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
-                    )
-
-            _assert_workspace_grants_revoked()
-
-    @pytest.mark.abort_on_fail
     async def test_can_create_experiment_with_mlflow_library_via_port_forward(
         self, ops_test: OpsTest
     ):
@@ -1327,3 +1294,36 @@ class TestCharm:
                     "expected the out-of-mesh pod's connection to be reset at L4 (curl exit 56), "
                     f"but curl exited with {exit_code} (stderr: {stderr.strip()})"
                 )
+
+    @pytest.mark.abort_on_fail
+    async def test_removing_relation_revokes_workspace_grants(self, ops_test: OpsTest):
+        """Removing the relation prunes the user roles, revoking the user's workspace grants."""
+        await ops_test.model.applications[CHARM_NAME].remove_relation(
+            "mlflow-client", f"{DATA_INTEGRATOR.charm}:mlflow"
+        )
+        await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=600)
+
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        tracking_server_port = config["mlflow_port"]["value"]
+
+        # while port-forwarding the tracking server for ease of access:
+        with _PortForward(ops_test.model_name, tracking_server_port) as tracking_server_url:
+
+            @retry(stop=stop_after_delay(60), wait=wait_fixed(5), reraise=True)
+            def _assert_workspace_grants_revoked():
+                roles = requests.get(
+                    f"{tracking_server_url}/api/3.0/mlflow/users/roles/list",
+                    params={"username": TEST_IDENTITY},
+                    headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+                )
+                assert roles.status_code == 200
+                roles = roles.json()["roles"]
+                for role in roles:
+                    assert role["workspace"] not in (
+                        WORKSPACE_WITH_ADMIN_ACCESS_INITIAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL,
+                        WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
+                    )
+
+            _assert_workspace_grants_revoked()
