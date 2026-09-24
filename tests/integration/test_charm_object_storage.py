@@ -8,6 +8,7 @@ import base64
 import json
 import logging
 import os
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -99,8 +100,6 @@ class _PortForward:
         self._process = None
 
     def __enter__(self) -> str:
-        import socket
-
         self._process = subprocess.Popen(
             [
                 "kubectl",
@@ -111,21 +110,27 @@ class _PortForward:
                 f"{self._port}:{self._port}",
             ]
         )
-        # polling until the forwarded local port accepts connections:
-        deadline = time.monotonic() + 60
-        while time.monotonic() < deadline:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-                probe.settimeout(1)
-                if probe.connect_ex(("localhost", int(self._port))) == 0:
-                    return f"http://localhost:{self._port}"
-            time.sleep(0.2)
-        raise TimeoutError(
-            f"port-forward to svc/{self._charm_name}:{self._port} was not ready in time"
-        )
+        self._wait_until_forwarded_local_port_accepts_connections()
+        return f"http://localhost:{self._port}"
 
     def __exit__(self, *exc):
         if self._process is not None:
             self._process.terminate()
+
+    @retry(
+        stop=stop_after_delay(60),
+        wait=wait_fixed(0.2),
+        retry=retry_if_exception_type(ConnectionError),
+        reraise=True,
+    )
+    def _wait_until_forwarded_local_port_accepts_connections(self) -> None:
+        """Block until the forwarded local port accepts connections."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.settimeout(1)
+            if probe.connect_ex(("localhost", int(self._port))) != 0:
+                raise ConnectionError(
+                    f"port-forward to svc/{self._charm_name}:{self._port} was not ready in time"
+                )
 
 
 def _safe_load_file_to_text(filename: str) -> str:
