@@ -1210,13 +1210,8 @@ class MlflowCharm(CharmBase):
                         relation.id,
                         ResourceProviderModel(
                             request_id=request.request_id,
-                            # NOTE: while `entity_name` in the provider's response is not used to
-                            # provide clients with that information, as clients themselves set it
-                            # for the provider on the requirer's side in the first place and can
-                            # therefore already be informed about its value by the requirer,
-                            # including it here, in the provider's response, is nevertheless
-                            # necessary for the requirer to correlate the response with its request
-                            # and for the functionality of the employed library:
+                            # NOTE: `entity_name` necessary for the library to work properly even
+                            # if the requirer is already aware of its value because it imposes it:
                             entity_name=request.entity_name,
                         ),
                     )
