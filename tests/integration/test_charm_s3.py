@@ -125,6 +125,8 @@ class _PortForward:
         self._process = None
 
     def __enter__(self) -> str:
+        import socket
+
         self._process = subprocess.Popen(
             [
                 "kubectl",
@@ -135,8 +137,17 @@ class _PortForward:
                 f"{self._port}:{self._port}",
             ]
         )
-        time.sleep(10)  # waiting for the port-forwarding to be established
-        return f"http://localhost:{self._port}"
+        # polling until the forwarded local port accepts connections:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.settimeout(1)
+                if probe.connect_ex(("localhost", self._port)) == 0:
+                    return f"http://localhost:{self._port}"
+            time.sleep(0.2)
+        raise TimeoutError(
+            f"port-forward to svc/{self._charm_name}:{self._port} was not ready in time"
+        )
 
     def __exit__(self, *exc):
         if self._process is not None:
