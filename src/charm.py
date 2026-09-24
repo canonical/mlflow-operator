@@ -54,6 +54,11 @@ from charms.resource_dispatcher.v0.kubernetes_manifests import (
     KubernetesManifest,
     KubernetesManifestRequirerWrapper,
 )
+from dpcharmlibs.interfaces import (
+    RequirerCommonModel,
+    ResourceProviderEventHandler,
+    ResourceProviderModel,
+)
 from jinja2 import Template
 from lightkube import Client
 from lightkube.models.core_v1 import ServicePort
@@ -149,6 +154,18 @@ MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
 AUTH_SECRET_LABEL = "mlflow-auth-credentials"
 
 RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "relational-db"
+
+MLFLOW_CLIENT_RELATION_ENDPOINT = "mlflow-client"
+MLFLOW_CLIENT_DEFAULT_TIER = "edit"
+# `resource_type` values an mlflow-client requirer can set on each `entity-permissions` entry:
+MLFLOW_CLIENT_WORKSPACE_RESOURCE_TYPE = "workspace"  # workspace-wide grant type
+MLFLOW_CLIENT_SUPER_ADMIN_RESOURCE_TYPE = "super-admin"  # cross-workspace, super-admin grant type
+# the access tiers accepted on a workspace grant (kept in sync with the reconcile script's TIERS):
+MLFLOW_CLIENT_TIERS = frozenset({"read-only", "member", "edit", "admin"})
+
+# the RBAC reconcile script the charm runs in the tracking server's container for any mlflow-client
+# requirers over the whole desired set of user grants across workspaces, passed as a JSON argument:
+MLFLOW_CLIENT_RECONCILE_SOURCE_PATH = "src/mlflow_client_reconcile.py"
 
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
@@ -289,6 +306,15 @@ class MlflowCharm(CharmBase):
         self.framework.observe(self.on["s3-credentials"].relation_broken, self._on_event)
 
         self.s3 = S3Requirer(self, relation_name="s3-credentials")
+
+        # provider for mlflow-client relations, provisioning users grants across workspaces:
+        self.mlflow_client_provider = ResourceProviderEventHandler(
+            self, MLFLOW_CLIENT_RELATION_ENDPOINT, RequirerCommonModel
+        )
+        self.framework.observe(
+            self.on[MLFLOW_CLIENT_RELATION_ENDPOINT].relation_broken,
+            self._on_mlflow_client_relation_broken,
+        )
 
     @property
     def container(self):
@@ -1157,6 +1183,173 @@ class MlflowCharm(CharmBase):
         )
         self.container.push(AUTH_CONFIG_CONTAINER_PATH, auth_config, make_dirs=True)
 
+    def _reconcile_mlflow_client_grants(self, exclude_relation_id: Optional[int] = None):
+        """Reconciles user grants across workspaces as requested over every mlflow-client relation.
+
+        Args:
+            exclude_relation_id: relation to skip, set when reconciling on its removal so that the
+                departing requirer's grants are pruned.
+        """
+        if not self.unit.is_leader():
+            return
+
+        users_grants_across_workspaces = []
+        relation_responses_to_requirers = []
+        for relation in self.model.relations[MLFLOW_CLIENT_RELATION_ENDPOINT]:
+            if relation.id == exclude_relation_id:
+                continue
+
+            for request in self.mlflow_client_provider.requests(relation):
+                user_grants = self._build_mlflow_client_user_grants(request)
+                if user_grants is None:
+                    continue
+
+                users_grants_across_workspaces.append(user_grants)
+                relation_responses_to_requirers.append(
+                    (
+                        relation.id,
+                        ResourceProviderModel(
+                            request_id=request.request_id,
+                            # NOTE: `entity_name` necessary for the library to work properly even
+                            # if the requirer is already aware of its value because it imposes it:
+                            entity_name=request.entity_name,
+                        ),
+                    )
+                )
+
+        # NOTE: an empty reconcile is skipped only as long as a relation removal is not being
+        # processed, so that transient empty requests do not prune grants that are still in use:
+        if users_grants_across_workspaces or exclude_relation_id is not None:
+            # reconciling user grants across workspaces:
+            self._exec_mlflow_client_reconcile(users_grants_across_workspaces)
+
+        # communicating reconcile results to requirers:
+        for relation_id, response in relation_responses_to_requirers:
+            self.mlflow_client_provider.set_response(relation_id, response)
+
+    def _build_mlflow_client_user_grants(self, request) -> Optional[dict]:
+        """Turn an mlflow-client request into the workspace grants of the user it represents.
+
+        Parses the request's `entity-permissions` into:
+        - either a set of workspace-wide grants (`resource_type == "workspace"`, one tier each)
+        - or a single global super-admin promotion (`resource_type == "super-admin"`)
+
+        Requests are skipped (and logged) when they:
+        - either are empty
+        - or claim the charm's own, reserved super-admin username
+        - or mix super-admin with workspace-wide grants
+        - or carry an unknown resource type or tier
+        """
+        username = request.entity_name
+        if not username:
+            self.logger.warning("Ignoring mlflow-client request with empty username.")
+            return None
+
+        if username == MLFLOW_SUPER_ADMIN_USERNAME:
+            self.logger.warning(
+                "Ignoring mlflow-client request claiming the charm's reserved super-admin username."
+            )
+            return None
+
+        is_super_admin = False
+        workspace_grants = []
+        for permission in request.entity_permissions or []:
+            # for a super-admin permission instance:
+            if permission.resource_type == MLFLOW_CLIENT_SUPER_ADMIN_RESOURCE_TYPE:
+                is_super_admin = True
+            # for a workspace-wide permission instance:
+            elif permission.resource_type == MLFLOW_CLIENT_WORKSPACE_RESOURCE_TYPE:
+                tier = (
+                    permission.privileges[0]
+                    if permission.privileges
+                    else MLFLOW_CLIENT_DEFAULT_TIER
+                )
+                if tier not in MLFLOW_CLIENT_TIERS:
+                    self.logger.error(
+                        f"Ignoring mlflow-client request with unknown tier '{tier}'."
+                    )
+                    return None
+
+                workspace_grants.append([permission.resource_name, tier])
+            # for an unknown permission instance:
+            else:
+                self.logger.error(
+                    "Ignoring mlflow-client request with unknown resource type "
+                    f"'{permission.resource_type}'."
+                )
+                return None
+
+        if is_super_admin and workspace_grants:
+            self.logger.error(
+                "Ignoring mlflow-client request combining super-admin with workspace grants."
+            )
+            return None
+
+        if not is_super_admin and not workspace_grants:
+            self.logger.error(
+                "Ignoring mlflow-client request with neither super-admin nor workspace-wide grants."
+            )
+            return None
+
+        return {
+            "username": username,
+            "is_super_admin": is_super_admin,
+            "workspace_grants": workspace_grants,
+        }
+
+    def _exec_mlflow_client_reconcile(self, users_grants_across_workspaces: list) -> None:
+        """Reconcile users' grants across workspaces in the tracking server's container.
+
+        Run a Python script in the tracking server's container to reconcile users' grants across
+        workspaces as per the given, desired set of grants. The script acts directly on MLflow's
+        auth store instead of calling the tracking server's HTTP API, so that the reconcile never
+        has to authenticate to MLflow and keeps working even if the charm's super-admin was changed
+        or deleted (intentionally or inadvertently) by an external super-admin.
+        """
+        payload = json.dumps(
+            {
+                "users": users_grants_across_workspaces,
+                "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
+            }
+        )
+        reconcile_script = Path(MLFLOW_CLIENT_RECONCILE_SOURCE_PATH).read_text()
+        process = self.container.exec(
+            ["python3", "-c", reconcile_script, payload],
+            service_context=self._container_name,
+        )
+        try:
+            process.wait_output()
+        except ExecError as error:
+            self.logger.error(f"Failed to reconcile mlflow-client access: {error.stderr}")
+            raise ErrorWithStatus(
+                "Failed to reconcile mlflow-client access; will retry.", WaitingStatus
+            )
+
+    def _on_mlflow_client_relation_broken(self, event) -> None:
+        """Revoke a departing mlflow-client requirer's access on relation removal.
+
+        Only grants themselves are revoked, while the requested MLflow user and workspaces are
+        retained, as other requirers or externally authenticated users may rely on them. For the
+        same reason, grants not directly owned (generated) by the charm such as those externally,
+        independently generated by admins and super-admins from the client side are also retained.
+        """
+        if not self.unit.is_leader():
+            return
+
+        if not self.container.can_connect():
+            event.defer()
+            return
+
+        try:
+            # reconciling with the departing relation excluded, so as to exclude its and only its
+            # grants (and not the ones of other mlflow-client relations):
+            self._reconcile_mlflow_client_grants(exclude_relation_id=event.relation.id)
+        except ErrorWithStatus as err:
+            self.model.unit.status = err.status
+            self.logger.info(f"Event {event} stopped early with message: {str(err)}")
+            if isinstance(err.status, WaitingStatus):
+                event.defer()
+
     def _reconcile_policy_resource_manager(self):
         if not self.unit.is_leader():
             return
@@ -1362,6 +1555,20 @@ class MlflowCharm(CharmBase):
                 self.poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
             )
             self._send_ingress_info(interfaces)
+
+            # NOTE: MLflow clients' workspace grants are reconciled here, on every holistic charm
+            # reconcile with an idempotent approach, rather than by observing the provider
+            # library's per-request events, because:
+            # - the library splits the request lifecycle across three mutually-exclusive events,
+            # `resource_entity_requested` (initial request), `resource_entity_permissions_changed`
+            # (later grant edits) and `relation_broken` (removal), and this way not only are they
+            # all handled in every case at once, but grant edits even take effect even without
+            # recreating the relation
+            # - this ensures workspace grants are re-provisioned even after events unrelated to the
+            # mlflow_client relation, such as workload restarts or backend-store re-relations,
+            # which avoids drifts in MLflow's auth state (which lives in the backend store)
+            if self.model.relations[MLFLOW_CLIENT_RELATION_ENDPOINT]:
+                self._reconcile_mlflow_client_grants()
 
         except ErrorWithStatus as err:
             self.model.unit.status = err.status

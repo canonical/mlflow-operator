@@ -4,8 +4,8 @@
 from _pytest.config.argparsing import Parser
 from auth_helpers import register_identity_request_header_provider
 
-# TODO: remove once multi-tenancy is completed:
-# making the MLflow client's calls in every test authenticate as the hardcoded test identity the
+# TODO: remove if authentication via IAM charms is implemented in integration tests:
+# making the MLflow client's calls in every test authenticate as the desired test identity the
 # custom authentication module of the tracking server grants access to:
 register_identity_request_header_provider()
 
