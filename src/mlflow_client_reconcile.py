@@ -14,17 +14,18 @@ JSON argument in the following format:
 
 For each user requested, it get-or-creates the corresponding user and either promotes it to a
 global super-admin, when "is_super_admin" is set, or it get-or-creates the requested workspaces and
-the respective workspace-scoped roles that grant the user the requested tier in each, to eventually
-prune any charm-owned (i.e., previously created by the charm) roles no longer requested and demote
-any charm-promoted (i.e., previously promoted by the charm) super-admins no longer requested. Roles
-and super-admins not previously created and promoted by the charm are left untouched, as they may
-have been created externally by delegated admins and super-admins on the client side and are
-to be managed by external users, without having the charm interfere with them. For this reason,
-roles created by the charm are always distinguished by means of dedicated name prefixes (but never
-MLflow's reserved `__user_<id>__` synthetic roles, which back client self-service grants) and
-super-admins promoted by the charm are always tracked by means of marker roles under a reserved
-workspace (a marker role needs a workspace to live in, while a super-admin is otherwise not tied to
-any workspace).
+the respective workspace-scoped roles, reconciling each role's permissions to grant exactly the
+user's requested tier there (so a re-tiered user neither accumulates stale grants nor keeps a
+former, higher tier), to eventually prune any charm-owned (i.e., previously created by the charm)
+roles no longer requested and demote any charm-promoted (i.e., previously promoted by the charm)
+super-admins no longer requested. Roles and super-admins not previously created and promoted by the
+charm are left untouched, as they may have been created externally by delegated admins and
+super-admins on the client side and are to be managed by external users, without having the charm
+interfere with them. For this reason, roles created by the charm are always distinguished by means
+of dedicated name prefixes (but never MLflow's reserved `__user_<id>__` synthetic roles, which back
+client self-service grants) and super-admins promoted by the charm are always tracked by means of
+marker roles under a reserved workspace (a marker role needs a workspace to live in, while a
+super-admin is otherwise not tied to any workspace).
 
 NOTE: since this script get-or-creates users, workspaces and roles, it is idempotent (i.e., it
 tolerates that users, workspaces and/or grants already exist).
@@ -99,6 +100,28 @@ def _get_or_create_role(role_name, workspace):
         return next(r for r in store.list_roles([workspace]) if r.name == role_name)
 
 
+def _reconcile_role_permissions(role, native_grants):
+    """Set the charm role's permissions to exactly `native_grants`, adding, updating and removing
+    as needed so a user's changed tier neither accumulates stale grants nor keeps a former, higher
+    tier (MLflow resolves a role's effective permission as the maximum across its grants).
+    """
+    wanted = {
+        (resource_type, resource_pattern): permission
+        for resource_type, resource_pattern, permission in native_grants
+    }
+    for existing in store.list_role_permissions(role.id):
+        slot = (existing.resource_type, existing.resource_pattern)
+        wanted_permission = wanted.pop(slot, None)
+        if wanted_permission is None:
+            store.remove_role_permission(existing.id)
+        elif existing.permission != wanted_permission:
+            store.update_role_permission(existing.id, wanted_permission)
+    for (resource_type, resource_pattern), permission in wanted.items():
+        _tolerate_already_exists(
+            store.add_role_permission, role.id, resource_type, resource_pattern, permission
+        )
+
+
 payload = json.loads(sys.argv[1])
 protected_admin = payload["protected_admin"]
 
@@ -129,10 +152,7 @@ for entry in payload["users"]:
         )
         role = _get_or_create_role(role_name, workspace)
         native_grants = TIERS_TO_NATIVE_GRANTS.get(tier, TIERS_TO_NATIVE_GRANTS[DEFAULT_TIER])
-        for resource_type, resource_pattern, permission in native_grants:
-            _tolerate_already_exists(
-                store.add_role_permission, role.id, resource_type, resource_pattern, permission
-            )
+        _reconcile_role_permissions(role, native_grants)
         _tolerate_already_exists(store.assign_role_to_user, user.id, role.id)
         wanted_roles.setdefault(workspace, set()).add(role_name)
 
