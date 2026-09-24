@@ -112,7 +112,7 @@ GATEWAY_RESOURCE = create_namespaced_resource(
 class _PortForward:
     """Context manager wrapping a `kubectl port-forward` to the tracking server's K8s Service."""
 
-    def __init__(self, namespace: str, port: int, charm_name: str = CHARM_NAME):
+    def __init__(self, namespace: str, port: str, charm_name: str = CHARM_NAME):
         self._charm_name = charm_name
         self._namespace = namespace
         self._port = port
@@ -136,7 +136,7 @@ class _PortForward:
         while time.monotonic() < deadline:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
                 probe.settimeout(1)
-                if probe.connect_ex(("localhost", self._port)) == 0:
+                if probe.connect_ex(("localhost", int(self._port))) == 0:
                     return f"http://localhost:{self._port}"
             time.sleep(0.2)
         raise TimeoutError(
