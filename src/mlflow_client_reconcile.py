@@ -3,6 +3,10 @@
 
 """RBAC reconcile script run by the charm inside the tracking server for mlflow-client requirers.
 
+The script ensures that the whole the whole desired set of users' grants across workspaces is
+reconciled even when the charm loses its super-admin privileges were lost because users granted
+super-admin privileges (intentionally or inadvertently) demoted or deleted it from the client side.
+
 This script is executed by passing the whole desired set of users' grants across workspaces as a
 JSON argument in the following format:
 - "users": a list of mappings where each mapping represents a user and contains the following keys:
