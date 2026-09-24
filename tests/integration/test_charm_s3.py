@@ -609,6 +609,69 @@ class TestCharm:
                         assert False, f"Unexpected workspace '{role_workspace}' in granted roles."
 
     @pytest.mark.abort_on_fail
+    async def test_workspace_grant_tier_change_takes_effect(self, ops_test: OpsTest):
+        """A user's tier change within a retained workspace takes effect, leaving no stale grants.
+
+        A tier change reuses the same charm-owned role, so the reconcile must reset that role's
+        permissions to exactly the new tier: downgrading from admin to read-only must revoke the
+        write access there, and re-upgrading back to admin must restore it.
+        """
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        tracking_server_port = config["mlflow_port"]["value"]
+
+        async def _set_writable_workspace_tier(tier: str) -> None:
+            await ops_test.model.applications[DATA_INTEGRATOR.charm].set_config(
+                {
+                    "entity-name": TEST_IDENTITY,
+                    "entity-permissions": json.dumps(
+                        [
+                            {
+                                "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
+                                "resource_name": WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                                "privileges": [tier],
+                            },
+                            {
+                                "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
+                                "resource_name": WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
+                                "privileges": [GRANTS_FOR_READ_ONLY],
+                            },
+                        ]
+                    ),
+                }
+            )
+            await ops_test.model.wait_for_idle(
+                apps=[CHARM_NAME, DATA_INTEGRATOR.charm],
+                status="active",
+                timeout=600,
+                idle_period=60,
+            )
+
+        def _create_experiment(experiment_name: str):
+            with _PortForward(ops_test.model_name, tracking_server_port) as tracking_server_url:
+                return requests.post(
+                    f"{tracking_server_url}/api/2.0/mlflow/experiments/create",
+                    json={"name": experiment_name},
+                    headers={
+                        UPSTREAM_WORKSPACE_HEADER_NAME: WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                        IDENTITY_HEADER_NAME: TEST_IDENTITY,
+                    },
+                )
+
+        # the user starts as admin on the writable workspace, as left by the grant-update tests:
+        response = _create_experiment("experiment-before-tier-downgrade")
+        assert response.status_code == 200, response.text
+
+        # downgrading that workspace to read-only must revoke the granted write access there:
+        await _set_writable_workspace_tier(GRANTS_FOR_READ_ONLY)
+        response = _create_experiment("experiment-after-tier-downgrade")
+        assert response.status_code == 403, response.text
+
+        # re-upgrading back to admin must restore the write access (and the final grant state):
+        await _set_writable_workspace_tier(GRANTS_FOR_ADMIN)
+        response = _create_experiment("experiment-after-tier-reupgrade")
+        assert response.status_code == 200, response.text
+
+    @pytest.mark.abort_on_fail
     async def test_can_create_experiment_with_mlflow_library_via_port_forward(
         self, ops_test: OpsTest
     ):
