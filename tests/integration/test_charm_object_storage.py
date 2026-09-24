@@ -56,7 +56,7 @@ from minio import Minio
 from mlflow.artifacts import download_artifacts
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
-from tenacity import retry, stop_after_delay, wait_fixed
+from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_fixed
 
 # TODO: remove if authentication via IAM charms is implemented in integration tests:
 from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY  # isort:skip
