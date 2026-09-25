@@ -1568,6 +1568,102 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    def test_build_identity_traffic_extension_targets_tracking_server_service(
+        self, harness: Harness
+    ):
+        """The TrafficExtension targets the tracking server's Service, not the whole waypoint."""
+        harness.update_config({"identity_header_name": "mlflow-userid"})
+        harness.begin()
+        traffic_extension = harness.charm._build_identity_traffic_extension()
+
+        assert traffic_extension.metadata.name == f"{CHARM_NAME}-source-namespace-as-identity"
+        assert traffic_extension.metadata.namespace == harness.model.name
+        # a Service targetRef is waypoint-only, so the extension cannot affect other workloads
+        # fronted by the same waypoint:
+        assert traffic_extension.spec["targetRefs"] == [
+            {"kind": "Service", "group": "", "name": CHARM_NAME}
+        ]
+        assert "match" not in traffic_extension.spec
+        # before the authorization filters, so that policies see the stamped identity:
+        assert traffic_extension.spec["phase"] == "AUTHN"
+
+        lua_code = traffic_extension.spec["lua"]["inlineCode"]
+        # the configured user-ID header is the one stamped from the verified source namespace:
+        assert 'local IDENTITY_HEADER = "mlflow-userid"' in lua_code
+        assert 'filterState():get("io.istio.peer_principal")' in lua_code
+        assert "uriSanPeerCertificate" not in lua_code
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "is_leader, has_service_mesh_relation, expected_called",
+        [(True, True, True), (True, False, False), (False, True, False)],
+        ids=["leader-with-service-mesh", "leader-without-service-mesh", "non-leader"],
+    )
+    def test_reconcile_identity_traffic_extension(
+        self,
+        harness: Harness,
+        is_leader,
+        has_service_mesh_relation,
+        expected_called,
+    ):
+        """The TrafficExtension is only reconciled by the leader, with a service-mesh relation."""
+        harness.set_leader(is_leader)
+        harness.begin()
+        if has_service_mesh_relation:
+            add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+
+        mock_resource_manager = MagicMock()
+        traffic_extension = MagicMock()
+        harness.charm._build_identity_traffic_extension = MagicMock(return_value=traffic_extension)
+
+        with patch.object(
+            MlflowCharm,
+            "_traffic_extension_resource_manager",
+            new_callable=PropertyMock,
+            return_value=mock_resource_manager,
+        ):
+            harness.charm._reconcile_identity_traffic_extension()
+
+        if expected_called:
+            mock_resource_manager.reconcile.assert_called_once_with([traffic_extension])
+        else:
+            mock_resource_manager.reconcile.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "is_leader, expected_called",
+        [(True, True), (False, False)],
+        ids=["leader", "non-leader"],
+    )
+    def test_remove_identity_traffic_extension(self, harness: Harness, is_leader, expected_called):
+        """TrafficExtension removal is leader-gated before reconciliation."""
+        harness.set_leader(is_leader)
+        harness.begin()
+        mock_resource_manager = MagicMock()
+
+        with patch.object(
+            MlflowCharm,
+            "_traffic_extension_resource_manager",
+            new_callable=PropertyMock,
+            return_value=mock_resource_manager,
+        ):
+            harness.charm._remove_identity_traffic_extension(None)
+
+        if expected_called:
+            mock_resource_manager.reconcile.assert_called_once_with([])
+        else:
+            mock_resource_manager.reconcile.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
     @patch("charm.ServiceMeshConsumer")
     def test_metrics_unit_policy_registered_with_service_mesh(
         self, service_mesh_consumer: MagicMock, harness: Harness
