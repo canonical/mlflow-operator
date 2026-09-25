@@ -31,13 +31,13 @@ from charmed_kubeflow_chisme.testing import (
     ISTIO_BEACON_K8S_APP,
     ISTIO_INGRESS_K8S_APP,
     ISTIO_INGRESS_ROUTE_ENDPOINT,
+    ISTIO_K8S_APP,
     assert_alert_rules,
     assert_grafana_dashboards,
     assert_logging,
     assert_metrics_endpoint,
     assert_path_reachable_through_ingress,
     assert_security_context,
-    deploy_and_integrate_service_mesh_charms,
     generate_container_securitycontext_map,
     get_alert_rules,
     get_grafana_dashboards,
@@ -81,10 +81,12 @@ PODDEFAULTS_SUFFIXES = ["-access-minio", "-minio"]
 SECRET_SUFFIX = "-minio-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
 PROFILE_FILE = "./tests/integration/profile.yaml"
+SPOOFED_IDENTITY = "spoofed-user-identity"
 
 # A second istio-ingress-k8s instance used to verify multiple-ingress support.
 SECOND_INGRESS_APP = "istio-ingress-k8s-alt"
 INGRESS_CHANNEL = "2/stable"
+ISTIO_K8S_CHANNEL = "dev/edge/upstream-images"
 # Name of the HTTPRoute submitted by mlflow (see charm._ingress_config).
 INGRESS_ROUTE_NAME = "http-route"
 # Gateway listener section for cleartext HTTP on port 80.
@@ -221,7 +223,7 @@ async def assert_ui_is_accessible(ops_test: OpsTest):
 
 
 @pytest.fixture(scope="module")
-async def profile_namespace(ops_test: OpsTest, lightkube_client: lightkube.Client):
+async def profile_namespace(ops_test: OpsTest, lightkube_client: lightkube.Client) -> str:
     """Ensure a kubeflow profile namespace exists for tests and clean it up afterwards."""
     if KUBEFLOW_PROFILES.charm not in ops_test.model.applications:
         pytest.fail("kubeflow-profiles must be deployed before creating a profile")
@@ -284,6 +286,102 @@ class TestCharm:
     def generate_random_string(length: int = 4):
         """Returns a random string of lower case alphabetic characters and given length."""
         return "".join(choices(ascii_lowercase, k=length))
+
+    @staticmethod
+    def _run_script_from_pod(namespace: str, script: str) -> str:
+        """Run a shell script in a temporary pod and return its logs."""
+        pod_name = f"mlflow-client-{TestCharm.generate_random_string(6)}"
+        logs_result = None
+        phase = None
+        try:
+            subprocess.run(
+                [
+                    "kubectl",
+                    "-n",
+                    namespace,
+                    "run",
+                    pod_name,
+                    "--image=curlimages/curl:8.8.0",
+                    "--restart=Never",
+                    "--command",
+                    "--",
+                    "sh",
+                    "-c",
+                    script,
+                ],
+                check=True,
+            )
+
+            deadline = time.monotonic() + 180
+            while time.monotonic() < deadline:
+                phase_result = subprocess.run(
+                    [
+                        "kubectl",
+                        "-n",
+                        namespace,
+                        "get",
+                        "pod",
+                        pod_name,
+                        "-o",
+                        "jsonpath={.status.phase}",
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                if phase_result.returncode == 0:
+                    phase = phase_result.stdout
+                    if phase in {"Succeeded", "Failed"}:
+                        break
+                time.sleep(2)
+            else:
+                raise TimeoutError(f"pod/{pod_name} did not reach a terminal phase in time")
+
+            logs_result = subprocess.run(
+                ["kubectl", "-n", namespace, "logs", pod_name],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if phase == "Failed":
+                raise AssertionError(f"pod/{pod_name} failed; see its logs above")
+            return logs_result.stdout
+        finally:
+            if logs_result is None:
+                logs_result = subprocess.run(
+                    ["kubectl", "-n", namespace, "logs", pod_name],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            logger.info(
+                "MLflow client pod logs (return_code=%s):\n%s",
+                logs_result.returncode,
+                logs_result.stdout,
+            )
+            if logs_result.stderr:
+                logger.info("MLflow client pod logs stderr:\n%s", logs_result.stderr)
+            subprocess.run(
+                [
+                    "kubectl",
+                    "-n",
+                    namespace,
+                    "delete",
+                    "pod",
+                    pod_name,
+                    "--ignore-not-found",
+                ],
+                check=False,
+            )
+
+    @staticmethod
+    def _json_log_value(logs: str, prefix: str) -> dict:
+        """Return the first JSON value following prefix in the pod logs."""
+        _, separator, remainder = logs.partition(prefix)
+        if not separator:
+            raise ValueError(f"No log entry starts with {prefix!r}")
+        value, _ = json.JSONDecoder().raw_decode(remainder.lstrip())
+        return value
 
     @pytest.mark.abort_on_fail
     async def test_add_s3_and_db_relation_expect_active(self, ops_test: OpsTest):
@@ -893,8 +991,58 @@ class TestCharm:
         The tracking server is also restricted to in-mesh source principals here, so the rest of
         the ambient suite exercises the charm under that authorization policy.
         """
-        # deploy charms providing the service mesh and the ingress while relating MLflow to them:
-        await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
+        # TODO: restore once TrafficExtension is released to the regular Istio channel.
+        # await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
+
+        # An explicit Juju CLI deploy is temporarily required because python-libjuju cannot parse
+        # this branch channel.
+        await ops_test.juju(
+            "deploy",
+            ISTIO_K8S_APP,
+            "--trust",
+            "--channel",
+            ISTIO_K8S_CHANNEL,
+            "--revision",
+            "76",
+            "--config",
+            "platform=",
+        )
+        await ops_test.model.wait_for_idle(
+            [ISTIO_K8S_APP],
+            raise_on_blocked=False,
+            raise_on_error=False,
+            wait_for_active=True,
+            timeout=900,
+        )
+
+        await ops_test.model.deploy(
+            ISTIO_INGRESS_K8S_APP,
+            channel=INGRESS_CHANNEL,
+            trust=True,
+        )
+        await ops_test.model.wait_for_idle(
+            [ISTIO_INGRESS_K8S_APP],
+            raise_on_blocked=False,
+            raise_on_error=False,
+            wait_for_active=True,
+            timeout=900,
+        )
+
+        await ops_test.model.deploy(
+            ISTIO_BEACON_K8S_APP,
+            channel=INGRESS_CHANNEL,
+            trust=True,
+            config={"model-on-mesh": True},
+        )
+        await ops_test.model.wait_for_idle(
+            [ISTIO_BEACON_K8S_APP],
+            raise_on_blocked=False,
+            raise_on_error=False,
+            wait_for_active=True,
+            timeout=900,
+        )
+
+        await integrate_with_service_mesh(CHARM_NAME, ops_test.model)
 
         # restrict the tracking server to the platform waypoint's identity (in-mesh traffic); the
         # ingress gateway is allowed separately by istio-ingress-k8s's own L4 policy:
@@ -951,6 +1099,29 @@ class TestCharm:
             timeout=900,
         )
 
+    @pytest.mark.abort_on_fail
+    async def test_configure_profile_identity_alias(
+        self, ops_test: OpsTest, profile_namespace: str
+    ):
+        """Alias the verified Profile namespace identity to the provisioned MLflow user."""
+        await ops_test.model.applications[CHARM_NAME].set_config(
+            {
+                "identity_aliases": (
+                    f"{TEST_IDENTITY_ALIAS}: {TEST_IDENTITY}\n"
+                    f"{profile_namespace}: {TEST_IDENTITY}\n"
+                )
+            }
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=600,
+            idle_period=60,
+        )
+        assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+
     @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
     async def test_ui_is_accessible(self, lightkube_client, ops_test: OpsTest):
@@ -967,105 +1138,64 @@ class TestCharm:
     async def test_can_create_experiment_from_user_namespace(
         self, ops_test: OpsTest, profile_namespace: str
     ):
-        """Create an experiment from a pod in a namespace created via kubeflow-profiles."""
+        """Use the aliased Profile identity to authenticate and create an experiment."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
-
-        pod_name = f"mlflow-experimenter-{self.generate_random_string(6)}"
         experiment_name = f"{TEST_EXPERIMENT_NAME}-{self.generate_random_string(6)}"
-        logs_result = None
+        tracking_uri = f"http://{CHARM_NAME}.{ops_test.model_name}.svc.cluster.local:{mlflow_port}"
+        curl_script = (
+            "set -e; "
+            f'payload=\'{{"name":"{experiment_name}"}}\'; '
+            "curl --fail-with-body -sS --retry 30 --retry-delay 5 "
+            f"-X POST '{tracking_uri}/api/2.0/mlflow/experiments/create' "
+            f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
+            "-H 'Content-Type: application/json' -d \"$payload\"; "
+            "printf '\\n'; "
+            "printf 'current_user='; "
+            "curl --fail-with-body -sS "
+            f"'{tracking_uri}/api/2.0/mlflow/users/current'; "
+            "printf '\\nexperiment='; "
+            "curl --fail-with-body -sS -G "
+            f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
+            f"'{tracking_uri}/api/2.0/mlflow/experiments/get-by-name' "
+            f"--data-urlencode 'experiment_name={experiment_name}'; "
+            "printf '\\n'"
+        )
 
-        try:
-            tracking_uri = (
-                f"http://{CHARM_NAME}.{ops_test.model_name}.svc.cluster.local:{mlflow_port}"
-            )
-            logger.info(
-                f"Creating experiment from namespace={profile_namespace} "
-                f"pod={pod_name} experiment={experiment_name} uri={tracking_uri}"
-            )
-            curl_script = (
-                "set -e; "
-                f'payload=\'{{"name":"{experiment_name}"}}\'; '
-                "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors "
-                f"-X POST '{tracking_uri}/api/2.0/mlflow/experiments/create' "
-                f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
-                # TODO: remove if authentication via IAM charms is implemented in integration tests:
-                f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
-                "-H 'Content-Type: application/json' -d \"$payload\" >/dev/null; "
-                "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors -G "
-                f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
-                # TODO: remove if authentication via IAM charms is implemented in integration tests:
-                f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
-                f"'{tracking_uri}/api/2.0/mlflow/experiments/get-by-name' "
-                f"--data-urlencode 'experiment_name={experiment_name}'"
-            )
+        logs = self._run_script_from_pod(profile_namespace, curl_script)
 
-            subprocess.run(
-                [
-                    "kubectl",
-                    "-n",
-                    profile_namespace,
-                    "run",
-                    pod_name,
-                    "--image=curlimages/curl:8.8.0",
-                    "--restart=Never",
-                    "--command",
-                    "--",
-                    "sh",
-                    "-c",
-                    curl_script,
-                ],
-                check=True,
-            )
-            logger.info(f"Experimenter pod created: {pod_name} in namespace {profile_namespace}")
+        current_user = self._json_log_value(logs, "current_user=")
+        assert current_user["user"]["username"] == TEST_IDENTITY
+        experiment = self._json_log_value(logs, "experiment=")
+        assert experiment["experiment"]["name"] == experiment_name
 
-            subprocess.run(
-                [
-                    "kubectl",
-                    "-n",
-                    profile_namespace,
-                    "wait",
-                    f"pod/{pod_name}",
-                    "--for=jsonpath={.status.phase}=Succeeded",
-                    "--timeout=180s",
-                ],
-                check=True,
-            )
-            logger.info(f"Experimenter pod succeeded: {pod_name}")
-            logs_result = subprocess.run(
-                ["kubectl", "-n", profile_namespace, "logs", pod_name],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            assert experiment_name in logs_result.stdout
-            logger.info(f"Experiment creation verified for: {experiment_name}")
-        finally:
-            if logs_result is None:
-                logs_result = subprocess.run(
-                    ["kubectl", "-n", profile_namespace, "logs", pod_name],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-            logger.info(
-                f"Experimenter pod logs (return_code={logs_result.returncode}):\n"
-                f"{logs_result.stdout}"
-            )
-            if logs_result.stderr:
-                logger.info(f"Experimenter pod logs stderr:\n{logs_result.stderr}")
-            subprocess.run(
-                [
-                    "kubectl",
-                    "-n",
-                    profile_namespace,
-                    "delete",
-                    "pod",
-                    pod_name,
-                    "--ignore-not-found",
-                ],
-                check=False,
-            )
+    @retry(
+        stop=stop_after_delay(300),
+        wait=wait_fixed(10),
+        retry=retry_if_exception_type(subprocess.CalledProcessError),
+        reraise=True,
+    )
+    @pytest.mark.abort_on_fail
+    async def test_profile_identity_header_cannot_be_spoofed(
+        self, ops_test: OpsTest, profile_namespace: str
+    ):
+        """Replace a client-supplied identity with the verified Profile namespace identity."""
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        tracking_uri = f"http://{CHARM_NAME}.{ops_test.model_name}.svc.cluster.local:{mlflow_port}"
+        curl_script = (
+            "set -e; printf 'current_user='; "
+            "curl --fail-with-body -sS --retry 30 --retry-delay 5 "
+            f"-H '{IDENTITY_HEADER_NAME}: {SPOOFED_IDENTITY}' "
+            f"'{tracking_uri}/api/2.0/mlflow/users/current'; "
+            "printf '\\n'"
+        )
+
+        logs = self._run_script_from_pod(profile_namespace, curl_script)
+
+        current_user = self._json_log_value(logs, "current_user=")
+        assert current_user["user"]["username"] == TEST_IDENTITY
+        assert current_user["user"]["username"] != SPOOFED_IDENTITY
 
     @pytest.mark.abort_on_fail
     async def test_new_user_namespace_has_manifests(
