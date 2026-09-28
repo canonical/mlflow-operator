@@ -11,8 +11,10 @@ kubeflow-profiles helpers/fixtures) but provides object storage through the
 """
 
 import base64
+import json
 import logging
 import os
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -44,6 +46,7 @@ from charmed_kubeflow_chisme.testing import (
 )
 from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_integrator
 from charms_dependencies import (
+    DATA_INTEGRATOR,
     KUBEFLOW_PROFILES,
     METACONTROLLER_OPERATOR,
     POSTGRESQL_K8S,
@@ -64,8 +67,8 @@ from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import Retrying, retry, retry_if_exception_type, stop_after_delay, wait_fixed
 
-# TODO: remove once multi-tenancy is completed:
-from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY, TEST_WORKSPACE  # isort:skip
+# TODO: remove if authentication via IAM charms is implemented in integration tests:
+from auth_helpers import IDENTITY_HEADER_NAME, TEST_IDENTITY  # isort:skip
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +92,18 @@ HTTP_SECTION_NAME = "http-80"
 # Path matched by the mlflow HTTPRoute.
 INGRESS_ROUTE_PATH = HTTP_PATH
 
+# for testing user grants across different MLflow workspaces:
+GRANTS_FOR_ADMIN = "admin"
+GRANTS_FOR_READ_ONLY = "read-only"
+RESOURCE_TYPE_FOR_SUPER_ADMIN = "super-admin"
+RESOURCE_TYPE_FOR_WORKSPACE = "workspace"
 TEST_IDENTITY_ALIAS = f"identity-that-aliases-{TEST_IDENTITY}"
+UPSTREAM_WORKSPACE_HEADER_NAME = "X-MLFLOW-WORKSPACE"
+WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED = "charm-mlflow-client-"
+WORKSPACE_WITH_ADMIN_ACCESS_INITIAL = "my-initial-writable-workspace"
+WORKSPACE_WITH_ADMIN_ACCESS_FINAL = "my-final-writable-workspace"
+WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL = "my-initial-read-only-workspace"
+WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL = "my-final-read-only-workspace"
 
 PodDefault = create_namespaced_resource("kubeflow.org", "v1alpha1", "PodDefault", "poddefaults")
 Profile = create_global_resource("kubeflow.org", "v1", "Profile", "profiles")
@@ -100,6 +114,49 @@ HTTPROUTE_RESOURCE = create_namespaced_resource(
 GATEWAY_RESOURCE = create_namespaced_resource(
     "gateway.networking.k8s.io", "v1", "Gateway", "gateways"
 )
+
+
+class _PortForward:
+    """Context manager wrapping a `kubectl port-forward` to the tracking server's K8s Service."""
+
+    def __init__(self, namespace: str, port: str, charm_name: str = CHARM_NAME):
+        self._charm_name = charm_name
+        self._namespace = namespace
+        self._port = port
+        self._process = None
+
+    def __enter__(self) -> str:
+        self._process = subprocess.Popen(
+            [
+                "kubectl",
+                "-n",
+                self._namespace,
+                "port-forward",
+                f"svc/{self._charm_name}",
+                f"{self._port}:{self._port}",
+            ]
+        )
+        self._wait_until_forwarded_local_port_accepts_connections()
+        return f"http://localhost:{self._port}"
+
+    def __exit__(self, *exc):
+        if self._process is not None:
+            self._process.terminate()
+
+    @retry(
+        stop=stop_after_delay(60),
+        wait=wait_fixed(0.2),
+        retry=retry_if_exception_type(ConnectionError),
+        reraise=True,
+    )
+    def _wait_until_forwarded_local_port_accepts_connections(self) -> None:
+        """Block until the forwarded local port accepts connections."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.settimeout(1)
+            if probe.connect_ex(("localhost", int(self._port))) != 0:
+                raise ConnectionError(
+                    f"port-forward to svc/{self._charm_name}:{self._port} was not ready in time"
+                )
 
 
 def _safe_load_file_to_text(filename: str) -> str:
@@ -155,7 +212,7 @@ async def assert_ui_is_accessible(ops_test: OpsTest):
     """Verify that UI is accessible through the ingress gateway."""
     await assert_path_reachable_through_ingress(
         http_path=HTTP_PATH,
-        # TODO: remove once multi-tenancy is completed:
+        # TODO: remove if authentication via IAM charms is implemented in integration tests:
         headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
         namespace=ops_test.model.name,
         expected_content_type="text/html",
@@ -323,27 +380,312 @@ class TestCharm:
     async def test_can_connect_exporter_and_get_metrics(self, ops_test: OpsTest):
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         exporter_port = config["mlflow_prometheus_exporter_port"]["value"]
-        mlflow_subprocess = subprocess.Popen(
-            [
-                "kubectl",
-                "-n",
-                f"{ops_test.model_name}",
-                "port-forward",
-                f"svc/{CHARM_NAME}",
-                f"{exporter_port}:{exporter_port}",
-            ]
+        # while port-forwarding the metrics exporter for ease of access:
+        with _PortForward(ops_test.model_name, exporter_port) as metrics_exporter_url:
+            url = f"{metrics_exporter_url}/metrics"
+            response = requests.get(url)
+            assert response.status_code == 200
+            metrics_text = response.text
+            assert 'mlflow_metric{metric_name="num_experiments"} 1.0' in metrics_text
+            assert 'mlflow_metric{metric_name="num_registered_models"} 0.0' in metrics_text
+            assert 'mlflow_metric{metric_name="num_runs"} 0' in metrics_text
+
+    @pytest.mark.abort_on_fail
+    async def test_deploy_data_integrator(self, ops_test: OpsTest):
+        """Deploy a data-integrator instance, for user grants in subsequent tests."""
+        # TODO: remove this command and restore the command below once
+        # https://github.com/canonical/data-integrator/pull/328 lands on main, that is on channel
+        # "latest/edge", and mind that an explicit Juju-CLI deploy is temporarily required because
+        # python-libjuju's `Model.deploy()` breaks with this temporary channel format:
+        await ops_test.juju(
+            "deploy",
+            DATA_INTEGRATOR.charm,
+            "--trust",
+            "--channel",
+            "latest/edge/mlflow-client",
+            "--revision",
+            "521",
         )
-        time.sleep(10)  # Must wait for port-forward
+        # await ops_test.model.deploy(
+        #     DATA_INTEGRATOR.charm,
+        #     channel=DATA_INTEGRATOR.channel,
+        #     config=DATA_INTEGRATOR.config,
+        #     trust=DATA_INTEGRATOR.trust,
+        # )
+        await ops_test.model.wait_for_idle(
+            apps=[DATA_INTEGRATOR.charm], status="blocked", timeout=600, idle_period=60
+        )
 
-        url = f"http://localhost:{exporter_port}/metrics"
-        response = requests.get(url)
-        assert response.status_code == 200
-        metrics_text = response.text
-        assert 'mlflow_metric{metric_name="num_experiments"} 1.0' in metrics_text
-        assert 'mlflow_metric{metric_name="num_registered_models"} 0.0' in metrics_text
-        assert 'mlflow_metric{metric_name="num_runs"} 0' in metrics_text
+    @pytest.mark.abort_on_fail
+    async def test_configure_workspace_grants_of_user(self, ops_test: OpsTest):
+        """Configure workspace grants for the test user by relating data-integrator."""
+        await ops_test.model.applications[DATA_INTEGRATOR.charm].set_config(
+            {
+                "entity-name": TEST_IDENTITY,
+                "entity-permissions": json.dumps(
+                    [
+                        {
+                            "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
+                            "resource_name": WORKSPACE_WITH_ADMIN_ACCESS_INITIAL,
+                            "privileges": [GRANTS_FOR_ADMIN],
+                        },
+                        {
+                            "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
+                            "resource_name": WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL,
+                            "privileges": [GRANTS_FOR_READ_ONLY],
+                        },
+                    ]
+                ),
+            }
+        )
+        await ops_test.model.integrate(
+            f"{DATA_INTEGRATOR.charm}:mlflow", f"{CHARM_NAME}:mlflow-client"
+        )
 
-        mlflow_subprocess.terminate()
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME, DATA_INTEGRATOR.charm], status="active", timeout=600, idle_period=60
+        )
+
+    @pytest.mark.abort_on_fail
+    async def test_get_credentials_returns_correct_grants(self, ops_test: OpsTest):
+        """The requirer's get-credentials action returns the provisioned workspace grants."""
+        unit = ops_test.model.applications[DATA_INTEGRATOR.charm].units[0]
+        action = await unit.run_action("get-credentials")
+        result = await action.wait()
+
+        assert result.results.get("ok") in (True, "True")
+        mlflow_credentials = result.results["mlflow"]
+        assert mlflow_credentials["username"] == TEST_IDENTITY
+        assert json.loads(mlflow_credentials["grants"]) == {
+            WORKSPACE_WITH_ADMIN_ACCESS_INITIAL: GRANTS_FOR_ADMIN,
+            WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL: GRANTS_FOR_READ_ONLY,
+        }
+
+    @pytest.mark.abort_on_fail
+    async def test_configured_workspace_grants_are_defined(self, ops_test: OpsTest):
+        """The configured workspace grants are defined for the test user."""
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        tracking_server_port = config["mlflow_port"]["value"]
+
+        # while port-forwarding the tracking server for ease of access:
+        with _PortForward(ops_test.model_name, tracking_server_port) as tracking_server_url:
+            current_user = requests.get(
+                f"{tracking_server_url}/api/2.0/mlflow/users/current",
+                headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+            )
+            assert current_user.status_code == 200
+            assert current_user.json()["user"]["username"] == TEST_IDENTITY
+
+            # asserting workspace grants are correctly defined:
+            roles = requests.get(
+                f"{tracking_server_url}/api/3.0/mlflow/users/roles/list",
+                params={"username": TEST_IDENTITY},
+                headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+            )
+            assert roles.status_code == 200
+            charm_managed_workspace_roles = [
+                role
+                for role in roles.json()["roles"]
+                if role["name"].startswith(WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED)
+            ]
+            for role in charm_managed_workspace_roles:
+                role_permissions = role["permissions"]
+                role_workspace = role["workspace"]
+                for permission in role_permissions:
+                    if role_workspace == WORKSPACE_WITH_ADMIN_ACCESS_INITIAL:
+                        assert permission["permission"] == "MANAGE"
+                    elif role_workspace == WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL:
+                        assert permission["permission"] == "READ"
+                    else:
+                        assert False, f"Unexpected workspace '{role_workspace}' in granted roles."
+
+    @pytest.mark.abort_on_fail
+    @pytest.mark.parametrize(
+        "selected_workspace,is_write_operation,expected_response_status_code",
+        [
+            (WORKSPACE_WITH_ADMIN_ACCESS_INITIAL, False, 200),
+            (WORKSPACE_WITH_ADMIN_ACCESS_INITIAL, True, 200),
+            (WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL, False, 200),
+            (WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL, True, 403),
+        ],
+    )
+    async def test_configured_workspace_grants_take_effect(
+        self,
+        ops_test: OpsTest,
+        selected_workspace: str,
+        is_write_operation: bool,
+        expected_response_status_code: int,
+    ):
+        """The configured workspace grants take effect for the test user."""
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        tracking_server_port = config["mlflow_port"]["value"]
+
+        # while port-forwarding the tracking server for ease of access:
+        with _PortForward(ops_test.model_name, tracking_server_port) as tracking_server_url:
+            request_headers = {
+                UPSTREAM_WORKSPACE_HEADER_NAME: selected_workspace,
+                # TODO: remove if authentication via IAM charms is implemented in integration
+                # tests:
+                IDENTITY_HEADER_NAME: TEST_IDENTITY,
+            }
+            if is_write_operation:
+                response = requests.post(
+                    f"{tracking_server_url}/api/2.0/mlflow/experiments/create",
+                    # NOTE: the resulting experiment is actually created only once (when write
+                    # requests and with admin grants), so the write request does not need to be
+                    # idempotent:
+                    json={"name": "experiment-to-test-grants-take-effect"},
+                    headers=request_headers,
+                )
+            else:
+                response = requests.get(
+                    f"{tracking_server_url}/api/2.0/mlflow/experiments/search",
+                    params={"max_results": 100},
+                    headers=request_headers,
+                )
+            assert response.status_code == expected_response_status_code, response.text
+
+    @pytest.mark.abort_on_fail
+    async def test_update_workspace_grants_of_user(self, ops_test: OpsTest):
+        """Update workspace grants for the test user by reconfiguring data-integrator."""
+        await ops_test.model.applications[DATA_INTEGRATOR.charm].set_config(
+            {
+                "entity-name": TEST_IDENTITY,
+                "entity-permissions": json.dumps(
+                    [
+                        {
+                            "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
+                            "resource_name": WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                            "privileges": [GRANTS_FOR_ADMIN],
+                        },
+                        {
+                            "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
+                            "resource_name": WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
+                            "privileges": [GRANTS_FOR_READ_ONLY],
+                        },
+                    ]
+                ),
+            }
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME, DATA_INTEGRATOR.charm], status="active", timeout=600, idle_period=60
+        )
+
+    @pytest.mark.abort_on_fail
+    async def test_get_credentials_returns_updated_grants(self, ops_test: OpsTest):
+        """The requirer's get-credentials action returns the updated workspace grants."""
+        unit = ops_test.model.applications[DATA_INTEGRATOR.charm].units[0]
+        action = await unit.run_action("get-credentials")
+        result = await action.wait()
+
+        assert result.results.get("ok") in (True, "True")
+        mlflow_credentials = result.results["mlflow"]
+        assert mlflow_credentials["username"] == TEST_IDENTITY
+        assert json.loads(mlflow_credentials["grants"]) == {
+            WORKSPACE_WITH_ADMIN_ACCESS_FINAL: GRANTS_FOR_ADMIN,
+            WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL: GRANTS_FOR_READ_ONLY,
+        }
+
+    @pytest.mark.abort_on_fail
+    async def test_updated_workspace_grants_are_defined(self, ops_test: OpsTest):
+        """The updated workspace grants are defined for the test user."""
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        tracking_server_port = config["mlflow_port"]["value"]
+
+        # while port-forwarding the tracking server for ease of access:
+        with _PortForward(ops_test.model_name, tracking_server_port) as tracking_server_url:
+            current_user = requests.get(
+                f"{tracking_server_url}/api/2.0/mlflow/users/current",
+                headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+            )
+            assert current_user.status_code == 200
+            assert current_user.json()["user"]["username"] == TEST_IDENTITY
+
+            # asserting workspace grants are correctly defined:
+            roles = requests.get(
+                f"{tracking_server_url}/api/3.0/mlflow/users/roles/list",
+                params={"username": TEST_IDENTITY},
+                headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+            )
+            assert roles.status_code == 200
+            charm_managed_workspace_roles = [
+                role
+                for role in roles.json()["roles"]
+                if role["name"].startswith(WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED)
+            ]
+            for role in charm_managed_workspace_roles:
+                role_permissions = role["permissions"]
+                role_workspace = role["workspace"]
+                for permission in role_permissions:
+                    if role_workspace == WORKSPACE_WITH_ADMIN_ACCESS_FINAL:
+                        assert permission["permission"] == "MANAGE"
+                    elif role_workspace == WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL:
+                        assert permission["permission"] == "READ"
+                    else:
+                        assert False, f"Unexpected workspace '{role_workspace}' in granted roles."
+
+    @pytest.mark.abort_on_fail
+    async def test_workspace_grant_tier_change_takes_effect(self, ops_test: OpsTest):
+        """A user's tier change within a retained workspace takes effect, leaving no stale grants.
+
+        A tier change reuses the same charm-owned role, so the reconcile must reset that role's
+        permissions to exactly the new tier: downgrading from admin to read-only must revoke the
+        write access there, and re-upgrading back to admin must restore it.
+        """
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        tracking_server_port = config["mlflow_port"]["value"]
+
+        async def _set_writable_workspace_tier(tier: str) -> None:
+            await ops_test.model.applications[DATA_INTEGRATOR.charm].set_config(
+                {
+                    "entity-name": TEST_IDENTITY,
+                    "entity-permissions": json.dumps(
+                        [
+                            {
+                                "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
+                                "resource_name": WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                                "privileges": [tier],
+                            },
+                            {
+                                "resource_type": RESOURCE_TYPE_FOR_WORKSPACE,
+                                "resource_name": WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
+                                "privileges": [GRANTS_FOR_READ_ONLY],
+                            },
+                        ]
+                    ),
+                }
+            )
+            await ops_test.model.wait_for_idle(
+                apps=[CHARM_NAME, DATA_INTEGRATOR.charm],
+                status="active",
+                timeout=600,
+                idle_period=60,
+            )
+
+        def _create_experiment(experiment_name: str):
+            with _PortForward(ops_test.model_name, tracking_server_port) as tracking_server_url:
+                return requests.post(
+                    f"{tracking_server_url}/api/2.0/mlflow/experiments/create",
+                    json={"name": experiment_name},
+                    headers={
+                        UPSTREAM_WORKSPACE_HEADER_NAME: WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                        IDENTITY_HEADER_NAME: TEST_IDENTITY,
+                    },
+                )
+
+        # the user starts as admin on the writable workspace, as left by the grant-update tests:
+        response = _create_experiment("experiment-before-tier-downgrade")
+        assert response.status_code == 200, response.text
+
+        # downgrading that workspace to read-only must revoke the granted write access there:
+        await _set_writable_workspace_tier(GRANTS_FOR_READ_ONLY)
+        response = _create_experiment("experiment-after-tier-downgrade")
+        assert response.status_code == 403, response.text
+
+        # re-upgrading back to admin must restore the write access (and the final grant state):
+        await _set_writable_workspace_tier(GRANTS_FOR_ADMIN)
+        response = _create_experiment("experiment-after-tier-reupgrade")
+        assert response.status_code == 200, response.text
 
     @pytest.mark.abort_on_fail
     async def test_can_create_experiment_with_mlflow_library_via_port_forward(
@@ -352,33 +694,25 @@ class TestCharm:
         """Create an experiment with the MLflow client through kubectl port-forward."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
-        mlflow_subprocess = subprocess.Popen(
-            [
-                "kubectl",
-                "-n",
-                f"{ops_test.model_name}",
-                "port-forward",
-                f"svc/{CHARM_NAME}",
-                f"{mlflow_port}:{mlflow_port}",
-            ]
-        )
-        time.sleep(10)  # Must wait for port-forward
+        # while port-forwarding the tracking server for ease of access:
+        with _PortForward(ops_test.model_name, mlflow_port) as tracking_server_url:
+            response = requests.get(
+                tracking_server_url,
+                # TODO: remove if authentication via IAM charms is implemented in integration tests:
+                headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+            )
+            assert response.status_code == 200
+            client = MlflowClient(tracking_uri=tracking_server_url)
+            mlflow.set_workspace(WORKSPACE_WITH_ADMIN_ACCESS_FINAL)
+            try:
+                client.create_experiment(TEST_EXPERIMENT_NAME)
+                all_experiments = client.search_experiments()
+            finally:
+                mlflow.set_workspace(None)
+            assert (
+                len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
+            )
 
-        url = f"http://localhost:{mlflow_port}"
-        client = MlflowClient(tracking_uri=url)
-        response = requests.get(
-            url,
-            # TODO: remove once multi-tenancy is completed:
-            headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
-        )
-        assert response.status_code == 200
-        client.create_experiment(TEST_EXPERIMENT_NAME)
-        all_experiments = client.search_experiments()
-        assert len(list(filter(lambda e: e.name == TEST_EXPERIMENT_NAME, all_experiments))) == 1
-
-        mlflow_subprocess.terminate()
-
-    # TODO: update this test's logic as multi-tenancy is developed:
     @pytest.mark.abort_on_fail
     @pytest.mark.parametrize("identity", [TEST_IDENTITY, "newly-seen-identity"])
     async def test_user_identity_and_grants_before_aliases(self, ops_test: OpsTest, identity: str):
@@ -391,51 +725,47 @@ class TestCharm:
         # port-forwarding the tracking server:
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
-        mlflow_subprocess = subprocess.Popen(
-            [
-                "kubectl",
-                "-n",
-                f"{ops_test.model_name}",
-                "port-forward",
-                f"svc/{CHARM_NAME}",
-                f"{mlflow_port}:{mlflow_port}",
+        # while port-forwarding the tracking server for ease of access:
+        with _PortForward(ops_test.model_name, mlflow_port) as tracking_server_url:
+            # getting information about the current, implicitly authenticated MLflow user:
+            current_user_response = requests.get(
+                f"{tracking_server_url}/api/2.0/mlflow/users/current",
+                # TODO: remove if authentication via IAM charms is implemented in integration tests:
+                headers={IDENTITY_HEADER_NAME: identity},
+            )
+            assert current_user_response.status_code == 200
+            current_user_username = current_user_response.json()["user"]["username"]
+
+            # asserting the current MLflow user corresponds to the expected external identity:
+            assert current_user_username == identity
+
+            # getting roles for the current MLflow user:
+            current_roles_response = requests.get(
+                f"{tracking_server_url}/api/3.0/mlflow/users/roles/list",
+                params={"username": current_user_username},
+                # TODO: remove if authentication via IAM charms is implemented in integration tests:
+                headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
+            )
+            assert current_roles_response.status_code == 200
+            user_roles = current_roles_response.json()["roles"]
+
+            charm_managed_workspace_roles = [
+                role
+                for role in user_roles
+                if role["name"].startswith(WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED)
             ]
-        )
-        time.sleep(10)  # Must wait for port-forward
-
-        # getting information about the current, implicitly authenticated MLflow user:
-        current_user_response = requests.get(
-            f"http://localhost:{mlflow_port}/api/2.0/mlflow/users/current",
-            # TODO: remove once multi-tenancy is completed:
-            headers={IDENTITY_HEADER_NAME: identity},
-        )
-        assert current_user_response.status_code == 200
-        current_user_username = current_user_response.json()["user"]["username"]
-
-        # asserting the current MLflow user corresponds to the expected external identity:
-        assert current_user_username == identity
-
-        # getting roles for the current MLflow user:
-        current_roles_response = requests.get(
-            f"http://localhost:{mlflow_port}/api/3.0/mlflow/users/roles/list",
-            params={"username": current_user_username},
-            # TODO: remove once multi-tenancy is completed:
-            headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
-        )
-        assert current_roles_response.status_code == 200
-        user_roles = current_roles_response.json()["roles"]
-
-        # when the identity is the test identity the charm preconfigured:
-        if identity == TEST_IDENTITY:
-            # asserting the MLflow user is granted only the expected tenant (workspace):
-            for role in user_roles:
-                assert role["workspace"] == TEST_WORKSPACE
-        # when the identity is a newly seen one:
-        else:
-            # asserting the MLflow user has no grants:
-            assert user_roles == []
-
-        mlflow_subprocess.terminate()
+            # when the identity is the test identity the charm preconfigured:
+            if identity == TEST_IDENTITY:
+                # asserting the MLflow user is granted only the expected tenants (workspaces):
+                for role in charm_managed_workspace_roles:
+                    assert role["workspace"] in (
+                        WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
+                    )
+            # when the identity is a newly seen one:
+            else:
+                # asserting the MLflow user has no grants:
+                assert charm_managed_workspace_roles == []
 
     @pytest.mark.abort_on_fail
     async def test_configure_identity_aliases(self, ops_test: OpsTest):
@@ -455,7 +785,6 @@ class TestCharm:
         )
         assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
 
-    # TODO: update this test's logic as multi-tenancy is developed:
     @pytest.mark.abort_on_fail
     @pytest.mark.parametrize(
         "identity", [TEST_IDENTITY, TEST_IDENTITY_ALIAS, "newly-seen-identity"]
@@ -470,54 +799,50 @@ class TestCharm:
         # port-forwarding the tracking server:
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
-        mlflow_subprocess = subprocess.Popen(
-            [
-                "kubectl",
-                "-n",
-                f"{ops_test.model_name}",
-                "port-forward",
-                f"svc/{CHARM_NAME}",
-                f"{mlflow_port}:{mlflow_port}",
+        # while port-forwarding the tracking server for ease of access:
+        with _PortForward(ops_test.model_name, mlflow_port) as tracking_server_url:
+            # getting information about the current, implicitly authenticated MLflow user:
+            current_user_response = requests.get(
+                f"{tracking_server_url}/api/2.0/mlflow/users/current",
+                # TODO: remove if authentication via IAM charms is implemented in integration tests:
+                headers={IDENTITY_HEADER_NAME: identity},
+            )
+            assert current_user_response.status_code == 200
+            current_user_username = current_user_response.json()["user"]["username"]
+
+            # asserting the current MLflow user corresponds to the expected external identity:
+            if identity == TEST_IDENTITY_ALIAS:
+                assert current_user_username == TEST_IDENTITY  # because aliasing another identity
+            else:
+                assert current_user_username == identity
+
+            # getting roles for the current MLflow user:
+            current_roles_response = requests.get(
+                f"{tracking_server_url}/api/3.0/mlflow/users/roles/list",
+                params={"username": current_user_username},
+                # TODO: remove if authentication via IAM charms is implemented in integration tests:
+                headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
+            )
+            assert current_roles_response.status_code == 200
+            user_roles = current_roles_response.json()["roles"]
+
+            charm_managed_workspace_roles = [
+                role
+                for role in user_roles
+                if role["name"].startswith(WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED)
             ]
-        )
-        time.sleep(10)  # Must wait for port-forward
-
-        # getting information about the current, implicitly authenticated MLflow user:
-        current_user_response = requests.get(
-            f"http://localhost:{mlflow_port}/api/2.0/mlflow/users/current",
-            # TODO: remove once multi-tenancy is completed:
-            headers={IDENTITY_HEADER_NAME: identity},
-        )
-        assert current_user_response.status_code == 200
-        current_user_username = current_user_response.json()["user"]["username"]
-
-        # asserting the current MLflow user corresponds to the expected external identity:
-        if identity == TEST_IDENTITY_ALIAS:
-            assert current_user_username == TEST_IDENTITY  # because aliasing another identity
-        else:
-            assert current_user_username == identity
-
-        # getting roles for the current MLflow user:
-        current_roles_response = requests.get(
-            f"http://localhost:{mlflow_port}/api/3.0/mlflow/users/roles/list",
-            params={"username": current_user_username},
-            # TODO: remove once multi-tenancy is completed:
-            headers={IDENTITY_HEADER_NAME: identity},  # same as requested user
-        )
-        assert current_roles_response.status_code == 200
-        user_roles = current_roles_response.json()["roles"]
-
-        # when the identity is the test identity the charm preconfigured or an alias of its:
-        if identity in (TEST_IDENTITY, TEST_IDENTITY_ALIAS):
-            # asserting the MLflow user is granted only the expected tenant (workspace):
-            for role in user_roles:
-                assert role["workspace"] == TEST_WORKSPACE
-        # when the identity is a newly seen one:
-        else:
-            # asserting the MLflow user has no grants:
-            assert user_roles == []
-
-        mlflow_subprocess.terminate()
+            # when the identity is the test identity the charm preconfigured or an alias of its:
+            if identity in (TEST_IDENTITY, TEST_IDENTITY_ALIAS):
+                # asserting the MLflow user is granted only the expected tenants (workspaces):
+                for role in charm_managed_workspace_roles:
+                    assert role["workspace"] in (
+                        WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
+                    )
+            # when the identity is a newly seen one:
+            else:
+                # asserting the MLflow user has no grants:
+                assert charm_managed_workspace_roles == []
 
     @pytest.mark.abort_on_fail
     async def test_deploy_resource_dispatcher(self, ops_test: OpsTest):
@@ -663,11 +988,13 @@ class TestCharm:
                 f'payload=\'{{"name":"{experiment_name}"}}\'; '
                 "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors "
                 f"-X POST '{tracking_uri}/api/2.0/mlflow/experiments/create' "
-                # TODO: remove once multi-tenancy is completed:
+                f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
+                # TODO: remove if authentication via IAM charms is implemented in integration tests:
                 f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
                 "-H 'Content-Type: application/json' -d \"$payload\" >/dev/null; "
                 "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors -G "
-                # TODO: remove once multi-tenancy is completed:
+                f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
+                # TODO: remove if authentication via IAM charms is implemented in integration tests:
                 f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
                 f"'{tracking_uri}/api/2.0/mlflow/experiments/get-by-name' "
                 f"--data-urlencode 'experiment_name={experiment_name}'"
@@ -956,6 +1283,7 @@ class TestCharm:
         try:
             tracking_uri = f"http://localhost:{mlflow_port}"
             mlflow.set_tracking_uri(tracking_uri)
+            mlflow.set_workspace(WORKSPACE_WITH_ADMIN_ACCESS_FINAL)
 
             experiment_name = f"{TEST_EXPERIMENT_NAME}-proxy-{self.generate_random_string(6)}"
             experiment_id = mlflow.create_experiment(experiment_name)
@@ -973,6 +1301,7 @@ class TestCharm:
             downloaded_path = download_artifacts(artifact_uri=f"runs:/{run_id}/{artifact_name}")
             assert Path(downloaded_path).read_text() == artifact_content
         finally:
+            mlflow.set_workspace(None)
             for key, value in saved_env_vars.items():
                 if value is not None:
                     os.environ[key] = value
@@ -1066,3 +1395,40 @@ class TestCharm:
                     "expected the out-of-mesh pod's connection to be reset at L4 (curl exit 56), "
                     f"but curl exited with {exit_code} (stderr: {stderr.strip()})"
                 )
+
+    @pytest.mark.abort_on_fail
+    async def test_removing_relation_revokes_workspace_grants(self, ops_test: OpsTest):
+        """Removing the relation prunes the user roles, revoking the user's workspace grants."""
+        await ops_test.model.applications[CHARM_NAME].remove_relation(
+            "mlflow-client", f"{DATA_INTEGRATOR.charm}:mlflow"
+        )
+        await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=600)
+
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        tracking_server_port = config["mlflow_port"]["value"]
+
+        # while port-forwarding the tracking server for ease of access:
+        with _PortForward(ops_test.model_name, tracking_server_port) as tracking_server_url:
+
+            @retry(stop=stop_after_delay(60), wait=wait_fixed(5), reraise=True)
+            def _assert_workspace_grants_revoked():
+                roles = requests.get(
+                    f"{tracking_server_url}/api/3.0/mlflow/users/roles/list",
+                    params={"username": TEST_IDENTITY},
+                    headers={IDENTITY_HEADER_NAME: TEST_IDENTITY},
+                )
+                assert roles.status_code == 200
+                charm_managed_workspace_roles = [
+                    role
+                    for role in roles.json()["roles"]
+                    if role["name"].startswith(WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED)
+                ]
+                for role in charm_managed_workspace_roles:
+                    assert role["workspace"] not in (
+                        WORKSPACE_WITH_ADMIN_ACCESS_INITIAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL,
+                        WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+                        WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL,
+                    )
+
+            _assert_workspace_grants_revoked()

@@ -1,21 +1,19 @@
 # Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-# TODO: remove once multi-tenancy is completed:
-"""Temporary integration-test helpers for authenticating against the RBAC-enabled tracking server.
-
-The custom authentication module grants this fixed identity coarse `edit` access in the reserved
-`default` tenant on first authentication, so the integration tests can exercise the RBAC path by
-simply sending it as the user-ID, as in-mesh security against such measures is not yet implemented.
+# TODO: remove if authentication via IAM charms is implemented in integration tests:
+"""Integration-test helpers to set user-ID headers on MLflow client requests while not
+authenticating via IAM charms.
 """
 
 IDENTITY_HEADER_NAME = "kubeflow-userid"
-TEST_IDENTITY = "charm-test-user"
-TEST_WORKSPACE = "default"
+TEST_IDENTITY = "my-iam-user-identity"
 
 
 def register_identity_request_header_provider() -> None:
-    """Make every ``MlflowClient`` request carry the temporary test user-ID header.
+    """Make every ``MlflowClient`` request carry the test user-ID header, just like the IAM charms
+    would inject every request with such a header after JWT-based bearer-authentication at the IAM
+    level.
 
     Registers a request-header provider with MLflow's registry so the client-library calls (which,
     unlike raw ``requests``, do not let a test set arbitrary headers) authenticate as the test

@@ -29,10 +29,6 @@ from mlflow import MlflowException
 from mlflow.server.auth import authenticate_request_basic_auth, store
 from werkzeug.datastructures import Authorization
 
-# TODO: remove once multi-tenancy is completed:
-HARDCODED_TEST_IDENTITY = "charm-test-user"
-HARDCODED_TEST_WORKSPACE = "default"
-
 # NOTE: these environment variables correspond to charm configs and are guaranteed to always be up
 # to date because the charm reloads the tracking server on config changes:
 _IDENTITY_HEADER_NAME = os.environ["IDENTITY_HEADER_NAME"]
@@ -58,17 +54,6 @@ def _ensure_user_exists(username: str) -> None:
         if isinstance(error.__cause__, sqlalchemy.exc.IntegrityError):
             return
         raise
-
-    # TODO: remove once multi-tenancy is completed:
-    # granting the fixed, hardcoded integration-test identity access in the `default` tenant for
-    # integration testing to be still carried out despite the work in progress:
-    if username == HARDCODED_TEST_IDENTITY:
-        user = store.get_user(username)
-        role = store.create_role(f"charm-test-{username}", HARDCODED_TEST_WORKSPACE)
-        store.add_role_permission(role.id, "workspace", "*", "USE")
-        for resource_type in ("experiment", "registered_model", "prompt"):
-            store.add_role_permission(role.id, resource_type, "*", "EDIT")
-        store.assign_role_to_user(user.id, role.id)
 
 
 def authenticate_request() -> Authorization | Response:
