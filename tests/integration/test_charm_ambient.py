@@ -306,30 +306,26 @@ class TestCharm:
                 check=True,
             )
 
-            deadline = time.monotonic() + 180
-            while time.monotonic() < deadline:
-                phase_result = subprocess.run(
-                    [
-                        "kubectl",
-                        "-n",
-                        namespace,
-                        "get",
-                        "pod",
-                        pod_name,
-                        "-o",
-                        "jsonpath={.status.phase}",
-                    ],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-                if phase_result.returncode == 0:
+            for attempt in Retrying(stop=stop_after_delay(180), wait=wait_fixed(2), reraise=True):
+                with attempt:
+                    phase_result = subprocess.run(
+                        [
+                            "kubectl",
+                            "-n",
+                            namespace,
+                            "get",
+                            "pod",
+                            pod_name,
+                            "-o",
+                            "jsonpath={.status.phase}",
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    assert phase_result.returncode == 0
                     phase = phase_result.stdout
-                    if phase in {"Succeeded", "Failed"}:
-                        break
-                time.sleep(2)
-            else:
-                raise TimeoutError(f"pod/{pod_name} did not reach a terminal phase in time")
+                    assert phase in {"Succeeded", "Failed"}
 
             logs_result = subprocess.run(
                 ["kubectl", "-n", namespace, "logs", pod_name],
