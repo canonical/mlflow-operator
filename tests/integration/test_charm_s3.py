@@ -1043,7 +1043,6 @@ class TestCharm:
         )
 
         await integrate_with_service_mesh(CHARM_NAME, ops_test.model)
-
         # restrict the tracking server to the platform waypoint's identity (in-mesh traffic); the
         # ingress gateway is allowed separately by istio-ingress-k8s's own L4 policy:
         await ops_test.model.applications[CHARM_NAME].set_config(

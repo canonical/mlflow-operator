@@ -1074,7 +1074,6 @@ class TestCharm:
                 ),
             }
         )
-
         # including subsidiary charms to the service mesh:
         await integrate_with_service_mesh(
             MINIO.charm, ops_test.model, relate_to_ingress_route_endpoint=False
