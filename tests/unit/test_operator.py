@@ -1665,6 +1665,41 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.ServiceMeshConsumer")
+    def test_service_mesh_relation_broken_removes_identity_traffic_extension(
+        self, _: MagicMock, harness: Harness
+    ):
+        """Service-mesh relation departure dispatches TrafficExtension cleanup."""
+        harness.set_leader(True)
+        harness.begin()
+        mock_resource_manager = MagicMock()
+        mock_policy_resource_manager = MagicMock()
+
+        with (
+            patch.object(
+                MlflowCharm,
+                "_traffic_extension_resource_manager",
+                new_callable=PropertyMock,
+                return_value=mock_resource_manager,
+            ),
+            patch.object(
+                MlflowCharm,
+                "_policy_resource_manager",
+                new_callable=PropertyMock,
+                return_value=mock_policy_resource_manager,
+            ),
+        ):
+            relation_id, _ = add_relation(harness, RELATION_ENDPOINT_FOR_SERVICE_MESH)
+            mock_resource_manager.reset_mock()
+            mock_policy_resource_manager.reset_mock()
+            harness.remove_relation(relation_id)
+
+        mock_resource_manager.reconcile.assert_called_once_with([])
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.ServiceMeshConsumer")
     def test_metrics_unit_policy_registered_with_service_mesh(
         self, service_mesh_consumer: MagicMock, harness: Harness
     ):
