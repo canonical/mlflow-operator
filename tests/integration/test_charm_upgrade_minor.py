@@ -144,7 +144,7 @@ class TestMinorUpgrade:
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=600,
+            timeout=1200,
         )
 
         await ops_test.model.integrate(

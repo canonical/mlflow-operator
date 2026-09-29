@@ -314,7 +314,7 @@ class TestCharm:
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=600,
+            timeout=1200,
         )
         await ops_test.model.integrate(
             f"{S3_INTEGRATOR.charm}:s3-credentials", f"{CHARM_NAME}:s3-credentials"

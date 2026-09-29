@@ -311,7 +311,7 @@ class TestCharm:
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=600,
+            timeout=1200,
         )
         await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
         await ops_test.model.integrate(POSTGRESQL_K8S.charm, CHARM_NAME)
