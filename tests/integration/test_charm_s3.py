@@ -53,6 +53,7 @@ from charms_dependencies import (
     RESOURCE_DISPATCHER,
     S3_INTEGRATOR,
 )
+from helpers import CurlPod
 from lightkube import codecs
 from lightkube.core.exceptions import ApiError
 from lightkube.generic_resource import (
@@ -201,6 +202,14 @@ def out_of_mesh_namespace(lightkube_client: lightkube.Client) -> str:
         pass
 
 
+@pytest.fixture
+def curl_pod(request) -> CurlPod:
+    """Yield a curl pod in the namespace given by the named fixture, deleting it afterwards."""
+    namespace = request.getfixturevalue(request.param)
+    with CurlPod(namespace) as pod:
+        yield pod
+
+
 def deploy_k8s_resources(template_files: str):
     lightkube_client = lightkube.Client(field_manager=CHARM_NAME)
     k8s_resource_handler = KubernetesResourceHandler(
@@ -286,98 +295,6 @@ class TestCharm:
     def generate_random_string(length: int = 4):
         """Returns a random string of lower case alphabetic characters and given length."""
         return "".join(choices(ascii_lowercase, k=length))
-
-    @staticmethod
-    def _run_script_from_pod(namespace: str, script: str) -> str:
-        """Run a shell script in a temporary pod and return its logs."""
-        pod_name = f"mlflow-client-{TestCharm.generate_random_string(6)}"
-        logs_result = None
-        phase = None
-        try:
-            subprocess.run(
-                [
-                    "kubectl",
-                    "-n",
-                    namespace,
-                    "run",
-                    pod_name,
-                    "--image=curlimages/curl:8.8.0",
-                    "--restart=Never",
-                    "--command",
-                    "--",
-                    "sh",
-                    "-c",
-                    script,
-                ],
-                check=True,
-            )
-
-            for attempt in Retrying(stop=stop_after_delay(180), wait=wait_fixed(2), reraise=True):
-                with attempt:
-                    phase_result = subprocess.run(
-                        [
-                            "kubectl",
-                            "-n",
-                            namespace,
-                            "get",
-                            "pod",
-                            pod_name,
-                            "-o",
-                            "jsonpath={.status.phase}",
-                        ],
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                    )
-                    assert phase_result.returncode == 0
-                    phase = phase_result.stdout
-                    assert phase in {"Succeeded", "Failed"}
-
-            logs_result = subprocess.run(
-                ["kubectl", "-n", namespace, "logs", pod_name],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if phase == "Failed":
-                raise AssertionError(f"pod/{pod_name} failed; see its logs above")
-            return logs_result.stdout
-        finally:
-            if logs_result is None:
-                logs_result = subprocess.run(
-                    ["kubectl", "-n", namespace, "logs", pod_name],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-            logger.info(
-                "MLflow client pod logs (return_code=%s):\n%s",
-                logs_result.returncode,
-                logs_result.stdout,
-            )
-            if logs_result.stderr:
-                logger.info("MLflow client pod logs stderr:\n%s", logs_result.stderr)
-            subprocess.run(
-                [
-                    "kubectl",
-                    "-n",
-                    namespace,
-                    "delete",
-                    "pod",
-                    pod_name,
-                    "--ignore-not-found",
-                ],
-                check=False,
-            )
-
-    @staticmethod
-    def _json_log_value(logs: str, prefix: str) -> dict:
-        """Return the first JSON value following prefix in the pod logs."""
-        _, separator, remainder = logs.partition(prefix)
-        if not separator:
-            raise ValueError(f"No log entry starts with {prefix!r}")
-        value, _ = json.JSONDecoder().raw_decode(remainder.lstrip())
-        return value
 
     @pytest.mark.abort_on_fail
     async def test_add_s3_and_db_relation_expect_active(self, ops_test: OpsTest):
@@ -1129,39 +1046,38 @@ class TestCharm:
         retry=retry_if_exception_type(subprocess.CalledProcessError),
         reraise=True,
     )
+    @pytest.mark.parametrize("curl_pod", ["profile_namespace"], indirect=True)
     @pytest.mark.abort_on_fail
-    async def test_can_create_experiment_from_user_namespace(
-        self, ops_test: OpsTest, profile_namespace: str
-    ):
+    async def test_can_create_experiment_from_user_namespace(self, ops_test: OpsTest, curl_pod):
         """Use the aliased Profile identity to authenticate and create an experiment."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
         experiment_name = f"{TEST_EXPERIMENT_NAME}-{self.generate_random_string(6)}"
         tracking_uri = f"http://{CHARM_NAME}.{ops_test.model_name}.svc.cluster.local:{mlflow_port}"
-        curl_script = (
-            "set -e; "
-            f'payload=\'{{"name":"{experiment_name}"}}\'; '
-            "curl --fail-with-body -sS --retry 30 --retry-delay 5 "
-            f"-X POST '{tracking_uri}/api/2.0/mlflow/experiments/create' "
-            f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
-            "-H 'Content-Type: application/json' -d \"$payload\"; "
-            "printf '\\n'; "
-            "printf 'current_user='; "
-            "curl --fail-with-body -sS "
-            f"'{tracking_uri}/api/2.0/mlflow/users/current'; "
-            "printf '\\nexperiment='; "
-            "curl --fail-with-body -sS -G "
-            f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
-            f"'{tracking_uri}/api/2.0/mlflow/experiments/get-by-name' "
-            f"--data-urlencode 'experiment_name={experiment_name}'; "
-            "printf '\\n'"
+        workspace_header = f"{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}"
+
+        curl_pod.curl(
+            "--fail-with-body", "-sS", "--retry", "30", "--retry-delay", "5",
+            "-X", "POST", f"{tracking_uri}/api/2.0/mlflow/experiments/create",
+            "-H", workspace_header,
+            "-H", "Content-Type: application/json",
+            "-d", json.dumps({"name": experiment_name}),
+        )  # fmt: skip
+        current_user = json.loads(
+            curl_pod.curl(
+                "--fail-with-body", "-sS", f"{tracking_uri}/api/2.0/mlflow/users/current"
+            ).stdout
+        )
+        experiment = json.loads(
+            curl_pod.curl(
+                "--fail-with-body", "-sS", "-G",
+                "-H", workspace_header,
+                f"{tracking_uri}/api/2.0/mlflow/experiments/get-by-name",
+                "--data-urlencode", f"experiment_name={experiment_name}",
+            ).stdout  # fmt: skip
         )
 
-        logs = self._run_script_from_pod(profile_namespace, curl_script)
-
-        current_user = self._json_log_value(logs, "current_user=")
         assert current_user["user"]["username"] == TEST_IDENTITY
-        experiment = self._json_log_value(logs, "experiment=")
         assert experiment["experiment"]["name"] == experiment_name
 
     @retry(
@@ -1170,25 +1086,21 @@ class TestCharm:
         retry=retry_if_exception_type(subprocess.CalledProcessError),
         reraise=True,
     )
+    @pytest.mark.parametrize("curl_pod", ["profile_namespace"], indirect=True)
     @pytest.mark.abort_on_fail
-    async def test_profile_identity_header_cannot_be_spoofed(
-        self, ops_test: OpsTest, profile_namespace: str
-    ):
+    async def test_profile_identity_header_cannot_be_spoofed(self, ops_test: OpsTest, curl_pod):
         """Replace a client-supplied identity with the verified Profile namespace identity."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
         tracking_uri = f"http://{CHARM_NAME}.{ops_test.model_name}.svc.cluster.local:{mlflow_port}"
-        curl_script = (
-            "set -e; printf 'current_user='; "
-            "curl --fail-with-body -sS --retry 30 --retry-delay 5 "
-            f"-H '{IDENTITY_HEADER_NAME}: {SPOOFED_IDENTITY}' "
-            f"'{tracking_uri}/api/2.0/mlflow/users/current'; "
-            "printf '\\n'"
-        )
 
-        logs = self._run_script_from_pod(profile_namespace, curl_script)
+        result = curl_pod.curl(
+            "--fail-with-body", "-sS", "--retry", "30", "--retry-delay", "5",
+            "-H", f"{IDENTITY_HEADER_NAME}: {SPOOFED_IDENTITY}",
+            f"{tracking_uri}/api/2.0/mlflow/users/current",
+        )  # fmt: skip
 
-        current_user = self._json_log_value(logs, "current_user=")
+        current_user = json.loads(result.stdout)
         assert current_user["user"]["username"] == TEST_IDENTITY
         assert current_user["user"]["username"] != SPOOFED_IDENTITY
 
@@ -1437,56 +1349,10 @@ class TestCharm:
                     os.environ[key] = value
             mlflow_subprocess.terminate()
 
-    @staticmethod
-    def _curl_tracking_server_from_pod(namespace: str, url: str) -> tuple[int, str]:
-        """Curl `url` from a throwaway pod in `namespace`; return (curl_exit_code, stderr).
-
-        `kubectl run --rm -i` propagates the container's exit code, so this is curl's own status:
-        0 when any HTTP response is received (even a 401/403 from the tracking server's auth), and
-        56 ("Recv failure: Connection reset by peer") when the ztunnel denies the L4 connection.
-        The exit code, stdout (with the HTTP status) and stderr are logged for diagnosis.
-        """
-        pod_name = f"mesh-probe-{TestCharm.generate_random_string(6)}"
-        result = subprocess.run(
-            [
-                "kubectl",
-                "-n",
-                namespace,
-                "run",
-                pod_name,
-                "--rm",
-                "-i",
-                "--restart=Never",
-                "--image=curlimages/curl:8.8.0",
-                "--command",
-                "--",
-                "curl",
-                "-sS",
-                "-o",
-                "/dev/null",
-                "-w",
-                "http_code=%{http_code}",
-                "--max-time",
-                "15",
-                url,
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        logger.info(
-            "mesh probe from namespace %s to %s: curl_exit_code=%s stdout=%r stderr=%r",
-            namespace,
-            url,
-            result.returncode,
-            result.stdout,
-            result.stderr,
-        )
-        return result.returncode, result.stderr
-
+    @pytest.mark.parametrize("curl_pod", ["out_of_mesh_namespace"], indirect=True)
     @pytest.mark.abort_on_fail
     async def test_out_of_mesh_pod_cannot_reach_tracking_server(
-        self, ops_test: OpsTest, out_of_mesh_namespace: str
+        self, ops_test: OpsTest, out_of_mesh_namespace: str, curl_pod
     ):
         """A pod outside the mesh must be denied access to the restricted tracking server.
 
@@ -1507,12 +1373,15 @@ class TestCharm:
             out_of_mesh_namespace,
         )
 
-        # Retry to let the authorization policy reach the ztunnel and to tolerate pod startup.
+        # Retry to let the authorization policy reach the ztunnel.
         for attempt in Retrying(stop=stop_after_delay(300), wait=wait_fixed(15), reraise=True):
             with attempt:
-                exit_code, stderr = self._curl_tracking_server_from_pod(
-                    out_of_mesh_namespace, tracking_url
-                )
+                result = curl_pod.curl(
+                    "-sS", "-o", "/dev/null", "-w", "http_code=%{http_code}",
+                    "--max-time", "15", tracking_url,
+                    check=False,
+                )  # fmt: skip
+                exit_code, stderr = result.returncode, result.stderr
                 # the ztunnel resets the denied L4 connection, so curl exits 56 ("Recv failure:
                 # Connection reset by peer"); anything else (0 = reached the server, or a
                 # pod/kubectl error) is retried until the policy is enforced.
