@@ -25,13 +25,13 @@ from charmed_kubeflow_chisme.testing import (
     ISTIO_BEACON_K8S_APP,
     ISTIO_INGRESS_K8S_APP,
     ISTIO_INGRESS_ROUTE_ENDPOINT,
+    ISTIO_K8S_APP,
     assert_alert_rules,
     assert_grafana_dashboards,
     assert_logging,
     assert_metrics_endpoint,
     assert_path_reachable_through_ingress,
     assert_security_context,
-    deploy_and_integrate_service_mesh_charms,
     generate_container_securitycontext_map,
     get_alert_rules,
     get_grafana_dashboards,
@@ -46,6 +46,7 @@ from charms_dependencies import (
     POSTGRESQL_K8S,
     RESOURCE_DISPATCHER,
 )
+from helpers import CurlPod
 from lightkube import codecs
 from lightkube.core.exceptions import ApiError
 from lightkube.generic_resource import (
@@ -75,10 +76,12 @@ PODDEFAULTS_SUFFIXES = ["-access-minio", "-minio"]
 SECRET_SUFFIX = "-minio-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
 PROFILE_FILE = "./tests/integration/profile.yaml"
+SPOOFED_IDENTITY = "spoofed-user-identity"
 
 # A second istio-ingress-k8s instance used to verify multiple-ingress support.
 SECOND_INGRESS_APP = "istio-ingress-k8s-alt"
 INGRESS_CHANNEL = "2/stable"
+ISTIO_K8S_CHANNEL = "dev/edge/upstream-images"
 # Name of the HTTPRoute submitted by mlflow (see charm._ingress_config).
 INGRESS_ROUTE_NAME = "http-route"
 # Gateway listener section for cleartext HTTP on port 80.
@@ -193,6 +196,14 @@ def out_of_mesh_namespace(lightkube_client: lightkube.Client) -> str:
         pass
 
 
+@pytest.fixture
+def curl_pod(request) -> CurlPod:
+    """Yield a curl pod in the namespace given by the named fixture, deleting it afterwards."""
+    namespace = request.getfixturevalue(request.param)
+    with CurlPod(namespace) as pod:
+        yield pod
+
+
 def deploy_k8s_resources(template_files: str):
     lightkube_client = lightkube.Client(field_manager=CHARM_NAME)
     k8s_resource_handler = KubernetesResourceHandler(
@@ -300,7 +311,7 @@ class TestCharm:
             status="active",
             raise_on_blocked=False,
             raise_on_error=False,
-            timeout=600,
+            timeout=1200,
         )
         await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
         await ops_test.model.integrate(POSTGRESQL_K8S.charm, CHARM_NAME)
@@ -901,8 +912,58 @@ class TestCharm:
         The tracking server is also restricted to in-mesh source principals here, so the rest of
         the ambient suite exercises the charm under that authorization policy.
         """
-        # deploy charms providing the service mesh and the ingress while relating MLflow to them:
-        await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
+        # TODO: restore once TrafficExtension is released to the regular Istio channel.
+        # await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
+
+        # An explicit Juju CLI deploy is temporarily required because python-libjuju cannot parse
+        # this branch channel.
+        await ops_test.juju(
+            "deploy",
+            ISTIO_K8S_APP,
+            "--trust",
+            "--channel",
+            ISTIO_K8S_CHANNEL,
+            "--revision",
+            "76",
+            "--config",
+            "platform=",
+        )
+        await ops_test.model.wait_for_idle(
+            [ISTIO_K8S_APP],
+            raise_on_blocked=False,
+            raise_on_error=False,
+            wait_for_active=True,
+            timeout=900,
+        )
+
+        await ops_test.model.deploy(
+            ISTIO_INGRESS_K8S_APP,
+            channel=INGRESS_CHANNEL,
+            trust=True,
+        )
+        await ops_test.model.wait_for_idle(
+            [ISTIO_INGRESS_K8S_APP],
+            raise_on_blocked=False,
+            raise_on_error=False,
+            wait_for_active=True,
+            timeout=900,
+        )
+
+        await ops_test.model.deploy(
+            ISTIO_BEACON_K8S_APP,
+            channel=INGRESS_CHANNEL,
+            trust=True,
+            config={"model-on-mesh": True},
+        )
+        await ops_test.model.wait_for_idle(
+            [ISTIO_BEACON_K8S_APP],
+            raise_on_blocked=False,
+            raise_on_error=False,
+            wait_for_active=True,
+            timeout=900,
+        )
+
+        await integrate_with_service_mesh(CHARM_NAME, ops_test.model)
 
         # restrict the tracking server to the platform waypoint's identity (in-mesh traffic); the
         # ingress gateway is allowed separately by istio-ingress-k8s's own L4 policy:
@@ -913,7 +974,6 @@ class TestCharm:
                 ),
             }
         )
-
         # including subsidiary charms to the service mesh:
         await integrate_with_service_mesh(
             MINIO.charm, ops_test.model, relate_to_ingress_route_endpoint=False
@@ -963,6 +1023,29 @@ class TestCharm:
             timeout=900,
         )
 
+    @pytest.mark.abort_on_fail
+    async def test_configure_profile_identity_alias(
+        self, ops_test: OpsTest, profile_namespace: str
+    ):
+        """Alias the verified Profile namespace identity to the provisioned MLflow user."""
+        await ops_test.model.applications[CHARM_NAME].set_config(
+            {
+                "identity_aliases": (
+                    f"{TEST_IDENTITY_ALIAS}: {TEST_IDENTITY}\n"
+                    f"{profile_namespace}: {TEST_IDENTITY}\n"
+                )
+            }
+        )
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME],
+            status="active",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=600,
+            idle_period=60,
+        )
+        assert ops_test.model.applications[CHARM_NAME].units[0].workload_status == "active"
+
     @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
     async def test_ui_is_accessible(self, lightkube_client, ops_test: OpsTest):
@@ -975,109 +1058,63 @@ class TestCharm:
         retry=retry_if_exception_type(subprocess.CalledProcessError),
         reraise=True,
     )
+    @pytest.mark.parametrize("curl_pod", ["profile_namespace"], indirect=True)
     @pytest.mark.abort_on_fail
-    async def test_can_create_experiment_from_user_namespace(
-        self, ops_test: OpsTest, profile_namespace: str
-    ):
-        """Create an experiment from a pod in a namespace created via kubeflow-profiles."""
+    async def test_can_create_experiment_from_user_namespace(self, ops_test: OpsTest, curl_pod):
+        """Use the aliased Profile identity to authenticate and create an experiment."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
-
-        pod_name = f"mlflow-experimenter-{self.generate_random_string(6)}"
         experiment_name = f"{TEST_EXPERIMENT_NAME}-{self.generate_random_string(6)}"
-        logs_result = None
+        tracking_uri = f"http://{CHARM_NAME}.{ops_test.model_name}.svc.cluster.local:{mlflow_port}"
+        workspace_header = f"{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}"
 
-        try:
-            tracking_uri = (
-                f"http://{CHARM_NAME}.{ops_test.model_name}.svc.cluster.local:{mlflow_port}"
-            )
-            logger.info(
-                f"Creating experiment from namespace={profile_namespace} "
-                f"pod={pod_name} experiment={experiment_name} uri={tracking_uri}"
-            )
-            curl_script = (
-                "set -e; "
-                f'payload=\'{{"name":"{experiment_name}"}}\'; '
-                "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors "
-                f"-X POST '{tracking_uri}/api/2.0/mlflow/experiments/create' "
-                f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
-                # TODO: remove if authentication via IAM charms is implemented in integration tests:
-                f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
-                "-H 'Content-Type: application/json' -d \"$payload\" >/dev/null; "
-                "curl --fail-with-body -sS --retry 30 --retry-delay 5 --retry-all-errors -G "
-                f"-H '{UPSTREAM_WORKSPACE_HEADER_NAME}: {WORKSPACE_WITH_ADMIN_ACCESS_FINAL}' "
-                # TODO: remove if authentication via IAM charms is implemented in integration tests:
-                f"-H '{IDENTITY_HEADER_NAME}: {TEST_IDENTITY}' "
-                f"'{tracking_uri}/api/2.0/mlflow/experiments/get-by-name' "
-                f"--data-urlencode 'experiment_name={experiment_name}'"
-            )
+        curl_pod.curl(
+            "--fail-with-body", "-sS", "--retry", "30", "--retry-delay", "5",
+            "-X", "POST", f"{tracking_uri}/api/2.0/mlflow/experiments/create",
+            "-H", workspace_header,
+            "-H", "Content-Type: application/json",
+            "-d", json.dumps({"name": experiment_name}),
+        )  # fmt: skip
+        current_user = json.loads(
+            curl_pod.curl(
+                "--fail-with-body", "-sS", f"{tracking_uri}/api/2.0/mlflow/users/current"
+            ).stdout
+        )
+        experiment = json.loads(
+            curl_pod.curl(
+                "--fail-with-body", "-sS", "-G",
+                "-H", workspace_header,
+                f"{tracking_uri}/api/2.0/mlflow/experiments/get-by-name",
+                "--data-urlencode", f"experiment_name={experiment_name}",
+            ).stdout  # fmt: skip
+        )
 
-            subprocess.run(
-                [
-                    "kubectl",
-                    "-n",
-                    profile_namespace,
-                    "run",
-                    pod_name,
-                    "--image=curlimages/curl:8.8.0",
-                    "--restart=Never",
-                    "--command",
-                    "--",
-                    "sh",
-                    "-c",
-                    curl_script,
-                ],
-                check=True,
-            )
-            logger.info(f"Experimenter pod created: {pod_name} in namespace {profile_namespace}")
+        assert current_user["user"]["username"] == TEST_IDENTITY
+        assert experiment["experiment"]["name"] == experiment_name
 
-            subprocess.run(
-                [
-                    "kubectl",
-                    "-n",
-                    profile_namespace,
-                    "wait",
-                    f"pod/{pod_name}",
-                    "--for=jsonpath={.status.phase}=Succeeded",
-                    "--timeout=180s",
-                ],
-                check=True,
-            )
-            logger.info(f"Experimenter pod succeeded: {pod_name}")
-            logs_result = subprocess.run(
-                ["kubectl", "-n", profile_namespace, "logs", pod_name],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            assert experiment_name in logs_result.stdout
-            logger.info(f"Experiment creation verified for: {experiment_name}")
-        finally:
-            if logs_result is None:
-                logs_result = subprocess.run(
-                    ["kubectl", "-n", profile_namespace, "logs", pod_name],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-            logger.info(
-                f"Experimenter pod logs (return_code={logs_result.returncode}):\n"
-                f"{logs_result.stdout}"
-            )
-            if logs_result.stderr:
-                logger.info(f"Experimenter pod logs stderr:\n{logs_result.stderr}")
-            subprocess.run(
-                [
-                    "kubectl",
-                    "-n",
-                    profile_namespace,
-                    "delete",
-                    "pod",
-                    pod_name,
-                    "--ignore-not-found",
-                ],
-                check=False,
-            )
+    @retry(
+        stop=stop_after_delay(300),
+        wait=wait_fixed(10),
+        retry=retry_if_exception_type(subprocess.CalledProcessError),
+        reraise=True,
+    )
+    @pytest.mark.parametrize("curl_pod", ["profile_namespace"], indirect=True)
+    @pytest.mark.abort_on_fail
+    async def test_profile_identity_header_cannot_be_spoofed(self, ops_test: OpsTest, curl_pod):
+        """Replace a client-supplied identity with the verified Profile namespace identity."""
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        tracking_uri = f"http://{CHARM_NAME}.{ops_test.model_name}.svc.cluster.local:{mlflow_port}"
+
+        result = curl_pod.curl(
+            "--fail-with-body", "-sS", "--retry", "30", "--retry-delay", "5",
+            "-H", f"{IDENTITY_HEADER_NAME}: {SPOOFED_IDENTITY}",
+            f"{tracking_uri}/api/2.0/mlflow/users/current",
+        )  # fmt: skip
+
+        current_user = json.loads(result.stdout)
+        assert current_user["user"]["username"] == TEST_IDENTITY
+        assert current_user["user"]["username"] != SPOOFED_IDENTITY
 
     @pytest.mark.abort_on_fail
     async def test_new_user_namespace_has_manifests(
@@ -1300,56 +1337,10 @@ class TestCharm:
                     os.environ[key] = value
             mlflow_subprocess.terminate()
 
-    @staticmethod
-    def _curl_tracking_server_from_pod(namespace: str, url: str) -> tuple[int, str]:
-        """Curl `url` from a throwaway pod in `namespace`; return (curl_exit_code, stderr).
-
-        `kubectl run --rm -i` propagates the container's exit code, so this is curl's own status:
-        0 when any HTTP response is received (even a 401/403 from the tracking server's auth), and
-        56 ("Recv failure: Connection reset by peer") when the ztunnel denies the L4 connection.
-        The exit code, stdout (with the HTTP status) and stderr are logged for diagnosis.
-        """
-        pod_name = f"mesh-probe-{TestCharm.generate_random_string(6)}"
-        result = subprocess.run(
-            [
-                "kubectl",
-                "-n",
-                namespace,
-                "run",
-                pod_name,
-                "--rm",
-                "-i",
-                "--restart=Never",
-                "--image=curlimages/curl:8.8.0",
-                "--command",
-                "--",
-                "curl",
-                "-sS",
-                "-o",
-                "/dev/null",
-                "-w",
-                "http_code=%{http_code}",
-                "--max-time",
-                "15",
-                url,
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        logger.info(
-            "mesh probe from namespace %s to %s: curl_exit_code=%s stdout=%r stderr=%r",
-            namespace,
-            url,
-            result.returncode,
-            result.stdout,
-            result.stderr,
-        )
-        return result.returncode, result.stderr
-
+    @pytest.mark.parametrize("curl_pod", ["out_of_mesh_namespace"], indirect=True)
     @pytest.mark.abort_on_fail
     async def test_out_of_mesh_pod_cannot_reach_tracking_server(
-        self, ops_test: OpsTest, out_of_mesh_namespace: str
+        self, ops_test: OpsTest, out_of_mesh_namespace: str, curl_pod
     ):
         """A pod outside the mesh must be denied access to the restricted tracking server.
 
@@ -1370,12 +1361,15 @@ class TestCharm:
             out_of_mesh_namespace,
         )
 
-        # Retry to let the authorization policy reach the ztunnel and to tolerate pod startup.
+        # Retry to let the authorization policy reach the ztunnel.
         for attempt in Retrying(stop=stop_after_delay(300), wait=wait_fixed(15), reraise=True):
             with attempt:
-                exit_code, stderr = self._curl_tracking_server_from_pod(
-                    out_of_mesh_namespace, tracking_url
-                )
+                result = curl_pod.curl(
+                    "-sS", "-o", "/dev/null", "-w", "http_code=%{http_code}",
+                    "--max-time", "15", tracking_url,
+                    check=False,
+                )  # fmt: skip
+                exit_code, stderr = result.returncode, result.stderr
                 # the ztunnel resets the denied L4 connection, so curl exits 56 ("Recv failure:
                 # Connection reset by peer"); anything else (0 = reached the server, or a
                 # pod/kubectl error) is retried until the policy is enforced.

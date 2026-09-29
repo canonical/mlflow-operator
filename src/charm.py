@@ -13,7 +13,10 @@ from urllib.parse import urlparse
 import botocore.exceptions
 import yaml
 from canonical_service_mesh.enums import Action
-from canonical_service_mesh.k8s.resource_manager import PolicyResourceManager
+from canonical_service_mesh.k8s.resource_manager import (
+    KubernetesResourceManager,
+    PolicyResourceManager,
+)
 from canonical_service_mesh.k8s.types.istio import AuthorizationPolicy
 from canonical_service_mesh.models.istio import (
     AuthorizationPolicySpec,
@@ -61,6 +64,7 @@ from dpcharmlibs.interfaces import (
 )
 from jinja2 import Template
 from lightkube import Client
+from lightkube.generic_resource import GenericNamespacedResource, create_namespaced_resource
 from lightkube.models.core_v1 import ServicePort
 from lightkube.models.meta_v1 import ObjectMeta
 from object_storage import S3Requirer
@@ -99,6 +103,13 @@ SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE = "Missing istio_waypoin
 SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE = (
     "The service-mesh relation is present but config 'istio_waypoint_principal' is not set. "
     "Set it to the SPIFFE principal of the platform namespace's waypoint proxy."
+)
+TRAFFIC_EXTENSION_TEMPLATE_PATH = "src/service_mesh/traffic-extension.yaml.j2"
+TrafficExtension = create_namespaced_resource(
+    "extensions.istio.io",
+    "v1alpha1",
+    "TrafficExtension",
+    "trafficextensions",
 )
 # path inside the workload container where the artifact store's TLS CA bundle is written to be then
 # referenced by the AWS_CA_BUNDLE environment variable, so that the tracking server can trust the
@@ -232,6 +243,13 @@ class MlflowCharm(CharmBase):
         self.framework.observe(
             self.on[SERVICE_MESH_RELATION_NAME].relation_broken,
             self._remove_authorization_policies,
+        )
+
+        self.framework.observe(self.on.remove, self._remove_identity_traffic_extension)
+
+        self.framework.observe(
+            self.on[SERVICE_MESH_RELATION_NAME].relation_broken,
+            self._remove_identity_traffic_extension,
         )
 
         # Log forwarding to Loki
@@ -381,6 +399,20 @@ class MlflowCharm(CharmBase):
                 # The manager selects and cleans up policies using this ownership scope.
                 "kubernetes-resource-handler-scope": f"{self.app.name}-tracking-server-access",
             },
+            logger=self.logger,
+        )
+
+    @property
+    def _traffic_extension_resource_manager(self) -> KubernetesResourceManager:
+        """Create and return the manager of the charm's TrafficExtension resources."""
+        return KubernetesResourceManager(
+            labels={
+                "app.kubernetes.io/instance": f"{self.app.name}-{self.model.name}",
+                # The manager selects and cleans up resources using this ownership scope.
+                "kubernetes-resource-handler-scope": f"{self.app.name}-identity-traffic-extension",
+            },
+            resource_types={TrafficExtension},
+            lightkube_client=Client(field_manager=f"{self.app.name}-{self.model.name}"),
             logger=self.logger,
         )
 
@@ -1403,12 +1435,46 @@ class MlflowCharm(CharmBase):
             spec=spec.model_dump(by_alias=True, exclude_unset=True, exclude_none=True),
         )
 
+    def _reconcile_identity_traffic_extension(self) -> None:
+        """Reconcile the TrafficExtension identifying in-mesh callers by their namespace."""
+        if not self.unit.is_leader():
+            return
+        if not self.model.get_relation(SERVICE_MESH_RELATION_NAME):
+            # without a service mesh there is no waypoint to extend; any previously created
+            # resource is removed by the relation-broken handler.
+            return
+
+        traffic_extension = self._build_identity_traffic_extension()
+        self._traffic_extension_resource_manager.reconcile([traffic_extension])
+
+    def _build_identity_traffic_extension(self) -> GenericNamespacedResource:
+        """Build the TrafficExtension stamping in-mesh callers' namespace as their identity.
+
+        The waypoint proxy fronting the tracking server overwrites the trusted user-ID header with
+        the namespace of the calling workload, taken from its verified mTLS identity, so that
+        in-mesh clients are mapped to an MLflow user they cannot spoof. Targeting the tracking
+        server's Service (rather than the waypoint's Gateway) keeps the extension from running for
+        the other workloads that the same waypoint fronts.
+        """
+        rendered = Template(Path(TRAFFIC_EXTENSION_TEMPLATE_PATH).read_text()).render(
+            name=f"{self.app.name}-source-namespace-as-identity",
+            namespace=self.model.name,
+            service_name=self._service_name,
+            identity_header_name=self.model.config["identity_header_name"],
+        )
+        return TrafficExtension.from_dict(yaml.safe_load(rendered))
+
     def _remove_authorization_policies(self, _):
         if not self.unit.is_leader():
             return
         self._policy_resource_manager.reconcile(
             policies=[], mesh_type=MeshType.istio, raw_policies=[]
         )
+
+    def _remove_identity_traffic_extension(self, _):
+        if not self.unit.is_leader():
+            return
+        self._traffic_extension_resource_manager.reconcile([])
 
     def _on_upgrade_charm(self, event) -> None:
         """Handle the upgrade-charm event by running migrations to possibly newer database schemas.
@@ -1536,6 +1602,8 @@ class MlflowCharm(CharmBase):
             self._reconcile_s3_ca_bundle(self._get_artifact_store_data(interfaces))
 
             self._reconcile_policy_resource_manager()
+
+            self._reconcile_identity_traffic_extension()
 
             if not self.exporter_container.can_connect():
                 raise ErrorWithStatus(
