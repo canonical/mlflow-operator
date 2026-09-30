@@ -234,10 +234,6 @@ class MlflowCharm(CharmBase):
             self._on_backend_store_relation_removed,
         )
 
-        self.framework.observe(
-            self.on.get_minio_credentials_action, self._on_get_minio_credentials
-        )
-
         self.framework.observe(self.on.remove, self._remove_authorization_policies)
 
         self.framework.observe(
@@ -883,19 +879,6 @@ class MlflowCharm(CharmBase):
             port = parsed_endpoint.port or 80
             secure = True if port == 443 else False
         return parsed_endpoint.hostname, port, secure
-
-    def _on_get_minio_credentials(self, event: ActionEvent):
-        """Returns the credentials for minio as an action response."""
-        try:
-            artifact_store_data = self._get_artifact_store_data()
-            event.set_results(
-                {
-                    "access-key": artifact_store_data["access_key"],
-                    "secret-access-key": artifact_store_data["secret_key"],
-                }
-            )
-        except ErrorWithStatus:
-            event.fail("Minio is not reachable yet. Please try again in a few minutes.")
 
     def _resolve_bucket_name(self, obj: dict) -> str:
         """Return the object storage bucket name from the relation or config.
