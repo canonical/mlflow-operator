@@ -30,39 +30,7 @@ requires:
     interface: postgresql_client
   s3-credentials:
     interface: s3
-    optional: true
     limit: 1
-  object-storage:
-    interface: object-storage
-    optional: true
-    limit: 1
-    schema:
-      v1:
-        provides:
-          type: object
-          properties:
-            access-key:
-              type: string
-            namespace:
-              type:
-              - string
-              - 'null'
-            port:
-              type: number
-            secret-key:
-              type: string
-            secure:
-              type: boolean
-            service:
-              type: string
-          required:
-          - access-key
-          - port
-          - secret-key
-          - secure
-          - service
-    versions: [v1]
-    __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
   dashboard-links:
     interface: kubeflow_dashboard_links
   ingress:
