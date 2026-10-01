@@ -68,17 +68,15 @@ from lightkube.generic_resource import GenericNamespacedResource, create_namespa
 from lightkube.models.core_v1 import ServicePort
 from lightkube.models.meta_v1 import ObjectMeta
 from object_storage import S3Requirer
-from ops import ActionEvent, SecretNotFoundError, main
+from ops import SecretNotFoundError, main
 from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Layer
 from serialized_data_interface import (
     NoCompatibleVersions,
     NoVersionsListed,
-    SerializedDataInterface,
     get_interfaces,
 )
-from serialized_data_interface.errors import RelationDataError
 
 from services.s3 import S3BucketWrapper
 
@@ -190,7 +188,6 @@ class ArtifactStoreData(TypedDict):
     region: str
     bucket: str
     tls_ca_chain: Optional[List[str]]
-    is_s3: bool
 
 
 class MlflowCharm(CharmBase):
@@ -314,9 +311,8 @@ class MlflowCharm(CharmBase):
             self.ambient_mode_ingress.on.ready, self._on_ambient_mode_ingress_ready
         )
 
-        # object-storage and s3-credentials relation_changed events are already observed by the
-        # generic loop above; only their relation_broken events need to be observed here.
-        self.framework.observe(self.on["object-storage"].relation_broken, self._on_event)
+        # s3-credentials relation_changed events are already observed by the
+        # generic loop above; only its relation_broken event needs to be observed here.
         self.framework.observe(self.on["s3-credentials"].relation_broken, self._on_event)
 
         self.s3 = S3Requirer(self, relation_name="s3-credentials")
@@ -500,8 +496,7 @@ class MlflowCharm(CharmBase):
     @property
     def secrets_context(self) -> dict:
         try:
-            interfaces = self._get_interfaces()
-            artifact_store_data = self._get_artifact_store_data(interfaces)
+            artifact_store_data = self._get_artifact_store_data()
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
@@ -522,8 +517,7 @@ class MlflowCharm(CharmBase):
     @property
     def poddefaults_context(self) -> dict:
         try:
-            interfaces = self._get_interfaces()
-            artifact_store_data = self._get_artifact_store_data(interfaces)
+            artifact_store_data = self._get_artifact_store_data()
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
@@ -694,76 +688,6 @@ class MlflowCharm(CharmBase):
             )
             self._run_database_migration(backend_store_uri)
 
-    def _validate_sdi_interface(self, interfaces, relation_name, default_return=None):
-        """Validates data received from SerializedDataInterface, returning the data if valid.
-
-        Optionally can return a default_return value when no relation is established
-
-        Raises:
-            ErrorWithStatus(..., Blocked) when no relation established (unless default_return set)
-            ErrorWithStatus(..., Blocked) if interface is not using SDI
-            ErrorWithStatus(..., Blocked) if data in interface fails schema check
-            ErrorWithStatus(..., Waiting) if we have a relation established but no data passed
-
-        Params:
-            interfaces:
-
-        Returns:
-              (dict) interface data
-        """
-        # If nothing is related to this relation, return a default value or raise an error
-        if relation_name not in interfaces or interfaces[relation_name] is None:
-            if default_return is not None:
-                return default_return
-            else:
-                raise ErrorWithStatus(
-                    f"Please add required relation {relation_name}", BlockedStatus
-                )
-
-        relations = interfaces[relation_name]
-        if not isinstance(relations, SerializedDataInterface):
-            raise ErrorWithStatus(
-                f"Unexpected error with {relation_name} relation data - data not as expected",
-                BlockedStatus,
-            )
-
-        # Get and validate data from the relation
-        try:
-            # relations is a dict of {(ops.model.Relation, ops.model.Application): data}
-            unpacked_relation_data = relations.get_data()
-        except RelationDataError as val_error:
-            # Validation in .get_data() ensures if data is populated, it matches the schema and is
-            # not incomplete
-            self.logger.error(val_error)
-            raise ErrorWithStatus(
-                f"Found incomplete/incorrect relation data for {relation_name}. See logs",
-                BlockedStatus,
-            )
-
-        # Check if we have an established relation with no data exchanged
-        if len(unpacked_relation_data) == 0:
-            raise ErrorWithStatus(f"Waiting for {relation_name} relation data", WaitingStatus)
-
-        # Unpack data (we care only about the first element)
-        data_dict = list(unpacked_relation_data.values())[0]
-
-        # Catch if empty data dict is received (JSONSchema ValidationError above does not raise
-        # when this happens)
-        # Remove once addressed in:
-        # https://github.com/canonical/serialized-data-interface/issues/28
-        if len(data_dict) == 0:
-            raise ErrorWithStatus(
-                f"Found empty relation data for {relation_name}",
-                BlockedStatus,
-            )
-
-        return data_dict
-
-    def _get_object_storage_data(self, interfaces):
-        """Retrieve object-storage relation data."""
-        relation_name = "object-storage"
-        return self._validate_sdi_interface(interfaces, relation_name)
-
     def _get_s3_data(self) -> dict:
         """Retrieve and validate data from the s3-credentials relation.
 
@@ -784,37 +708,29 @@ class MlflowCharm(CharmBase):
             )
         return info
 
-    def _get_artifact_store_data(self, interfaces=None) -> ArtifactStoreData:
-        """Return normalized artifact store data from the active storage relation.
+    def _get_artifact_store_data(self) -> ArtifactStoreData:
+        """Return normalized artifact store data from the s3-credentials relation.
 
-        Supports both the `object-storage` and `s3` interfaces, returning a common dict with
-        keys: access_key, secret_key, host, port, secure, region, bucket, tls_ca_chain, is_s3.
-
-        Exactly one of the `object-storage` or `s3-credentials` relations is expected.
+        Returns:
+            ArtifactStoreData containing credentials, endpoint components, region,
+            bucket, and an optional TLS CA chain. Region and bucket default to
+            empty strings when absent.
 
         Raises:
-            ErrorWithStatus(..., Blocked) if both relations are established at once.
-            ErrorWithStatus(..., Blocked) if neither relation is established.
-            ErrorWithStatus(..., Waiting) if the active relation has no data yet.
+            ErrorWithStatus: With BlockedStatus if the s3-credentials relation
+                is missing.
+            ErrorWithStatus: With WaitingStatus if relation data is empty,
+                required fields are missing or empty, or the parsed endpoint
+                has no hostname.
         """
-        has_object_storage = self.model.relations["object-storage"]
         has_s3 = self.model.relations["s3-credentials"]
 
-        if has_object_storage and has_s3:
+        if not has_s3:
             raise ErrorWithStatus(
-                "Too many object storage relations. Please relate to only one of "
-                "`object-storage` or `s3-credentials`.",
+                "Missing s3-credentials relation. Please relate to `s3-credentials`.",
                 BlockedStatus,
             )
-
-        if not has_object_storage and not has_s3:
-            raise ErrorWithStatus(
-                "Missing object storage relation. Please relate to one of "
-                "`object-storage` or `s3-credentials`.",
-                BlockedStatus,
-            )
-
-        if has_s3:
+        else:
             data = self._get_s3_data()
             host, port, secure = self._parse_s3_endpoint(data["endpoint"])
             if not host:
@@ -827,19 +743,7 @@ class MlflowCharm(CharmBase):
             region = data.get("region", "")
             bucket = data.get("bucket", "")
             tls_ca_chain = data.get("tls-ca-chain")
-        else:
-            if interfaces is None:
-                interfaces = self._get_interfaces()
-            obj = self._get_object_storage_data(interfaces)
-            access_key = obj["access-key"]
-            secret_key = obj["secret-key"]
-            host = f"{obj['service']}.{obj['namespace']}"
-            port = obj["port"]
-            secure = obj["secure"]
-            region = ""
-            bucket = ""
-            tls_ca_chain = None
-
+    
         return ArtifactStoreData(
             access_key=access_key,
             secret_key=secret_key,
@@ -849,7 +753,6 @@ class MlflowCharm(CharmBase):
             region=region,
             bucket=bucket,
             tls_ca_chain=tls_ca_chain,
-            is_s3=bool(has_s3),
         )
 
     @staticmethod
@@ -881,22 +784,23 @@ class MlflowCharm(CharmBase):
         return parsed_endpoint.hostname, port, secure
 
     def _resolve_bucket_name(self, obj: dict) -> str:
-        """Return the object storage bucket name from the relation or config.
+        """Return the S3 bucket name, preferring relation data over config.
 
-        The bucket name comes from the active object storage relation:
-        - For s3-credentials, either through the provider side (s3-integrator) or through the
-            `default_artifact_root` config option. Provider side takes precedence.
-        - For object-storage, through the `default_artifact_root` config option.
+        Use the bucket in the normalized artifact store data when nonempty;
+        otherwise, fall back to the `default_artifact_root` config option.
+
+        Args:
+            obj: Normalized artifact store data containing the `bucket` key.
 
         Raises:
-            ErrorWithStatus(..., Blocked) if no bucket name is available.
+            ErrorWithStatus: With BlockedStatus if both bucket values are empty.
         """
         if obj["bucket"]:
             return obj["bucket"]
 
         bucket_name = self.model.config["default_artifact_root"]
         if bucket_name:
-            relation_name = "s3-credentials" if obj["is_s3"] else "object-storage"
+            relation_name = "s3-credentials"
             self.logger.info(
                 f"{relation_name} relation doesn't provide a bucket; using the "
                 f"'default_artifact_root' config option: '{bucket_name}'."
@@ -1014,8 +918,7 @@ class MlflowCharm(CharmBase):
         https://mlflow.org/docs/3.15.1/api_reference/cli.html#mlflow-server
         """
         try:
-            interfaces = self._get_interfaces()
-            artifact_store_data = self._get_artifact_store_data(interfaces)
+            artifact_store_data = self._get_artifact_store_data()
             backend_store_uri = self._get_backend_store_uri()
             auth_secrets = self._get_or_create_auth_secrets()
         except ErrorWithStatus as error:
@@ -1582,7 +1485,7 @@ class MlflowCharm(CharmBase):
                 self._container_name, self._container, self._mlflow_server_layer, self.logger
             )
 
-            self._reconcile_s3_ca_bundle(self._get_artifact_store_data(interfaces))
+            self._reconcile_s3_ca_bundle(self._get_artifact_store_data())
 
             self._reconcile_policy_resource_manager()
 
