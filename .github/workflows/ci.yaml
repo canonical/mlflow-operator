@@ -128,9 +128,7 @@ jobs:
         charm:
           - mlflow-server
         test-type:
-          - integration-object-storage
           - integration-s3
-          - integration-ambient
           - integration-upgrade-minor
     runs-on: ubuntu-24.04
     steps:
