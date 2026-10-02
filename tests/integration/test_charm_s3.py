@@ -5,9 +5,8 @@
 """Integration tests for MLflow against the s3-credentials interface in ambient mode.
 
 This suite mirrors ``test_charm_ambient.py`` (the same service-mesh, ingress and
-kubeflow-profiles helpers/fixtures) but provides object storage through the
-``s3-integrator`` charm over the ``s3-credentials`` relation instead of MinIO over
-``object-storage``. This is the recommended setup for any new MLflow deployments.
+kubeflow-profiles helpers/fixtures) providing object storage through the
+``s3-integrator`` charm over the ``s3-credentials`` relation instead.
 """
 
 import base64
@@ -79,7 +78,7 @@ CONTAINERS_SECURITY_CONTEXT_MAP = generate_container_securitycontext_map(METADAT
 HTTP_PATH = "/mlflow/"
 PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
 PODDEFAULTS_SUFFIXES = ["-access-minio", "-minio"]
-SECRET_SUFFIX = "-minio-artifact"
+SECRET_SUFFIX = "-s3-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
 PROFILE_FILE = "./tests/integration/profile.yaml"
 SPOOFED_IDENTITY = "spoofed-user-identity"
@@ -1246,7 +1245,7 @@ class TestCharm:
     ):
         """In proxy mode the artifact-store credentials are no longer dispatched to users.
 
-        The minio-artifact Secret and the access-minio PodDefault (which grant direct object
+        The S3 artifact Secret and the access-minio PodDefault (which grant direct object
         storage access) must be cleared, while the mlflow PodDefault must remain but expose only
         the tracking URI, since artifacts now flow through the tracking server.
         """

@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 import botocore.exceptions
 import pytest
-import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charmed_kubeflow_chisme.pebble import update_layer
 from charmlibs.interfaces.istio_ingress_route import (
@@ -50,9 +49,9 @@ CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS = "serve_artifacts"
 
 # Normalized artifact store data as returned by MlflowCharm._get_artifact_store_data
 OBJECT_STORAGE_DATA_NORMALIZED = {
-    "access_key": "minio-access-key",
-    "secret_key": "minio-super-secret-key",
-    "host": "minio.namespace",
+    "access_key": "s3-access-key",
+    "secret_key": "s3-super-secret-key",
+    "host": "s3.namespace",
     "port": 9000,
     "secure": False,
     "region": "",
@@ -183,7 +182,7 @@ EXPECTED_MLFLOW_ENDPOINT = (
 EXPECTED_SECRET_MANIFEST = {
     "apiVersion": "v1",
     "kind": "Secret",
-    "metadata": {"name": f"{CHARM_NAME}-minio-artifact"},
+    "metadata": {"name": f"{CHARM_NAME}-s3-artifact"},
     "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"},
 }
 # Secret variant for a TLS artifact store: the CA bundle is embedded (base64) under `data`.
@@ -191,7 +190,7 @@ EXPECTED_SECRET_MANIFEST_WITH_CA = {
     **EXPECTED_SECRET_MANIFEST,
     "data": {"ca-bundle.pem": EXPECTED_S3_CA_BUNDLE_B64},
 }
-EXPECTED_MINIO_PODDEFAULT_MANIFEST = {
+EXPECTED_S3_PODDEFAULT_MANIFEST = {
     "apiVersion": "kubeflow.org/v1alpha1",
     "kind": "PodDefault",
     "metadata": {"name": f"{CHARM_NAME}-access-minio"},
@@ -203,7 +202,7 @@ EXPECTED_MINIO_PODDEFAULT_MANIFEST = {
                 "name": "AWS_ACCESS_KEY_ID",
                 "valueFrom": {
                     "secretKeyRef": {
-                        "name": f"{CHARM_NAME}-minio-artifact",
+                        "name": f"{CHARM_NAME}-s3-artifact",
                         "key": "AWS_ACCESS_KEY_ID",
                         "optional": False,
                     }
@@ -213,24 +212,24 @@ EXPECTED_MINIO_PODDEFAULT_MANIFEST = {
                 "name": "AWS_SECRET_ACCESS_KEY",
                 "valueFrom": {
                     "secretKeyRef": {
-                        "name": f"{CHARM_NAME}-minio-artifact",
+                        "name": f"{CHARM_NAME}-s3-artifact",
                         "key": "AWS_SECRET_ACCESS_KEY",
                         "optional": False,
                     }
                 },
             },
-            {"name": "MINIO_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
+            {"name": "S3_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
         ],
     },
 }
 # access-minio PodDefault variant for a TLS artifact store: the CA bundle Secret key is mounted
 # read-only into client pods and AWS_CA_BUNDLE points boto3 at it.
-EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA = {
-    **EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA = {
+    **EXPECTED_S3_PODDEFAULT_MANIFEST,
     "spec": {
-        **EXPECTED_MINIO_PODDEFAULT_MANIFEST["spec"],
+        **EXPECTED_S3_PODDEFAULT_MANIFEST["spec"],
         "env": [
-            *EXPECTED_MINIO_PODDEFAULT_MANIFEST["spec"]["env"],
+            *EXPECTED_S3_PODDEFAULT_MANIFEST["spec"]["env"],
             {"name": "AWS_CA_BUNDLE", "value": "/etc/mlflow/certs/ca-bundle.pem"},
         ],
         "volumeMounts": [
@@ -240,7 +239,7 @@ EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA = {
             {
                 "name": "s3-ca-bundle",
                 "secret": {
-                    "secretName": f"{CHARM_NAME}-minio-artifact",
+                    "secretName": f"{CHARM_NAME}-s3-artifact",
                     "items": [{"key": "ca-bundle.pem", "path": "ca-bundle.pem"}],
                 },
             },
@@ -338,7 +337,7 @@ def add_relation(harness: Harness, relation_endpoint: str) -> tuple[int, str]:
     return relation_id, relation_provider_app_name
 
 
-def add_object_storage_to_harness(harness: Harness, s3_data: dict = S3_DATA):
+def add_s3_storage_to_harness(harness: Harness, s3_data: dict = S3_DATA):
     """Helper function to handle s3 storage relation"""
     relation_id, provider_app = add_relation(harness, "s3-credentials")
     harness.update_relation_data(relation_id, provider_app, s3_data)
@@ -435,7 +434,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     def test_get_interfaces_success(self, harness: Harness):
-        harness = add_object_storage_to_harness(harness)
+        harness = add_s3_storage_to_harness(harness)
         harness.begin()
         assert harness.charm.model.get_relation("s3-credentials") is not None
 
@@ -443,9 +442,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_artifact_store_data_failure_missing_storage_object(
-        self, harness: Harness
-    ):
+    def test_get_artifact_store_data_failure_missing_storage_object(self, harness: Harness):
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
             "Missing s3-credentials relation. Please relate to `s3-credentials`."
@@ -462,7 +459,7 @@ class TestCharm:
     def test_get_artifact_store_data_missing_field(self, harness: Harness, missing_field):
         s3_data = S3_DATA.copy()
         del s3_data[missing_field]
-        add_object_storage_to_harness(harness, s3_data)
+        add_s3_storage_to_harness(harness, s3_data)
 
         harness.begin_with_initial_hooks()
 
@@ -479,7 +476,7 @@ class TestCharm:
         lambda *args, **kw: None,
     )
     def test_get_artifact_store_data_success(self, harness: Harness):
-        harness = add_object_storage_to_harness(harness)
+        harness = add_s3_storage_to_harness(harness)
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
             f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
@@ -638,7 +635,7 @@ class TestCharm:
         """A connectivity error puts the charm in a waiting state."""
         s3_wrapper = s3_wrapper_cls.return_value
         s3_wrapper.bucket_exists.side_effect = botocore.exceptions.EndpointConnectionError(
-            endpoint_url="http://minio.namespace:9000"
+            endpoint_url="http://s3.namespace:9000"
         )
         harness.begin()
         with pytest.raises(ErrorWithStatus) as exc_info:
@@ -680,7 +677,7 @@ class TestCharm:
         """A connectivity error while ensuring the bucket propagates to a WaitingStatus."""
         s3_wrapper = s3_wrapper_cls.return_value
         s3_wrapper.bucket_exists.side_effect = botocore.exceptions.EndpointConnectionError(
-            endpoint_url="http://minio.namespace:9000"
+            endpoint_url="http://s3.namespace:9000"
         )
         harness.begin()
         harness.charm._on_event(None)
@@ -1106,7 +1103,7 @@ class TestCharm:
         manifests_as_json = json.dumps([item.manifest for item in manifests_items])
         assert (
             manifests_as_json
-            == '[{"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "mlpipeline-minio-artifact"}, "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"}}]'  # noqa: E501
+            == '[{"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "mlpipeline-s3-artifact"}, "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"}}]'  # noqa: E501
         )
 
     @patch(
@@ -1133,7 +1130,7 @@ class TestCharm:
                 PODDEFAULTS_FILES,
                 build_poddefaults_context(is_proxy_mode_enabled=False),
                 [
-                    EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+                    EXPECTED_S3_PODDEFAULT_MANIFEST,
                     EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
                 ],
             ),
@@ -1141,7 +1138,7 @@ class TestCharm:
                 PODDEFAULTS_FILES,
                 build_poddefaults_context(is_proxy_mode_enabled=False, s3_ca_bundle_present=True),
                 [
-                    EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA,
+                    EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA,
                     EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
                 ],
             ),
@@ -1157,7 +1154,7 @@ class TestCharm:
             "secrets-proxy-enabled-skips-empty-document",
             "poddefaults-proxy-disabled-renders-both",
             "poddefaults-proxy-disabled-with-tls-mounts-ca-bundle",
-            "poddefaults-proxy-enabled-skips-minio-poddefault",
+            "poddefaults-proxy-enabled-skips-s3-poddefault",
         ],
     )
     def test_create_manifests_skips_empty_documents(
@@ -1211,7 +1208,7 @@ class TestCharm:
                 PODDEFAULTS_FILES,
                 build_poddefaults_context(is_proxy_mode_enabled=False),
                 [
-                    EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+                    EXPECTED_S3_PODDEFAULT_MANIFEST,
                     EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
                 ],
             ),
