@@ -12,16 +12,16 @@ spec:
    - name: AWS_ACCESS_KEY_ID
      valueFrom:
        secretKeyRef:
-         name: {{ app_name }}-minio-artifact
+         name: {{ app_name }}-s3-artifact
          key: AWS_ACCESS_KEY_ID
          optional: false
    - name: AWS_SECRET_ACCESS_KEY
      valueFrom:
        secretKeyRef:
-         name: {{ app_name }}-minio-artifact
+         name: {{ app_name }}-s3-artifact
          key: AWS_SECRET_ACCESS_KEY
          optional: false
-   - name: MINIO_ENDPOINT_URL
+   - name: S3_ENDPOINT_URL
      value: {{ s3_endpoint }}
    {%- if s3_ca_bundle_present %}
    - name: AWS_CA_BUNDLE
@@ -35,7 +35,7 @@ spec:
  volumes:
    - name: s3-ca-bundle
      secret:
-       secretName: {{ app_name }}-minio-artifact
+       secretName: {{ app_name }}-s3-artifact
        items:
          - key: ca-bundle.pem
            path: ca-bundle.pem

@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 import botocore.exceptions
 import pytest
-import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charmed_kubeflow_chisme.pebble import update_layer
 from charmlibs.interfaces.istio_ingress_route import (
@@ -47,29 +46,17 @@ MODEL_NAME = "testing"
 
 CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS = "serve_artifacts"
 
-OBJECT_STORAGE_DATA = {
-    "access-key": "minio-access-key",
-    "namespace": "namespace",
-    "port": 1234,
-    "secret-key": "minio-super-secret-key",
-    "secure": True,
-    "service": "service",
-    "host": "host",
-    "region": "region",
-    "bucket": "bucket",
-}
 
 # Normalized artifact store data as returned by MlflowCharm._get_artifact_store_data
 OBJECT_STORAGE_DATA_NORMALIZED = {
-    "access_key": "minio-access-key",
-    "secret_key": "minio-super-secret-key",
-    "host": "minio.namespace",
+    "access_key": "s3-access-key",
+    "secret_key": "s3-super-secret-key",
+    "host": "s3.namespace",
     "port": 9000,
     "secure": False,
     "region": "",
     "bucket": "relation-bucket",
     "tls_ca_chain": None,
-    "is_s3": True,
 }
 
 # A sample TLS CA chain (list of PEM certificates) as delivered by an s3 store over the relation.
@@ -80,6 +67,15 @@ S3_TLS_CA_CHAIN = [
 
 # The same CA chain as embedded (joined + base64-encoded) into the artifact-store Secret's data.
 EXPECTED_S3_CA_BUNDLE_B64 = base64.b64encode("\n".join(S3_TLS_CA_CHAIN).encode()).decode()
+
+S3_DATA = {
+    "access-key": "test-access-key",
+    "secret-key": "test-secret-key",
+    "region": "us-west-2",
+    "endpoint": "https://storage.example:9000",
+    "bucket": "test-bucket",
+    "tls-ca-chain": json.dumps(S3_TLS_CA_CHAIN),
+}
 
 BACKEND_STORE_DB_DATA = {
     "database": "mlflow",
@@ -186,7 +182,7 @@ EXPECTED_MLFLOW_ENDPOINT = (
 EXPECTED_SECRET_MANIFEST = {
     "apiVersion": "v1",
     "kind": "Secret",
-    "metadata": {"name": f"{CHARM_NAME}-minio-artifact"},
+    "metadata": {"name": f"{CHARM_NAME}-s3-artifact"},
     "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"},
 }
 # Secret variant for a TLS artifact store: the CA bundle is embedded (base64) under `data`.
@@ -194,7 +190,7 @@ EXPECTED_SECRET_MANIFEST_WITH_CA = {
     **EXPECTED_SECRET_MANIFEST,
     "data": {"ca-bundle.pem": EXPECTED_S3_CA_BUNDLE_B64},
 }
-EXPECTED_MINIO_PODDEFAULT_MANIFEST = {
+EXPECTED_S3_PODDEFAULT_MANIFEST = {
     "apiVersion": "kubeflow.org/v1alpha1",
     "kind": "PodDefault",
     "metadata": {"name": f"{CHARM_NAME}-access-minio"},
@@ -206,7 +202,7 @@ EXPECTED_MINIO_PODDEFAULT_MANIFEST = {
                 "name": "AWS_ACCESS_KEY_ID",
                 "valueFrom": {
                     "secretKeyRef": {
-                        "name": f"{CHARM_NAME}-minio-artifact",
+                        "name": f"{CHARM_NAME}-s3-artifact",
                         "key": "AWS_ACCESS_KEY_ID",
                         "optional": False,
                     }
@@ -216,24 +212,24 @@ EXPECTED_MINIO_PODDEFAULT_MANIFEST = {
                 "name": "AWS_SECRET_ACCESS_KEY",
                 "valueFrom": {
                     "secretKeyRef": {
-                        "name": f"{CHARM_NAME}-minio-artifact",
+                        "name": f"{CHARM_NAME}-s3-artifact",
                         "key": "AWS_SECRET_ACCESS_KEY",
                         "optional": False,
                     }
                 },
             },
-            {"name": "MINIO_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
+            {"name": "S3_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
         ],
     },
 }
 # access-minio PodDefault variant for a TLS artifact store: the CA bundle Secret key is mounted
 # read-only into client pods and AWS_CA_BUNDLE points boto3 at it.
-EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA = {
-    **EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA = {
+    **EXPECTED_S3_PODDEFAULT_MANIFEST,
     "spec": {
-        **EXPECTED_MINIO_PODDEFAULT_MANIFEST["spec"],
+        **EXPECTED_S3_PODDEFAULT_MANIFEST["spec"],
         "env": [
-            *EXPECTED_MINIO_PODDEFAULT_MANIFEST["spec"]["env"],
+            *EXPECTED_S3_PODDEFAULT_MANIFEST["spec"]["env"],
             {"name": "AWS_CA_BUNDLE", "value": "/etc/mlflow/certs/ca-bundle.pem"},
         ],
         "volumeMounts": [
@@ -243,7 +239,7 @@ EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA = {
             {
                 "name": "s3-ca-bundle",
                 "secret": {
-                    "secretName": f"{CHARM_NAME}-minio-artifact",
+                    "secretName": f"{CHARM_NAME}-s3-artifact",
                     "items": [{"key": "ca-bundle.pem", "path": "ca-bundle.pem"}],
                 },
             },
@@ -341,13 +337,10 @@ def add_relation(harness: Harness, relation_endpoint: str) -> tuple[int, str]:
     return relation_id, relation_provider_app_name
 
 
-def add_object_storage_to_harness(harness: Harness):
-    """Helper function to handle object storage relation"""
-    object_storage_data = {"_supported_versions": "- v1", "data": yaml.dump(OBJECT_STORAGE_DATA)}
-    object_storage_relation_id, remote_app_name = add_relation(
-        harness, relation_endpoint="object-storage"
-    )
-    harness.update_relation_data(object_storage_relation_id, remote_app_name, object_storage_data)
+def add_s3_storage_to_harness(harness: Harness, s3_data: dict = S3_DATA):
+    """Helper function to handle s3 storage relation"""
+    relation_id, provider_app = add_relation(harness, "s3-credentials")
+    harness.update_relation_data(relation_id, provider_app, s3_data)
     return harness
 
 
@@ -441,41 +434,37 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     def test_get_interfaces_success(self, harness: Harness):
-        harness = add_object_storage_to_harness(harness)
+        harness = add_s3_storage_to_harness(harness)
         harness.begin()
-        interfaces = harness.charm._get_interfaces()
-        assert interfaces["object-storage"] is not None
+        assert harness.charm.model.get_relation("s3-credentials") is not None
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._get_interfaces")
-    def test_get_artifact_store_data_failure_missing_storage_object(
-        self, _get_interfaces: MagicMock, harness: Harness
-    ):
-        _get_interfaces.return_value = {"object-storage": ""}
+    def test_get_artifact_store_data_failure_missing_storage_object(self, harness: Harness):
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
-            "Missing object storage relation. "
-            "Please relate to one of `object-storage` or `s3-credentials`."
+            "Missing s3-credentials relation. Please relate to `s3-credentials`."
         )
 
+    # The S3 library filters out secret-key when Juju secret support is disabled.
+    # Report Juju >= 3.0.3; an unset JUJU_VERSION defaults to 0.0.0.
+    @patch.dict("os.environ", {"JUJU_VERSION": "3.6.0"})
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._get_interfaces")
-    def test_get_artifact_store_data_failure_bad_storage_object(
-        self, _get_interfaces: MagicMock, harness: Harness
-    ):
-        add_object_storage_to_harness(harness)
-        storage_object = MagicMock()
-        storage_object.get_data.return_value = ["a"]
-        _get_interfaces.return_value = {"object-storage": storage_object}
+    @pytest.mark.parametrize("missing_field", ["access-key", "secret-key", "endpoint"])
+    def test_get_artifact_store_data_missing_field(self, harness: Harness, missing_field):
+        s3_data = S3_DATA.copy()
+        del s3_data[missing_field]
+        add_s3_storage_to_harness(harness, s3_data)
+
         harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == BlockedStatus(
-            "Unexpected error with object-storage relation data - data not as expected"
+
+        assert harness.charm.model.unit.status == WaitingStatus(
+            f"Waiting for s3-credentials relation data, missing fields: {missing_field}"
         )
 
     @patch(
@@ -487,7 +476,7 @@ class TestCharm:
         lambda *args, **kw: None,
     )
     def test_get_artifact_store_data_success(self, harness: Harness):
-        harness = add_object_storage_to_harness(harness)
+        harness = add_s3_storage_to_harness(harness)
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
             f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
@@ -564,7 +553,7 @@ class TestCharm:
         """A bucket provided by the relation takes precedence over the config."""
         harness.update_config({"default_artifact_root": "from-config"})
         harness.begin()
-        obj = {"bucket": "from-relation", "is_s3": True}
+        obj = {"bucket": "from-relation"}
         assert harness.charm._resolve_bucket_name(obj) == "from-relation"
 
     @patch(
@@ -575,7 +564,7 @@ class TestCharm:
         """When the relation provides no bucket, fall back to the config option."""
         harness.update_config({"default_artifact_root": "from-config"})
         harness.begin()
-        obj = {"bucket": "", "is_s3": True}
+        obj = {"bucket": ""}
         assert harness.charm._resolve_bucket_name(obj) == "from-config"
 
     @patch(
@@ -586,7 +575,7 @@ class TestCharm:
         """With no relation bucket and no config option, the charm blocks."""
         harness.update_config({"default_artifact_root": ""})
         harness.begin()
-        obj = {"bucket": "", "is_s3": False}
+        obj = {"bucket": ""}
         with pytest.raises(ErrorWithStatus) as exc_info:
             harness.charm._resolve_bucket_name(obj)
         assert exc_info.value.status_type(BlockedStatus)
@@ -646,7 +635,7 @@ class TestCharm:
         """A connectivity error puts the charm in a waiting state."""
         s3_wrapper = s3_wrapper_cls.return_value
         s3_wrapper.bucket_exists.side_effect = botocore.exceptions.EndpointConnectionError(
-            endpoint_url="http://minio.namespace:9000"
+            endpoint_url="http://s3.namespace:9000"
         )
         harness.begin()
         with pytest.raises(ErrorWithStatus) as exc_info:
@@ -688,7 +677,7 @@ class TestCharm:
         """A connectivity error while ensuring the bucket propagates to a WaitingStatus."""
         s3_wrapper = s3_wrapper_cls.return_value
         s3_wrapper.bucket_exists.side_effect = botocore.exceptions.EndpointConnectionError(
-            endpoint_url="http://minio.namespace:9000"
+            endpoint_url="http://s3.namespace:9000"
         )
         harness.begin()
         harness.charm._on_event(None)
@@ -1114,7 +1103,7 @@ class TestCharm:
         manifests_as_json = json.dumps([item.manifest for item in manifests_items])
         assert (
             manifests_as_json
-            == '[{"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "mlpipeline-minio-artifact"}, "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"}}]'  # noqa: E501
+            == '[{"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "mlpipeline-s3-artifact"}, "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"}}]'  # noqa: E501
         )
 
     @patch(
@@ -1141,7 +1130,7 @@ class TestCharm:
                 PODDEFAULTS_FILES,
                 build_poddefaults_context(is_proxy_mode_enabled=False),
                 [
-                    EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+                    EXPECTED_S3_PODDEFAULT_MANIFEST,
                     EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
                 ],
             ),
@@ -1149,7 +1138,7 @@ class TestCharm:
                 PODDEFAULTS_FILES,
                 build_poddefaults_context(is_proxy_mode_enabled=False, s3_ca_bundle_present=True),
                 [
-                    EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA,
+                    EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA,
                     EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
                 ],
             ),
@@ -1165,7 +1154,7 @@ class TestCharm:
             "secrets-proxy-enabled-skips-empty-document",
             "poddefaults-proxy-disabled-renders-both",
             "poddefaults-proxy-disabled-with-tls-mounts-ca-bundle",
-            "poddefaults-proxy-enabled-skips-minio-poddefault",
+            "poddefaults-proxy-enabled-skips-s3-poddefault",
         ],
     )
     def test_create_manifests_skips_empty_documents(
@@ -1219,7 +1208,7 @@ class TestCharm:
                 PODDEFAULTS_FILES,
                 build_poddefaults_context(is_proxy_mode_enabled=False),
                 [
-                    EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+                    EXPECTED_S3_PODDEFAULT_MANIFEST,
                     EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
                 ],
             ),
@@ -1712,34 +1701,6 @@ class TestCharm:
         assert isinstance(metrics_policy, UnitPolicy)
         assert metrics_policy.relation == METRICS_RELATION_NAME
         assert metrics_policy.ports == [EXPECTED_EXPORTER_PORT]
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    def test_on_get_minio_credentials_failure(self, harness: Harness):
-        event = MagicMock()
-        harness.begin()
-        harness.charm._on_get_minio_credentials(event)
-        event.fail.assert_called_with(
-            "Minio is not reachable yet. Please try again in a few minutes."
-        )
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    def test_on_get_minio_credentials_success(self, harness: Harness):
-        harness = add_object_storage_to_harness(harness)
-        event = MagicMock()
-        harness.begin()
-        harness.charm._on_get_minio_credentials(event)
-        event.set_results.assert_called_with(
-            {
-                "access-key": OBJECT_STORAGE_DATA["access-key"],
-                "secret-access-key": OBJECT_STORAGE_DATA["secret-key"],
-            }
-        )
 
     @patch(
         "charm.KubernetesServicePatch",
