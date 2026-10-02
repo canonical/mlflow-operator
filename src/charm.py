@@ -72,11 +72,7 @@ from ops import SecretNotFoundError, main
 from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Layer
-from serialized_data_interface import (
-    NoCompatibleVersions,
-    NoVersionsListed,
-    get_interfaces,
-)
+from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, get_interfaces
 
 from services.s3 import S3BucketWrapper
 
@@ -88,13 +84,12 @@ INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
 INGRESS_PATH_REWRITTEN_PREFIX = "/"
 METRICS_RELATION_NAME = "metrics-endpoint"
 METRICS_PATH = "/metrics"
-OBJECT_STORAGE_RELATION_NAME = "object-storage"
 PODDEFAULTS_FILES = [
     "src/poddefaults/poddefault-minio.yaml.j2",
     "src/poddefaults/poddefault-mlflow.yaml.j2",
 ]
 SECRETS_FILES = [
-    "src/secrets/mlflow-minio-artifact.j2",
+    "src/secrets/mlflow-artifact.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
 SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE = "Missing istio_waypoint_principal config"
@@ -161,6 +156,7 @@ MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
 # Flask secret key and the super-admin password), kept stable across restarts and identical across
 # replicas:
 AUTH_SECRET_LABEL = "mlflow-auth-credentials"
+S3_RELATION_NAME = "s3-credentials"
 
 RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "relational-db"
 
@@ -177,8 +173,8 @@ MLFLOW_CLIENT_TIERS = frozenset({"read-only", "member", "edit", "admin"})
 MLFLOW_CLIENT_RECONCILE_SOURCE_PATH = "src/mlflow_client_reconcile.py"
 
 
-# Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
-# both the `object-storage` and `s3` interfaces.
+# Normalized artifact store data returned by MlflowCharm._get_artifact_store_data
+#  for the `s3` interface
 class ArtifactStoreData(TypedDict):
     access_key: str
     secret_key: str
@@ -313,9 +309,9 @@ class MlflowCharm(CharmBase):
 
         # s3-credentials relation_changed events are already observed by the
         # generic loop above; only its relation_broken event needs to be observed here.
-        self.framework.observe(self.on["s3-credentials"].relation_broken, self._on_event)
+        self.framework.observe(self.on[S3_RELATION_NAME].relation_broken, self._on_event)
 
-        self.s3 = S3Requirer(self, relation_name="s3-credentials")
+        self.s3 = S3Requirer(self, relation_name=S3_RELATION_NAME)
 
         # provider for mlflow-client relations, provisioning users grants across workspaces:
         self.mlflow_client_provider = ResourceProviderEventHandler(
@@ -695,7 +691,7 @@ class MlflowCharm(CharmBase):
             ErrorWithStatus(..., Waiting) if the relation exists but required data
                 (access-key, secret-key, endpoint) is not yet available.
         """
-        relation = self.model.get_relation("s3-credentials")
+        relation = self.model.get_relation(S3_RELATION_NAME)
         info = self.s3.get_storage_connection_info(relation)
         required_fields = ("access-key", "secret-key", "endpoint")
         if not info:
@@ -723,7 +719,7 @@ class MlflowCharm(CharmBase):
                 required fields are missing or empty, or the parsed endpoint
                 has no hostname.
         """
-        has_s3 = self.model.relations["s3-credentials"]
+        has_s3 = self.model.relations[S3_RELATION_NAME]
 
         if not has_s3:
             raise ErrorWithStatus(
@@ -743,7 +739,7 @@ class MlflowCharm(CharmBase):
             region = data.get("region", "")
             bucket = data.get("bucket", "")
             tls_ca_chain = data.get("tls-ca-chain")
-    
+
         return ArtifactStoreData(
             access_key=access_key,
             secret_key=secret_key,
@@ -800,9 +796,8 @@ class MlflowCharm(CharmBase):
 
         bucket_name = self.model.config["default_artifact_root"]
         if bucket_name:
-            relation_name = "s3-credentials"
             self.logger.info(
-                f"{relation_name} relation doesn't provide a bucket; using the "
+                f"{S3_RELATION_NAME} relation doesn't provide a bucket; using the "
                 f"'default_artifact_root' config option: '{bucket_name}'."
             )
             return bucket_name
