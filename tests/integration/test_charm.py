@@ -2,12 +2,7 @@
 # See LICENSE file for licensing details.
 #
 
-"""Integration tests for MLflow against the s3-credentials interface in ambient mode.
-
-This suite mirrors ``test_charm_ambient.py`` (the same service-mesh, ingress and
-kubeflow-profiles helpers/fixtures) providing object storage through the
-``s3-integrator`` charm over the ``s3-credentials`` relation instead.
-"""
+"""Integration tests for MLflow against the s3-credentials interface in ambient mode."""
 
 import base64
 import json
