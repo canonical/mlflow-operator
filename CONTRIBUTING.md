@@ -35,7 +35,7 @@ source .tox/unit/bin/activate
 ```shell
 tox -e lint          # code style
 tox -e unit          # unit tests
-tox -e integration-s3               # integration tests (ambient mode & s3-credentials relation)
+tox -e integration               # integration tests
 tox                  # runs 'lint' and 'unit' environments
 ```
 
