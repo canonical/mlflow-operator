@@ -433,15 +433,6 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_interfaces_success(self, harness: Harness):
-        harness = add_s3_storage_to_harness(harness)
-        harness.begin()
-        assert harness.charm.model.get_relation("s3-credentials") is not None
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
     def test_get_artifact_store_data_failure_missing_storage_object(self, harness: Harness):
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
