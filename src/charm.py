@@ -695,11 +695,12 @@ class MlflowCharm(CharmBase):
         info = self.s3.get_storage_connection_info(relation)
         required_fields = ("access-key", "secret-key", "endpoint")
         if not info:
-            raise ErrorWithStatus("Waiting for s3-credentials relation data", WaitingStatus)
+            raise ErrorWithStatus(f"Waiting for {S3_RELATION_NAME} relation data", WaitingStatus)
         missing = [field for field in required_fields if not info.get(field)]
         if missing:
             raise ErrorWithStatus(
-                f"Waiting for s3-credentials relation data, missing fields: {', '.join(missing)}",
+                f"Waiting for {S3_RELATION_NAME} relation data"
+                f", missing fields: {', '.join(missing)}",
                 WaitingStatus,
             )
         return info
@@ -723,7 +724,7 @@ class MlflowCharm(CharmBase):
 
         if not has_s3:
             raise ErrorWithStatus(
-                "Missing s3-credentials relation. Please relate to `s3-credentials`.",
+                f"Missing {S3_RELATION_NAME} relation. Please relate to `{S3_RELATION_NAME}`.",
                 BlockedStatus,
             )
         else:
@@ -804,7 +805,7 @@ class MlflowCharm(CharmBase):
 
         raise ErrorWithStatus(
             "No object storage bucket name available. Set the 'default_artifact_root' "
-            "config option or provide a bucket through the s3-credentials relation.",
+            f"config option or provide a bucket through the {S3_RELATION_NAME} relation.",
             BlockedStatus,
         )
 
