@@ -1,9 +1,9 @@
 apiVersion: kubeflow.org/v1alpha1
 kind: PodDefault
 metadata:
-  name: {{ app_name }}-minio
+  name: {{ app_name }}-mlflow
 spec:
-  desc: Allow access to MLFlow
+  desc: Allow access to MLflow
   env:
   {%- if not is_proxy_mode_enabled %}
   - name: MLFLOW_S3_ENDPOINT_URL
@@ -21,4 +21,4 @@ spec:
     value: {{ mlflow_endpoint }}
   selector:
     matchLabels:
-      mlflow-server-minio: "true"
+      mlflow-client: "true"

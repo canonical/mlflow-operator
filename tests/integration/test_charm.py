@@ -72,7 +72,9 @@ CHARM_NAME = METADATA["name"]
 CONTAINERS_SECURITY_CONTEXT_MAP = generate_container_securitycontext_map(METADATA)
 HTTP_PATH = "/mlflow/"
 PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
-PODDEFAULTS_SUFFIXES = ["-access-minio", "-minio"]
+ACCESS_S3_PODDEFAULT_NAME = f"{CHARM_NAME}-access-s3"
+MLFLOW_PODDEFAULT_NAME = f"{CHARM_NAME}-mlflow"
+PODDEFAULT_NAMES = [ACCESS_S3_PODDEFAULT_NAME, MLFLOW_PODDEFAULT_NAME]
 SECRET_SUFFIX = "-s3-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
 PROFILE_FILE = "./tests/integration/profile.yaml"
@@ -92,7 +94,6 @@ INGRESS_ROUTE_PATH = HTTP_PATH
 # for testing user grants across different MLflow workspaces:
 GRANTS_FOR_ADMIN = "admin"
 GRANTS_FOR_READ_ONLY = "read-only"
-RESOURCE_TYPE_FOR_SUPER_ADMIN = "super-admin"
 RESOURCE_TYPE_FOR_WORKSPACE = "workspace"
 TEST_IDENTITY_ALIAS = f"identity-that-aliases-{TEST_IDENTITY}"
 UPSTREAM_WORKSPACE_HEADER_NAME = "X-MLFLOW-WORKSPACE"
@@ -1109,17 +1110,16 @@ class TestCharm:
         ca_bundle = base64.b64decode(secret.data["ca-bundle.pem"]).decode("utf-8")
         assert "BEGIN CERTIFICATE" in ca_bundle
 
-        poddefaults_names = [f"{CHARM_NAME}{suffix}" for suffix in PODDEFAULTS_SUFFIXES]
-        for name in poddefaults_names:
+        for name in PODDEFAULT_NAMES:
             pod_default = lightkube_client.get(PodDefault, name, namespace=profile_namespace)
             assert pod_default is not None
 
-        # The access-minio PodDefault must wire the CA bundle into client pods so their direct
+        # The access-s3 PodDefault must wire the CA bundle into client pods so their direct
         # (non-proxy) boto3 connections trust the TLS artifact store.
-        access_minio_poddefault = lightkube_client.get(
-            PodDefault, f"{CHARM_NAME}-access-minio", namespace=profile_namespace
+        access_s3_poddefault = lightkube_client.get(
+            PodDefault, ACCESS_S3_PODDEFAULT_NAME, namespace=profile_namespace
         )
-        spec = access_minio_poddefault.spec
+        spec = access_s3_poddefault.spec
         ca_bundle_env = next((env for env in spec["env"] if env["name"] == "AWS_CA_BUNDLE"), None)
         assert ca_bundle_env is not None
         assert ca_bundle_env["value"] == "/etc/mlflow/certs/ca-bundle.pem"
@@ -1240,20 +1240,19 @@ class TestCharm:
     ):
         """In proxy mode the artifact-store credentials are no longer dispatched to users.
 
-        The S3 artifact Secret and the access-minio PodDefault (which grant direct object
+        The S3 artifact Secret and the access-s3 PodDefault (which grant direct object
         storage access) must be cleared, while the mlflow PodDefault must remain but expose only
         the tracking URI, since artifacts now flow through the tracking server.
         """
         secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
         _assert_resource_cleared(lightkube_client, Secret, secret_name, profile_namespace)
 
-        access_minio_poddefault_name = f"{CHARM_NAME}-access-minio"
         _assert_resource_cleared(
-            lightkube_client, PodDefault, access_minio_poddefault_name, profile_namespace
+            lightkube_client, PodDefault, ACCESS_S3_PODDEFAULT_NAME, profile_namespace
         )
 
         mlflow_poddefault = lightkube_client.get(
-            PodDefault, f"{CHARM_NAME}-minio", namespace=profile_namespace
+            PodDefault, MLFLOW_PODDEFAULT_NAME, namespace=profile_namespace
         )
         env_var_names = {env_var["name"] for env_var in mlflow_poddefault.spec["env"]}
         assert "MLFLOW_TRACKING_URI" in env_var_names

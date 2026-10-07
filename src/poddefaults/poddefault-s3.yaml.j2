@@ -2,12 +2,12 @@
 apiVersion: kubeflow.org/v1alpha1
 kind: PodDefault
 metadata:
- name: {{ app_name }}-access-minio
+ name: {{ app_name }}-access-s3
 spec:
- desc: Allow access to Minio
+ desc: Allow access to S3
  selector:
    matchLabels:
-     access-minio: "true"
+     access-s3: "true"
  env:
    - name: AWS_ACCESS_KEY_ID
      valueFrom:

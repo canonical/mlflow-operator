@@ -85,7 +85,7 @@ INGRESS_PATH_REWRITTEN_PREFIX = "/"
 METRICS_RELATION_NAME = "metrics-endpoint"
 METRICS_PATH = "/metrics"
 PODDEFAULTS_FILES = [
-    "src/poddefaults/poddefault-minio.yaml.j2",
+    "src/poddefaults/poddefault-s3.yaml.j2",
     "src/poddefaults/poddefault-mlflow.yaml.j2",
 ]
 SECRETS_FILES = [
@@ -685,7 +685,7 @@ class MlflowCharm(CharmBase):
             self._run_database_migration(backend_store_uri)
 
     def _get_s3_data(self) -> dict:
-        """Retrieve and validate data from the s3-credentials relation.
+        """Retrieve and validate data from the s3 relation.
 
         Raises:
             ErrorWithStatus(..., Waiting) if the relation exists but required data
@@ -706,7 +706,7 @@ class MlflowCharm(CharmBase):
         return info
 
     def _get_artifact_store_data(self) -> ArtifactStoreData:
-        """Return normalized artifact store data from the s3-credentials relation.
+        """Return normalized artifact store data from the s3 relation.
 
         Returns:
             ArtifactStoreData containing credentials, endpoint components, region,
@@ -714,7 +714,7 @@ class MlflowCharm(CharmBase):
             empty strings when absent.
 
         Raises:
-            ErrorWithStatus: With BlockedStatus if the s3-credentials relation
+            ErrorWithStatus: With BlockedStatus if the s3 relation
                 is missing.
             ErrorWithStatus: With WaitingStatus if relation data is empty,
                 required fields are missing or empty, or the parsed endpoint
