@@ -167,6 +167,12 @@ RELATION_ENDPOINT_FOR_SECRETS = "secrets"
 RELATION_ENDPOINT_FOR_PODDEFAULTS = "pod-defaults"
 RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "relational-db"
 
+ACCESS_S3_PODDEFAULT_NAME = f"{CHARM_NAME}-access-s3"
+ACCESS_S3_PODDEFAULT_SELECTOR_LABEL = "access-s3"
+MLFLOW_PODDEFAULT_NAME = f"{CHARM_NAME}-mlflow"
+MLFLOW_PODDEFAULT_SELECTOR_LABEL = "mlflow-client"
+SECRET_NAME = f"{CHARM_NAME}-s3-artifact"
+
 INGRESS_DATA = {
     "prefix": EXPECTED_INGRESS_PATH_MATCHED_PREFIX,
     "rewrite": EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX,
@@ -182,7 +188,7 @@ EXPECTED_MLFLOW_ENDPOINT = (
 EXPECTED_SECRET_MANIFEST = {
     "apiVersion": "v1",
     "kind": "Secret",
-    "metadata": {"name": f"{CHARM_NAME}-s3-artifact"},
+    "metadata": {"name": SECRET_NAME},
     "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"},
 }
 # Secret variant for a TLS artifact store: the CA bundle is embedded (base64) under `data`.
@@ -193,16 +199,16 @@ EXPECTED_SECRET_MANIFEST_WITH_CA = {
 EXPECTED_S3_PODDEFAULT_MANIFEST = {
     "apiVersion": "kubeflow.org/v1alpha1",
     "kind": "PodDefault",
-    "metadata": {"name": f"{CHARM_NAME}-access-minio"},
+    "metadata": {"name": ACCESS_S3_PODDEFAULT_NAME},
     "spec": {
-        "desc": "Allow access to Minio",
-        "selector": {"matchLabels": {"access-minio": "true"}},
+        "desc": "Allow access to S3",
+        "selector": {"matchLabels": {ACCESS_S3_PODDEFAULT_SELECTOR_LABEL: "true"}},
         "env": [
             {
                 "name": "AWS_ACCESS_KEY_ID",
                 "valueFrom": {
                     "secretKeyRef": {
-                        "name": f"{CHARM_NAME}-s3-artifact",
+                        "name": SECRET_NAME,
                         "key": "AWS_ACCESS_KEY_ID",
                         "optional": False,
                     }
@@ -212,7 +218,7 @@ EXPECTED_S3_PODDEFAULT_MANIFEST = {
                 "name": "AWS_SECRET_ACCESS_KEY",
                 "valueFrom": {
                     "secretKeyRef": {
-                        "name": f"{CHARM_NAME}-s3-artifact",
+                        "name": SECRET_NAME,
                         "key": "AWS_SECRET_ACCESS_KEY",
                         "optional": False,
                     }
@@ -222,7 +228,7 @@ EXPECTED_S3_PODDEFAULT_MANIFEST = {
         ],
     },
 }
-# access-minio PodDefault variant for a TLS artifact store: the CA bundle Secret key is mounted
+# access-s3 PodDefault variant for a TLS artifact store: the CA bundle Secret key is mounted
 # read-only into client pods and AWS_CA_BUNDLE points boto3 at it.
 EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA = {
     **EXPECTED_S3_PODDEFAULT_MANIFEST,
@@ -239,7 +245,7 @@ EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA = {
             {
                 "name": "s3-ca-bundle",
                 "secret": {
-                    "secretName": f"{CHARM_NAME}-s3-artifact",
+                    "secretName": SECRET_NAME,
                     "items": [{"key": "ca-bundle.pem", "path": "ca-bundle.pem"}],
                 },
             },
@@ -249,28 +255,25 @@ EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA = {
 EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE = {
     "apiVersion": "kubeflow.org/v1alpha1",
     "kind": "PodDefault",
-    "metadata": {"name": f"{CHARM_NAME}-minio"},
+    "metadata": {"name": MLFLOW_PODDEFAULT_NAME},
     "spec": {
-        "desc": "Allow access to MLFlow",
+        "desc": "Allow access to MLflow",
         "env": [
             {"name": "MLFLOW_S3_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
             {"name": "MLFLOW_TRACKING_URI", "value": EXPECTED_MLFLOW_ENDPOINT},
         ],
-        "selector": {"matchLabels": {"mlflow-server-minio": "true"}},
+        "selector": {"matchLabels": {MLFLOW_PODDEFAULT_SELECTOR_LABEL: "true"}},
     },
 }
 EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE = {
-    "apiVersion": "kubeflow.org/v1alpha1",
-    "kind": "PodDefault",
-    "metadata": {"name": f"{CHARM_NAME}-minio"},
+    **EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
     "spec": {
-        "desc": "Allow access to MLFlow",
+        **EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE["spec"],
         "env": [
             {"name": "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD", "value": "false"},
             {"name": "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD", "value": "false"},
             {"name": "MLFLOW_TRACKING_URI", "value": EXPECTED_MLFLOW_ENDPOINT},
         ],
-        "selector": {"matchLabels": {"mlflow-server-minio": "true"}},
     },
 }
 
