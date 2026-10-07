@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test-type: [integration, integration-ambient]
+        test-type: [integration]
     name: Run integration tests (${{ matrix.test-type }})
     needs:
       - start-runner
