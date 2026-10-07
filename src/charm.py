@@ -89,7 +89,7 @@ PODDEFAULTS_FILES = [
     "src/poddefaults/poddefault-mlflow.yaml.j2",
 ]
 SECRETS_FILES = [
-    "src/secrets/mlflow-artifact.j2",
+    "src/secrets/mlflow-s3-artifact.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
 SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE = "Missing istio_waypoint_principal config"
