@@ -1,0 +1,30 @@
+[mlflow]
+
+# the tracking server's auth database could be separate from the tracking server's backend store,
+# even when the database provider instance is shared, but it is nevertheless shared for Charmed
+# MLflow, since upstream guarantees that:
+#   > Auth migrations use a separate version table (alembic_version_auth) from tracking migrations
+#   > (alembic_version). This allows you to safely use the same database for both tracking data
+#   > and auth data without migration conflicts.
+# from:
+# https://mlflow.org/docs/3.15.1/self-hosting/security/basic-http-auth/#connecting-to-a-centralized-database
+database_uri = {{ database_uri }}
+
+# deny-by-default: an authenticated user with no grants can read nothing (overrides the shipped
+# default of READ). Fail-closed authorization is the sole workspace-isolation boundary:
+default_permission = NO_PERMISSIONS
+
+# the reserved `default` workspace is also deny-by-default (not auto-granted):
+grant_default_workspace_access = false
+
+# the charm's MLflow super-admin credentials, used only by the charm in-pod over localhost for
+# provisioning tenants (workspaces) and cross-tenant RBAC:
+admin_username = {{ admin_username }}
+admin_password = {{ admin_password }}
+
+# the charm's custom authentication logic mapping the trusted user-ID header to an MLflow user:
+authorization_function = {{ authorization_function }}
+
+# no credential caching, so grant/role changes take effect on the next request (immediate
+# revocation) to keep access locked:
+auth_cache_ttl_seconds = 0
