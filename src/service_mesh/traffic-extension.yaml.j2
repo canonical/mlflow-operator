@@ -1,0 +1,43 @@
+apiVersion: extensions.istio.io/v1alpha1
+kind: TrafficExtension
+metadata:
+  name: {{ name }}
+  namespace: {{ namespace }}
+spec:
+  # a waypoint only honours targetRefs, and a Service targetRef is waypoint-only: the extension
+  # therefore runs solely for traffic the waypoint handles on behalf of the tracking server.
+  targetRefs:
+    - kind: Service
+      group: ""
+      name: {{ service_name }}
+  # before the authorization filters, so that policies see the stamped identity
+  phase: AUTHN
+  lua:
+    inlineCode: |
+      local IDENTITY_HEADER = "{{ identity_header_name }}"
+
+      local function source_namespace(request_handle)
+        -- mTLS terminates on the outer HBONE listener; Istio propagates its verified peer URI SAN.
+        local principal = request_handle:streamInfo():filterState():get("io.istio.peer_principal")
+        if principal == nil then
+          return nil
+        end
+        -- spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
+        return string.match(principal, "^spiffe://[^/]+/ns/([^/]+)/sa/")
+      end
+
+      function envoy_on_request(request_handle)
+        -- any client-supplied user-ID header is dropped first, so that it cannot be spoofed:
+        request_handle:headers():remove(IDENTITY_HEADER)
+
+        local namespace = source_namespace(request_handle)
+        if namespace == nil then
+          -- no verified mTLS peer (plaintext or out of the mesh): fail closed
+          request_handle:respond(
+            {[":status"] = "401"}, "Unauthenticated: no verified source namespace"
+          )
+          return
+        end
+
+        request_handle:headers():add(IDENTITY_HEADER, namespace)
+      end

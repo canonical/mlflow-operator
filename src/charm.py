@@ -3,23 +3,33 @@
 # See LICENSE file for licensing details.
 
 import base64
+import json
 import logging
+import secrets
 from pathlib import Path
 from typing import List, Optional, TypedDict
 from urllib.parse import urlparse
 
 import botocore.exceptions
+import yaml
+from canonical_service_mesh.enums import Action
+from canonical_service_mesh.k8s.resource_manager import (
+    KubernetesResourceManager,
+    PolicyResourceManager,
+)
+from canonical_service_mesh.k8s.types.istio import AuthorizationPolicy
+from canonical_service_mesh.models.istio import (
+    AuthorizationPolicySpec,
+    From,
+    Operation,
+    Rule,
+    Source,
+    To,
+    WorkloadSelector,
+)
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charmed_kubeflow_chisme.pebble import update_layer
-from charmed_kubeflow_chisme.service_mesh import generate_allow_all_authorization_policy
-from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
-from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
-from charms.istio_beacon_k8s.v0.service_mesh import (
-    MeshType,
-    PolicyResourceManager,
-    ServiceMeshConsumer,
-)
-from charms.istio_ingress_k8s.v0.istio_ingress_route import (
+from charmlibs.interfaces.istio_ingress_route import (
     BackendRef,
     HTTPPathMatch,
     HTTPRoute,
@@ -33,6 +43,9 @@ from charms.istio_ingress_k8s.v0.istio_ingress_route import (
     URLRewriteFilter,
     URLRewriteSpec,
 )
+from charmlibs.interfaces.service_mesh import MeshType, ServiceMeshConsumer, UnitPolicy
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
     DashboardLink,
     KubeflowDashboardLinksRequirer,
@@ -44,11 +57,18 @@ from charms.resource_dispatcher.v0.kubernetes_manifests import (
     KubernetesManifest,
     KubernetesManifestRequirerWrapper,
 )
+from dpcharmlibs.interfaces import (
+    RequirerCommonModel,
+    ResourceProviderEventHandler,
+    ResourceProviderModel,
+)
 from jinja2 import Template
 from lightkube import Client
+from lightkube.generic_resource import GenericNamespacedResource, create_namespaced_resource
 from lightkube.models.core_v1 import ServicePort
+from lightkube.models.meta_v1 import ObjectMeta
 from object_storage import S3Requirer
-from ops import ActionEvent, main
+from ops import ActionEvent, SecretNotFoundError, main
 from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Layer
@@ -79,6 +99,18 @@ SECRETS_FILES = [
     "src/secrets/mlflow-minio-artifact.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
+SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE = "Missing istio_waypoint_principal config"
+SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE = (
+    "The service-mesh relation is present but config 'istio_waypoint_principal' is not set. "
+    "Set it to the SPIFFE principal of the platform namespace's waypoint proxy."
+)
+TRAFFIC_EXTENSION_TEMPLATE_PATH = "src/service_mesh/traffic-extension.yaml.j2"
+TrafficExtension = create_namespaced_resource(
+    "extensions.istio.io",
+    "v1alpha1",
+    "TrafficExtension",
+    "trafficextensions",
+)
 # path inside the workload container where the artifact store's TLS CA bundle is written to be then
 # referenced by the AWS_CA_BUNDLE environment variable, so that the tracking server can trust the
 # store's TLS certificate - NOTE: under Pebble's home directory, writable by the non-root user:
@@ -111,23 +143,40 @@ except Exception as exc:
     raise
 """
 
-# TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-# snippet run in the workload container to permit the relation user to create the immutability
-# trigger that MLflow's schema migration adds alongside the `secrets` table, as with binary logging
-# enabled (the default on mysql-k8s), MySQL rejects `CREATE TRIGGER` for a user lacking the
-# SET_USER_ID/SUPER privilege (error 1419) unless the global `log_bin_trust_function_creators`
-# variable is set - the relation user requests the `charmed_dba` role, which grants
-# SYSTEM_VARIABLES_ADMIN, so the charm can itself persist that variable using the relation
-# credentials and no administrative (root) access to the database is required - notably,
-# `SET PERSIST` keeps the setting across server restarts, and the statement is idempotent:
-ENABLE_TRIGGER_CREATION_SNIPPET = """\
-import sys
-from sqlalchemy import create_engine, text
+# directory inside the workload container where the charm writes the RBAC/auth files it owns: the
+# rendered basic_auth.ini and the custom authentication module's files - NOTE: under Pebble's home
+# directory, writable by the non-root user:
+AUTH_CONFIG_DIR = "/var/lib/pebble/default/auth"
+AUTH_CONFIG_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/basic_auth.ini"
+AUTH_MODULE_NAME = "custom_userid_header_auth"
+AUTH_MODULE_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/{AUTH_MODULE_NAME}.py"
+AUTH_MODULE_SOURCE_PATH = "src/auth/custom_userid_header_auth.py"
+AUTH_CONFIG_TEMPLATE_PATH = "src/auth/basic_auth.ini.j2"
+AUTHORIZATION_FUNCTION = f"{AUTH_MODULE_NAME}:authenticate_request"
 
-engine = create_engine(sys.argv[1])
-with engine.connect() as connection:
-    connection.execute(text('SET PERSIST log_bin_trust_function_creators = ON'))
-"""
+# username of the charm's MLflow super-admin - NOTE: it contains an underscore and it does not
+# contain any "@" so that it can never collide with a K8s namespace name (DNS-1123) or an IAM
+# email, which are the possible identity value kinds set by external entities:
+MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
+
+# label of the application-scoped Juju secret holding the auto-generated RBAC credentials (the
+# Flask secret key and the super-admin password), kept stable across restarts and identical across
+# replicas:
+AUTH_SECRET_LABEL = "mlflow-auth-credentials"
+
+RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "relational-db"
+
+MLFLOW_CLIENT_RELATION_ENDPOINT = "mlflow-client"
+MLFLOW_CLIENT_DEFAULT_TIER = "edit"
+# `resource_type` values an mlflow-client requirer can set on each `entity-permissions` entry:
+MLFLOW_CLIENT_WORKSPACE_RESOURCE_TYPE = "workspace"  # workspace-wide grant type
+MLFLOW_CLIENT_SUPER_ADMIN_RESOURCE_TYPE = "super-admin"  # cross-workspace, super-admin grant type
+# the access tiers accepted on a workspace grant (kept in sync with the reconcile script's TIERS):
+MLFLOW_CLIENT_TIERS = frozenset({"read-only", "member", "edit", "admin"})
+
+# the RBAC reconcile script the charm runs in the tracking server's container for any mlflow-client
+# requirers over the whole desired set of user grants across workspaces, passed as a JSON argument:
+MLFLOW_CLIENT_RECONCILE_SOURCE_PATH = "src/mlflow_client_reconcile.py"
 
 
 # Normalized artifact store data returned by MlflowCharm._get_artifact_store_data, covering
@@ -151,24 +200,19 @@ class MlflowCharm(CharmBase):
         super().__init__(*args)
 
         self.logger = logging.getLogger(__name__)
-        self._mlflow_port = int(self.model.config["mlflow_port"])
+        self._tracking_server_port = int(self.model.config["mlflow_port"])
         self._service_name = self.model.app.name
         self._namespace = self.model.name
-        self._exporter_port = self.model.config["mlflow_prometheus_exporter_port"]
+        self._exporter_port = int(self.model.config["mlflow_prometheus_exporter_port"])
         self._container_name = "mlflow-server"
         self._exporter_container_name = "mlflow-prometheus-exporter"
-        self._database_name = "mlflow"
+        self._backend_store_database_name = "mlflow"
         self._container = self.unit.get_container(self._container_name)
         self._exporter_container = self.unit.get_container(self._exporter_container_name)
-        self.database = DatabaseRequires(
+        self.backend_store_database = DatabaseRequires(
             self,
-            relation_name="relational-db",
-            database_name=self._database_name,
-            # NOTE: `charmed_dba` grants the relation user SYSTEM_VARIABLES_ADMIN (to persist
-            # `log_bin_trust_function_creators`) and TRIGGER, which together let MLflow's schema
-            # migration create the `secrets` immutability trigger under binary logging
-            # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-            extra_user_roles="charmed_dba",
+            relation_name=RELATION_ENDPOINT_FOR_BACKEND_STORE_DB,
+            database_name=self._backend_store_database_name,
         )
 
         self._secrets_manifests_wrapper = None
@@ -183,10 +227,11 @@ class MlflowCharm(CharmBase):
         self._create_service()
 
         self.framework.observe(self.on.update_status, self._on_event)
-        self.framework.observe(self.database.on.database_created, self._on_event)
-        self.framework.observe(self.database.on.endpoints_changed, self._on_event)
+        self.framework.observe(self.backend_store_database.on.database_created, self._on_event)
+        self.framework.observe(self.backend_store_database.on.endpoints_changed, self._on_event)
         self.framework.observe(
-            self.on.relational_db_relation_broken, self._on_database_relation_removed
+            self.on.relational_db_relation_broken,
+            self._on_backend_store_relation_removed,
         )
 
         self.framework.observe(
@@ -198,6 +243,13 @@ class MlflowCharm(CharmBase):
         self.framework.observe(
             self.on[SERVICE_MESH_RELATION_NAME].relation_broken,
             self._remove_authorization_policies,
+        )
+
+        self.framework.observe(self.on.remove, self._remove_identity_traffic_extension)
+
+        self.framework.observe(
+            self.on[SERVICE_MESH_RELATION_NAME].relation_broken,
+            self._remove_identity_traffic_extension,
         )
 
         # Log forwarding to Loki
@@ -213,7 +265,7 @@ class MlflowCharm(CharmBase):
                     "static_configs": [
                         {
                             "targets": [
-                                "*:{}".format(self._mlflow_port),
+                                "*:{}".format(self._tracking_server_port),
                                 "*:{}".format(
                                     self.model.config["mlflow_prometheus_exporter_port"]
                                 ),
@@ -245,12 +297,17 @@ class MlflowCharm(CharmBase):
 
         # for an ambient-mode service mesh:
 
-        self._mesh = ServiceMeshConsumer(self)
-
-        # Allow all policy needed to allow requests from all user namespaces
-        self._allow_all_policy = generate_allow_all_authorization_policy(
-            app_name=self.app.name,
-            namespace=self.model.name,
+        self._mesh = ServiceMeshConsumer(
+            self,
+            policies=[
+                # allow the related metrics consumer (e.g. the OpenTelemetry collector) to reach
+                # the Prometheus exporter port; the mesh generates the authorization policy from
+                # this relation:
+                UnitPolicy(
+                    relation=METRICS_RELATION_NAME,
+                    ports=[int(self._exporter_port)],
+                ),
+            ],
         )
 
         self.ambient_mode_ingress = IstioIngressRouteRequirer(
@@ -267,6 +324,15 @@ class MlflowCharm(CharmBase):
         self.framework.observe(self.on["s3-credentials"].relation_broken, self._on_event)
 
         self.s3 = S3Requirer(self, relation_name="s3-credentials")
+
+        # provider for mlflow-client relations, provisioning users grants across workspaces:
+        self.mlflow_client_provider = ResourceProviderEventHandler(
+            self, MLFLOW_CLIENT_RELATION_ENDPOINT, RequirerCommonModel
+        )
+        self.framework.observe(
+            self.on[MLFLOW_CLIENT_RELATION_ENDPOINT].relation_broken,
+            self._on_mlflow_client_relation_broken,
+        )
 
     @property
     def container(self):
@@ -315,7 +381,9 @@ class MlflowCharm(CharmBase):
                             )
                         )
                     ],
-                    backends=[BackendRef(service=self._service_name, port=self._mlflow_port)],
+                    backends=[
+                        BackendRef(service=self._service_name, port=self._tracking_server_port)
+                    ],
                 ),
             ],
         )
@@ -328,8 +396,23 @@ class MlflowCharm(CharmBase):
             lightkube_client=Client(field_manager=f"{self.app.name}-{self.model.name}"),
             labels={
                 "app.kubernetes.io/instance": f"{self.app.name}-{self.model.name}",
-                "kubernetes-resource-handler-scope": f"{self.app.name}-allow-all",
+                # The manager selects and cleans up policies using this ownership scope.
+                "kubernetes-resource-handler-scope": f"{self.app.name}-tracking-server-access",
             },
+            logger=self.logger,
+        )
+
+    @property
+    def _traffic_extension_resource_manager(self) -> KubernetesResourceManager:
+        """Create and return the manager of the charm's TrafficExtension resources."""
+        return KubernetesResourceManager(
+            labels={
+                "app.kubernetes.io/instance": f"{self.app.name}-{self.model.name}",
+                # The manager selects and cleans up resources using this ownership scope.
+                "kubernetes-resource-handler-scope": f"{self.app.name}-identity-traffic-extension",
+            },
+            resource_types={TrafficExtension},
+            lightkube_client=Client(field_manager=f"{self.app.name}-{self.model.name}"),
             logger=self.logger,
         )
 
@@ -351,33 +434,19 @@ class MlflowCharm(CharmBase):
 
     def _create_service(self):
         """Create k8s service based on charm'sconfig."""
-        if self.config["enable_mlflow_nodeport"]:
-            service_type = "NodePort"
-            self._node_port = self.model.config["mlflow_nodeport"]
-            self._exporter_node_port = self.model.config["mlflow_prometheus_exporter_nodeport"]
-            port = ServicePort(
-                self._mlflow_port,
-                name=f"{self.app.name}",
-                targetPort=self._mlflow_port,
-                nodePort=int(self._node_port),
-            )
+        tracking_server_port_definition = ServicePort(
+            self._tracking_server_port,
+            name=f"{self.app.name}",
+        )
+        metrics_exporter_port_definition = ServicePort(
+            self._exporter_port,
+            name=f"{self.app.name}-prometheus-exporter",
+        )
 
-            exporter_port = ServicePort(
-                int(self._exporter_port),
-                name=f"{self.app.name}-prometheus-exporter",
-                targetPort=int(self._exporter_port),
-                nodePort=int(self._exporter_node_port),
-            )
-        else:
-            service_type = "ClusterIP"
-            port = ServicePort(self._mlflow_port, name=f"{self.app.name}")
-            exporter_port = ServicePort(
-                int(self._exporter_port), name=f"{self.app.name}-prometheus-exporter"
-            )
         self.service_patcher = KubernetesServicePatch(
             self,
-            [port, exporter_port],
-            service_type=service_type,
+            [tracking_server_port_definition, metrics_exporter_port_definition],
+            service_type="ClusterIP",
             service_name=self._service_name,
             refresh_event=self.on.config_changed,
         )
@@ -398,7 +467,8 @@ class MlflowCharm(CharmBase):
                 self._container_name: {
                     "override": "replace",
                     "summary": "Entrypoint of mlflow-server image",
-                    "command": "mlflow server",
+                    # running the tracking server while enabling RBAC via the "basic-auth" app:
+                    "command": "mlflow server --app-name basic-auth",
                     "startup": "enabled",
                     "environment": self.service_environment,  # defaults `mlflow server` CLI options
                 }
@@ -422,7 +492,7 @@ class MlflowCharm(CharmBase):
                         "python3 "
                         "mlflow_exporter.py "
                         f"--port {self._exporter_port} "
-                        f"--mlflowurl http://localhost:{self._mlflow_port}/"
+                        f"--mlflowurl http://localhost:{self._tracking_server_port}/"
                     ),
                     "startup": "enabled",
                 },
@@ -466,7 +536,7 @@ class MlflowCharm(CharmBase):
             "s3_endpoint": self._extract_s3_endpoint(artifact_store_data),
             "mlflow_endpoint": (
                 f"http://{self.app.name}.{self._namespace}.svc.cluster.local:"
-                f"{self._mlflow_port}"
+                f"{self._tracking_server_port}"
             ),
             "is_proxy_mode_enabled": self.proxy_mode,
             # whether to mount the S3 CA bundle into client pods and point AWS_CA_BUNDLE at it, so
@@ -490,14 +560,16 @@ class MlflowCharm(CharmBase):
             raise ErrorWithStatus(err, BlockedStatus)
         return interfaces
 
-    def _get_relational_db_data(self) -> dict:
-        mysql_relation = self.model.get_relation("relational-db")
+    def _get_backend_store_db_data(self) -> dict:
+        db_relation = self.model.get_relation(RELATION_ENDPOINT_FOR_BACKEND_STORE_DB)
 
-        # Raise exception and stop execution if the relational-db relation is not established
-        if not mysql_relation:
-            raise ErrorWithStatus("Please add relation to the database", BlockedStatus)
+        # Raise exception and stop execution if the backend-store relation is not established
+        if not db_relation:
+            raise ErrorWithStatus(
+                f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}", BlockedStatus
+            )
 
-        data = self.database.fetch_relation_data()
+        data = self.backend_store_database.fetch_relation_data()
         self.logger.debug("Got following database data: %s", data)
         for val in data.values():
             if not val:
@@ -512,21 +584,25 @@ class MlflowCharm(CharmBase):
                 }
             except KeyError:
                 raise ErrorWithStatus(
-                    "Incorrect data found in relation relational-db", WaitingStatus
+                    f"Incorrect data found in relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}",
+                    WaitingStatus,
                 )
             return db_data
-        raise ErrorWithStatus("Waiting for relational-db relation data", WaitingStatus)
+        raise ErrorWithStatus(
+            f"Waiting for {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB} relation data", WaitingStatus
+        )
 
     def _get_backend_store_uri(self) -> str:
-        """Return the SQLAlchemy backend store URI for the `relational-db` MySQL backend.
+        """Return the SQLAlchemy backend-store URI from the PostgreSQL provider.
 
         Raises:
-            ErrorWithStatus if the `relational-db` relation or its data are not ready.
+            ErrorWithStatus if the relation or its data are not ready.
         """
-        relational_db_data = self._get_relational_db_data()
+        backend_store_data = self._get_backend_store_db_data()
         return (
-            f"mysql+pymysql://{relational_db_data['username']}:{relational_db_data['password']}"
-            f"@{relational_db_data['host']}:{relational_db_data['port']}/{self._database_name}"
+            f"postgresql://{backend_store_data['username']}:{backend_store_data['password']}"
+            f"@{backend_store_data['host']}:{backend_store_data['port']}"
+            f"/{self._backend_store_database_name}"
         )
 
     def _is_database_schema_out_of_date(self, backend_store_uri: str) -> bool:
@@ -562,7 +638,7 @@ class MlflowCharm(CharmBase):
 
         return SCHEMA_OUT_OF_DATE_MARKER in stdout
 
-    def _run_database_migration(self, backend_store_uri: str) -> None:
+    def _run_database_migration(self, database_uri: str) -> None:
         """Run `mlflow db upgrade` in the workload container to migrate the tracking DB schema.
 
         The `mlflow db upgrade` command is idempotent, so it is safe to run whenever the schema is
@@ -579,7 +655,7 @@ class MlflowCharm(CharmBase):
         self.logger.info("Running 'mlflow db upgrade' database schema migration.")
 
         try:
-            process = self.container.exec(["mlflow", "db", "upgrade", backend_store_uri])
+            process = self.container.exec(["mlflow", "db", "upgrade", database_uri])
             process.wait_output()
 
         except ExecError as error:
@@ -589,10 +665,10 @@ class MlflowCharm(CharmBase):
             self.logger.error(
                 "Database schema migration ('mlflow db upgrade') failed with exit code "
                 f"{error.exit_code}. The schema may be left partially migrated: 'mlflow db "
-                "upgrade' applies Alembic migrations and MySQL DDL is not transactional, so a "
-                "failed step cannot be rolled back automatically. Restore the tracking database "
-                "from a backup taken before the refresh (see the charm's backup/restore how-to), "
-                "then retry the refresh."
+                "upgrade' applies a sequence of Alembic migrations that is not atomic as a whole, "
+                "so a failed step cannot be rolled back automatically. Restore the tracking "
+                "database from a backup taken before the refresh (see the charm's backup/restore "
+                "how-to), then retry the refresh."
             )
             raise ErrorWithStatus(
                 "Database schema migration failed. Check the unit logs and act accordingly.",
@@ -606,57 +682,6 @@ class MlflowCharm(CharmBase):
 
         self.logger.info("Database schema migration completed successfully.")
 
-    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-    def _ensure_trigger_creation_allowed(self, backend_store_uri: str) -> None:
-        """Allow the MySQL relation user to create MLflow's `secrets` immutability trigger.
-
-        Workaround for upstream MLflow bug https://github.com/mlflow/mlflow/issues/19943: MLflow's
-        schema migration unconditionally issues a `CREATE TRIGGER` for the `secrets` table. With
-        binary logging enabled (the mysql-k8s default), MySQL rejects that statement for a user
-        without SET_USER_ID/SUPER (error 1419) unless the global `log_bin_trust_function_creators`
-        variable is set. The relation user is granted the `charmed_dba` role (SYSTEM_VARIABLES_
-        ADMIN), so the charm persists that variable itself using the relation credentials - no root
-        access to the database is needed. The statement is idempotent and must run before the
-        workload initialises or migrates the schema.
-
-        Raises:
-            ErrorWithStatus(..., Waiting) when the variable can't be set (e.g., the database is not
-            yet reachable), so the caller can defer and retry.
-        """
-        try:
-            proc = self.container.exec(
-                ["python3", "-c", ENABLE_TRIGGER_CREATION_SNIPPET, backend_store_uri]
-            )
-            proc.wait_output()
-
-        except ExecError as error:
-            stderr = error.stderr or ""
-            self.logger.warning(
-                f"Could not enable trigger creation on the database: exit code {error.exit_code}",
-            )
-
-            # MySQL error 1227 = the user lacks SUPER/SYSTEM_VARIABLES_ADMIN. This happens when the
-            # relation user was not created with the `charmed_dba` role - notably on an in-place
-            # upgrade from a revision that did not request it, since the data-platform provider only
-            # grants extra roles when the relation (and its user) is first created. Retrying will
-            # never succeed, so surface an actionable Blocked status instead of looping in Waiting.
-            if "1227" in stderr or "SYSTEM_VARIABLES_ADMIN" in stderr:
-                # keeping the Juju status message short; the remediation details go to the logs:
-                self.logger.error(
-                    "The database user lacks the SYSTEM_VARIABLES_ADMIN privilege required to "
-                    "migrate the schema. Remove and re-add the 'relational-db' relation (or grant "
-                    "the 'charmed_dba' role to the database user) so the charm can proceed."
-                )
-                raise ErrorWithStatus(
-                    "Database user lacks privileges to migrate the schema. Check the unit logs "
-                    "and act accordingly.",
-                    BlockedStatus,
-                )
-
-            raise ErrorWithStatus(
-                "Could not prepare the database for schema migration; will retry.", WaitingStatus
-            )
-
     def _reconcile_database_schema(self) -> None:
         """Automatically migrate the tracking database schema when it is out of date.
 
@@ -666,9 +691,6 @@ class MlflowCharm(CharmBase):
         migration runs.
         """
         backend_store_uri = self._get_backend_store_uri()
-
-        # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-        self._ensure_trigger_creation_allowed(backend_store_uri)
 
         if self._is_database_schema_out_of_date(backend_store_uri):
             self.unit.status = MaintenanceStatus(
@@ -990,6 +1012,18 @@ class MlflowCharm(CharmBase):
                 BlockedStatus,
             )
 
+    def _check_service_mesh_waypoint_principal_configured(self) -> None:
+        """Block when service mesh is enabled without a tracking-server waypoint principal."""
+        if (
+            self.model.get_relation(SERVICE_MESH_RELATION_NAME)
+            and not self._get_tracking_server_waypoint_principal()
+        ):
+            self.logger.error(SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE)
+            raise ErrorWithStatus(
+                SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
+                BlockedStatus,
+            )
+
     def _generate_environment(self) -> dict:
         """Return environment variables for the `mlflow server` command.
 
@@ -1000,6 +1034,7 @@ class MlflowCharm(CharmBase):
             interfaces = self._get_interfaces()
             artifact_store_data = self._get_artifact_store_data(interfaces)
             backend_store_uri = self._get_backend_store_uri()
+            auth_secrets = self._get_or_create_auth_secrets()
         except ErrorWithStatus as error:
             self.logger.error("Failed to generate container configuration.")
             raise error
@@ -1010,10 +1045,31 @@ class MlflowCharm(CharmBase):
             "MLFLOW_BACKEND_STORE_URI": backend_store_uri,
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
-            "MLFLOW_PORT": self._mlflow_port,
+            "MLFLOW_PORT": self._tracking_server_port,
             # NOTE: security middleware disable as already provided by the outer Istio layer:
             # https://mlflow.org/docs/latest/self-hosting/security/network/#disable-security-middleware  # noqa: E501
             "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
+            # enabling workspaces (tenants):
+            "MLFLOW_ENABLE_WORKSPACES": "true",
+            # disabling seeding new workspaces with default roles, as the charm manages them
+            # exclusively and explicitly:
+            "MLFLOW_RBAC_SEED_DEFAULT_ROLES": "false",
+            # the charm-rendered basic_auth.ini (RBAC settings and custom authentication logic):
+            "MLFLOW_AUTH_CONFIG_PATH": AUTH_CONFIG_CONTAINER_PATH,
+            # static and identical across replicas, required by the auth app for CSRF/session:
+            "MLFLOW_FLASK_SERVER_SECRET_KEY": auth_secrets["flask_secret_key"],
+            # trusted user-ID header the custom authentication logic reads to map requests to users:
+            "IDENTITY_HEADER_NAME": self.model.config["identity_header_name"],
+            # identity aliases (JSON) read by the tracking server's custom authentication logic,
+            # kept in the layer environment so that a config change replans and restarts the server
+            # to apply the updated aliases:
+            "IDENTITY_ALIASES": json.dumps(self._get_identity_aliases()),
+            # so that MLflow's auth app can import the charm-written custom authentication module:
+            "PYTHONPATH": AUTH_CONFIG_DIR,
+            # disabling MLflow's GenAI job-execution subsystem (online scoring, trace archival,
+            # prompt optimization): a tracking server does not need it, and it otherwise spawns
+            # several extra worker processes that each open database connections:
+            "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
         }
         if self.proxy_mode:
             proxy_environment_variables = {
@@ -1039,13 +1095,374 @@ class MlflowCharm(CharmBase):
 
         return environment_variables
 
+    def _get_or_create_auth_secrets(self) -> dict:
+        """Return the shared RBAC credentials, generating and persisting them on first use.
+
+        The Flask secret key and the MLflow super-admin password are generated once by the leader
+        and stored in an application-scoped Juju secret, so they stay stable across restarts and
+        identical across replicas (the auth app requires a consistent Flask secret key).
+
+        Raises:
+            ErrorWithStatus(..., Waiting) if the credentials have not been generated yet (a
+            non-leader unit observed before the leader created them), so the caller can defer.
+        """
+        try:
+            content = self.model.get_secret(label=AUTH_SECRET_LABEL).get_content()
+        except SecretNotFoundError:
+            if not self.unit.is_leader():
+                raise ErrorWithStatus(
+                    "Waiting for the leader to generate the RBAC credentials", WaitingStatus
+                )
+            content = {
+                "flask-secret-key": secrets.token_urlsafe(32),
+                "admin-password": secrets.token_urlsafe(32),
+            }
+            self.app.add_secret(content, label=AUTH_SECRET_LABEL)
+
+        return {
+            "flask_secret_key": content["flask-secret-key"],
+            "admin_password": content["admin-password"],
+        }
+
+    def _get_identity_aliases(self) -> dict[str, str]:
+        """Return the validated flat ``{secondary-identity: primary-identity}`` alias map.
+
+        Parsed from the optional ``identity_aliases`` config: each key is a secondary identity
+        received via the trusted user-ID header (an IAM email, a programmatic client ID or an
+        in-mesh namespace name) and each value is the primary identity already used as an MLflow
+        username, so that identities as keys alias identities as respective values. Unmapped
+        identities resolve to themselves, and several secondaries may map to one primary identity.
+
+        Raises:
+            ErrorWithStatus(..., Blocked) when the config is malformed, so the operator can fix it.
+        """
+        raw_config = self.model.config["identity_aliases"]
+        if not raw_config.strip():
+            return {}  # no identity aliases configured
+
+        try:
+            aliases = yaml.safe_load(raw_config)
+        except yaml.YAMLError as error:
+            self.logger.error(f"Config 'identity_aliases' is not valid YAML: {error}")
+            raise ErrorWithStatus(
+                "Config 'identity_aliases' is not valid YAML. Check the unit logs and act "
+                "accordingly.",
+                BlockedStatus,
+            )
+
+        if aliases is None:
+            return {}  # no identity aliases configured
+
+        if not isinstance(aliases, dict):
+            self.logger.error(
+                "Config 'identity_aliases' must be a YAML mapping of "
+                "'<secondary-identity>: <primary-identity>' entries."
+            )
+            raise ErrorWithStatus(
+                "Config 'identity_aliases' is not a valid mapping. Check the unit logs and act "
+                "accordingly.",
+                BlockedStatus,
+            )
+
+        for identity in (*aliases, *aliases.values()):
+            if not isinstance(identity, str) or not identity.strip():
+                self.logger.error(
+                    "Config 'identity_aliases' identities must be non-empty strings; quote any "
+                    "value that YAML would otherwise read as a number or boolean."
+                )
+                raise ErrorWithStatus(
+                    "Config 'identity_aliases' has invalid identities. Check the unit logs and "
+                    "act accordingly.",
+                    BlockedStatus,
+                )
+
+        # NOTE: keeping the map flat (single-hop resolution): an identity used as both an alias key
+        # and a primary value would chain, so it is rejected rather than resolved ambiguously:
+        chained_identities = set(aliases) & set(aliases.values())
+        if chained_identities:
+            self.logger.error(
+                f"Config 'identity_aliases' uses {sorted(chained_identities)} as both an alias "
+                "and a primary identity; aliases must map directly to a primary identity."
+            )
+            raise ErrorWithStatus(
+                "Config 'identity_aliases' has a chained alias. Check the unit logs and act "
+                "accordingly.",
+                BlockedStatus,
+            )
+
+        return aliases
+
+    def _reconcile_auth_config(self) -> None:
+        """Render and push the RBAC auth config and the custom authentication module.
+
+        Writes into the workload container the custom authentication module (shipped in the charm)
+        and the rendered basic_auth.ini that points MLflow at it, at the paths that the server's
+        environment then references via `MLFLOW_AUTH_CONFIG_PATH` and `PYTHONPATH`.
+        """
+        auth_secrets = self._get_or_create_auth_secrets()
+
+        # the Python module defining the custom authentication logic run by the tracking server:
+        custom_auth_module = Path(AUTH_MODULE_SOURCE_PATH).read_text()
+        self.container.push(AUTH_MODULE_CONTAINER_PATH, custom_auth_module, make_dirs=True)
+
+        # the file configuring the authentication logic of MLflow, which internally points to the
+        # above-mentioned custom authentication module's path:
+        auth_config = Template(Path(AUTH_CONFIG_TEMPLATE_PATH).read_text()).render(
+            database_uri=self._get_backend_store_uri(),
+            admin_username=MLFLOW_SUPER_ADMIN_USERNAME,
+            admin_password=auth_secrets["admin_password"],
+            authorization_function=AUTHORIZATION_FUNCTION,
+        )
+        self.container.push(AUTH_CONFIG_CONTAINER_PATH, auth_config, make_dirs=True)
+
+    def _reconcile_mlflow_client_grants(self, exclude_relation_id: Optional[int] = None):
+        """Reconciles user grants across workspaces as requested over every mlflow-client relation.
+
+        Args:
+            exclude_relation_id: relation to skip, set when reconciling on its removal so that the
+                departing requirer's grants are pruned.
+        """
+        if not self.unit.is_leader():
+            return
+
+        users_grants_across_workspaces = []
+        relation_responses_to_requirers = []
+        for relation in self.model.relations[MLFLOW_CLIENT_RELATION_ENDPOINT]:
+            if relation.id == exclude_relation_id:
+                continue
+
+            for request in self.mlflow_client_provider.requests(relation):
+                user_grants = self._build_mlflow_client_user_grants(request)
+                if user_grants is None:
+                    continue
+
+                users_grants_across_workspaces.append(user_grants)
+                relation_responses_to_requirers.append(
+                    (
+                        relation.id,
+                        ResourceProviderModel(
+                            request_id=request.request_id,
+                            # NOTE: `entity_name` necessary for the library to work properly even
+                            # if the requirer is already aware of its value because it imposes it:
+                            entity_name=request.entity_name,
+                        ),
+                    )
+                )
+
+        # NOTE: an empty reconcile is skipped only as long as a relation removal is not being
+        # processed, so that transient empty requests do not prune grants that are still in use:
+        if users_grants_across_workspaces or exclude_relation_id is not None:
+            # reconciling user grants across workspaces:
+            self._exec_mlflow_client_reconcile(users_grants_across_workspaces)
+
+        # communicating reconcile results to requirers:
+        for relation_id, response in relation_responses_to_requirers:
+            self.mlflow_client_provider.set_response(relation_id, response)
+
+    def _build_mlflow_client_user_grants(self, request) -> Optional[dict]:
+        """Turn an mlflow-client request into the workspace grants of the user it represents.
+
+        Parses the request's `entity-permissions` into:
+        - either a set of workspace-wide grants (`resource_type == "workspace"`, one tier each)
+        - or a single global super-admin promotion (`resource_type == "super-admin"`)
+
+        Requests are skipped (and logged) when they:
+        - either are empty
+        - or claim the charm's own, reserved super-admin username
+        - or mix super-admin with workspace-wide grants
+        - or carry an unknown resource type or tier
+        """
+        username = request.entity_name
+        if not username:
+            self.logger.warning("Ignoring mlflow-client request with empty username.")
+            return None
+
+        if username == MLFLOW_SUPER_ADMIN_USERNAME:
+            self.logger.warning(
+                "Ignoring mlflow-client request claiming the charm's reserved super-admin username."
+            )
+            return None
+
+        is_super_admin = False
+        workspace_grants = []
+        for permission in request.entity_permissions or []:
+            # for a super-admin permission instance:
+            if permission.resource_type == MLFLOW_CLIENT_SUPER_ADMIN_RESOURCE_TYPE:
+                is_super_admin = True
+            # for a workspace-wide permission instance:
+            elif permission.resource_type == MLFLOW_CLIENT_WORKSPACE_RESOURCE_TYPE:
+                tier = (
+                    permission.privileges[0]
+                    if permission.privileges
+                    else MLFLOW_CLIENT_DEFAULT_TIER
+                )
+                if tier not in MLFLOW_CLIENT_TIERS:
+                    self.logger.error(
+                        f"Ignoring mlflow-client request with unknown tier '{tier}'."
+                    )
+                    return None
+
+                workspace_grants.append([permission.resource_name, tier])
+            # for an unknown permission instance:
+            else:
+                self.logger.error(
+                    "Ignoring mlflow-client request with unknown resource type "
+                    f"'{permission.resource_type}'."
+                )
+                return None
+
+        if is_super_admin and workspace_grants:
+            self.logger.error(
+                "Ignoring mlflow-client request combining super-admin with workspace grants."
+            )
+            return None
+
+        if not is_super_admin and not workspace_grants:
+            self.logger.error(
+                "Ignoring mlflow-client request with neither super-admin nor workspace-wide grants."
+            )
+            return None
+
+        return {
+            "username": username,
+            "is_super_admin": is_super_admin,
+            "workspace_grants": workspace_grants,
+        }
+
+    def _exec_mlflow_client_reconcile(self, users_grants_across_workspaces: list) -> None:
+        """Reconcile users' grants across workspaces in the tracking server's container.
+
+        Run a Python script in the tracking server's container to reconcile users' grants across
+        workspaces as per the given, desired set of grants. The script acts directly on MLflow's
+        auth store instead of calling the tracking server's HTTP API, so that the reconcile never
+        has to authenticate to MLflow and keeps working even if the charm's super-admin was changed
+        or deleted (intentionally or inadvertently) by an external super-admin.
+        """
+        payload = json.dumps(
+            {
+                "users": users_grants_across_workspaces,
+                "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
+            }
+        )
+        reconcile_script = Path(MLFLOW_CLIENT_RECONCILE_SOURCE_PATH).read_text()
+        process = self.container.exec(
+            ["python3", "-c", reconcile_script, payload],
+            service_context=self._container_name,
+        )
+        try:
+            process.wait_output()
+        except ExecError as error:
+            self.logger.error(f"Failed to reconcile mlflow-client access: {error.stderr}")
+            raise ErrorWithStatus(
+                "Failed to reconcile mlflow-client access; will retry.", WaitingStatus
+            )
+
+    def _on_mlflow_client_relation_broken(self, event) -> None:
+        """Revoke a departing mlflow-client requirer's access on relation removal.
+
+        Only grants themselves are revoked, while the requested MLflow user and workspaces are
+        retained, as other requirers or externally authenticated users may rely on them. For the
+        same reason, grants not directly owned (generated) by the charm such as those externally,
+        independently generated by admins and super-admins from the client side are also retained.
+        """
+        if not self.unit.is_leader():
+            return
+
+        if not self.container.can_connect():
+            event.defer()
+            return
+
+        try:
+            # reconciling with the departing relation excluded, so as to exclude its and only its
+            # grants (and not the ones of other mlflow-client relations):
+            self._reconcile_mlflow_client_grants(exclude_relation_id=event.relation.id)
+        except ErrorWithStatus as err:
+            self.model.unit.status = err.status
+            self.logger.info(f"Event {event} stopped early with message: {str(err)}")
+            if isinstance(err.status, WaitingStatus):
+                event.defer()
+
     def _reconcile_policy_resource_manager(self):
         if not self.unit.is_leader():
             return
         if self.model.get_relation(SERVICE_MESH_RELATION_NAME):
+            # this only manages the waypoint (in-mesh) allowance for the tracking server; each
+            # related ingress's gateway is allowed to reach the tracking server port by a separate
+            # AuthorizationPolicy that the istio-ingress-k8s charm creates automatically, one per
+            # related ingress.
+            tracking_server_policy = self._build_tracking_server_authorization_policy()
             self._policy_resource_manager.reconcile(
-                policies=[], mesh_type=self._mesh.mesh_type, raw_policies=[self._allow_all_policy]
+                policies=[],
+                mesh_type=self._mesh.mesh_type,
+                raw_policies=[tracking_server_policy] if tracking_server_policy else [],
             )
+
+    def _get_tracking_server_waypoint_principal(self) -> Optional[str]:
+        """Return the SPIFFE principal of the platform waypoint proxy, from config."""
+        principal = self.model.config.get("istio_waypoint_principal") or ""
+        return principal.strip() or None
+
+    def _build_tracking_server_authorization_policy(self) -> Optional[AuthorizationPolicy]:
+        """Build the authorization policy allowing in-mesh access to the tracking server port.
+
+        Only the platform waypoint proxy's principal is configured here: it is the identity the
+        tracking server's ztunnel sees for in-mesh traffic. Ingress traffic is allowed separately,
+        by an AuthorizationPolicy that the istio-ingress-k8s charm creates automatically for each
+        related ingress (permitting that gateway's workload to reach the tracking server port).
+        Returns None when no waypoint principal is configured, so no policy is created.
+        """
+        waypoint_principal = self._get_tracking_server_waypoint_principal()
+        if not waypoint_principal:
+            return None
+
+        spec = AuthorizationPolicySpec(
+            selector=WorkloadSelector(
+                matchLabels={"app.kubernetes.io/name": self.app.name},
+            ),
+            action=Action.allow,
+            rules=[
+                Rule(
+                    from_=[From(source=Source(principals=[waypoint_principal]))],
+                    to=[To(operation=Operation(ports=[str(self._tracking_server_port)]))],
+                ),
+            ],
+        )
+        return AuthorizationPolicy(
+            metadata=ObjectMeta(
+                name=f"{self.app.name}-tracking-server-access",
+                namespace=self.model.name,
+            ),
+            spec=spec.model_dump(by_alias=True, exclude_unset=True, exclude_none=True),
+        )
+
+    def _reconcile_identity_traffic_extension(self) -> None:
+        """Reconcile the TrafficExtension identifying in-mesh callers by their namespace."""
+        if not self.unit.is_leader():
+            return
+        if not self.model.get_relation(SERVICE_MESH_RELATION_NAME):
+            # without a service mesh there is no waypoint to extend; any previously created
+            # resource is removed by the relation-broken handler.
+            return
+
+        traffic_extension = self._build_identity_traffic_extension()
+        self._traffic_extension_resource_manager.reconcile([traffic_extension])
+
+    def _build_identity_traffic_extension(self) -> GenericNamespacedResource:
+        """Build the TrafficExtension stamping in-mesh callers' namespace as their identity.
+
+        The waypoint proxy fronting the tracking server overwrites the trusted user-ID header with
+        the namespace of the calling workload, taken from its verified mTLS identity, so that
+        in-mesh clients are mapped to an MLflow user they cannot spoof. Targeting the tracking
+        server's Service (rather than the waypoint's Gateway) keeps the extension from running for
+        the other workloads that the same waypoint fronts.
+        """
+        rendered = Template(Path(TRAFFIC_EXTENSION_TEMPLATE_PATH).read_text()).render(
+            name=f"{self.app.name}-source-namespace-as-identity",
+            namespace=self.model.name,
+            service_name=self._service_name,
+            identity_header_name=self.model.config["identity_header_name"],
+        )
+        return TrafficExtension.from_dict(yaml.safe_load(rendered))
 
     def _remove_authorization_policies(self, _):
         if not self.unit.is_leader():
@@ -1053,6 +1470,11 @@ class MlflowCharm(CharmBase):
         self._policy_resource_manager.reconcile(
             policies=[], mesh_type=MeshType.istio, raw_policies=[]
         )
+
+    def _remove_identity_traffic_extension(self, _):
+        if not self.unit.is_leader():
+            return
+        self._traffic_extension_resource_manager.reconcile([])
 
     def _on_upgrade_charm(self, event) -> None:
         """Handle the upgrade-charm event by running migrations to possibly newer database schemas.
@@ -1102,9 +1524,21 @@ class MlflowCharm(CharmBase):
         # proceed with other actions
         self._on_event(_)
 
-    def _on_database_relation_removed(self, _) -> None:
-        """Event is fired when relation with postgres is broken."""
-        self.unit.status = BlockedStatus("Please add relation to the database")
+    def _on_backend_store_relation_removed(self, _) -> None:
+        """Stop the tracking server and block the unit when the backend store relation is removed.
+
+        Without a backend store the tracking server cannot serve requests, so its workload service
+        is stopped and the unit is blocked until the relation is re-added.
+        """
+        if self.container.can_connect():
+            services = self.container.get_services()
+            if self._container_name in services and services[self._container_name].is_running():
+                self.logger.info("Backend store relation removed; stopping the tracking server.")
+                self.container.stop(self._container_name)
+
+        self.unit.status = BlockedStatus(
+            f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
+        )
 
     def _send_manifests(
         self, context, manifest_files, relation_requirer: KubernetesManifestRequirerWrapper
@@ -1135,7 +1569,7 @@ class MlflowCharm(CharmBase):
                     "rewrite": INGRESS_PATH_REWRITTEN_PREFIX,
                     "service": self._service_name,
                     "namespace": self._namespace,
-                    "port": self._mlflow_port,
+                    "port": self._tracking_server_port,
                 }
             )
 
@@ -1148,6 +1582,8 @@ class MlflowCharm(CharmBase):
 
             self._check_no_conflicting_ingress_relations()
 
+            self._check_service_mesh_waypoint_principal_configured()
+
             self._ensure_bucket_exists()
 
             if not self.container.can_connect():
@@ -1155,11 +1591,9 @@ class MlflowCharm(CharmBase):
                     f"Container {self._container_name} is not ready", WaitingStatus
                 )
 
-            # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-            # clearing MySQL's binlog trigger-creation restriction before the workload starts and
-            # auto-initializes the database schema on a fresh deployment (an operation that indeed
-            # requires the privileges granted with this step):
-            self._ensure_trigger_creation_allowed(self._get_backend_store_uri())
+            # (re)rendering the required authentication configurations, including the custom
+            # authentication module, into the workload:
+            self._reconcile_auth_config()
 
             update_layer(
                 self._container_name, self._container, self._mlflow_server_layer, self.logger
@@ -1168,6 +1602,8 @@ class MlflowCharm(CharmBase):
             self._reconcile_s3_ca_bundle(self._get_artifact_store_data(interfaces))
 
             self._reconcile_policy_resource_manager()
+
+            self._reconcile_identity_traffic_extension()
 
             if not self.exporter_container.can_connect():
                 raise ErrorWithStatus(
@@ -1187,6 +1623,20 @@ class MlflowCharm(CharmBase):
                 self.poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
             )
             self._send_ingress_info(interfaces)
+
+            # NOTE: MLflow clients' workspace grants are reconciled here, on every holistic charm
+            # reconcile with an idempotent approach, rather than by observing the provider
+            # library's per-request events, because:
+            # - the library splits the request lifecycle across three mutually-exclusive events,
+            # `resource_entity_requested` (initial request), `resource_entity_permissions_changed`
+            # (later grant edits) and `relation_broken` (removal), and this way not only are they
+            # all handled in every case at once, but grant edits even take effect even without
+            # recreating the relation
+            # - this ensures workspace grants are re-provisioned even after events unrelated to the
+            # mlflow_client relation, such as workload restarts or backend-store re-relations,
+            # which avoids drifts in MLflow's auth state (which lives in the backend store)
+            if self.model.relations[MLFLOW_CLIENT_RELATION_ENDPOINT]:
+                self._reconcile_mlflow_client_grants()
 
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
