@@ -16,16 +16,6 @@ ISTIO_PILOT = CharmSpec(
 METACONTROLLER_OPERATOR = CharmSpec(
     charm="metacontroller-operator", channel="latest/edge", trust=True
 )
-MINIO = CharmSpec(
-    charm="minio",
-    channel="latest/edge",
-    config={
-        "access-key": "minio",
-        "secret-key": "minio123",
-        "port": "9000",
-    },
-    trust=True,
-)
 POSTGRESQL_K8S = CharmSpec(
     charm="postgresql-k8s", channel="14/stable", config={"profile": "testing"}, trust=True
 )
