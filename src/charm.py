@@ -72,14 +72,10 @@ from ops import SecretNotFoundError, main
 from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Layer
-from serialized_data_interface import NoCompatibleVersions, NoVersionsListed, get_interfaces
 
 from services.s3 import S3BucketWrapper
 
-INGRESS_MODES_TO_RELATION_NAMES = {
-    "ambient": "istio-ingress-route",
-    "sidecar": "ingress",
-}
+INGRESS_RELATION_NAME = "istio-ingress-route"
 INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
 INGRESS_PATH_REWRITTEN_PREFIX = "/"
 METRICS_RELATION_NAME = "metrics-endpoint"
@@ -300,7 +296,7 @@ class MlflowCharm(CharmBase):
         )
 
         self.ambient_mode_ingress = IstioIngressRouteRequirer(
-            self, relation_name=INGRESS_MODES_TO_RELATION_NAMES["ambient"]
+            self, relation_name=INGRESS_RELATION_NAME
         )
 
         self.framework.observe(
@@ -535,16 +531,6 @@ class MlflowCharm(CharmBase):
     def proxy_mode(self) -> bool:
         """Return whether the tracking server acts as a proxy to the artifact store."""
         return self.model.config["serve_artifacts"]
-
-    def _get_interfaces(self):
-        """Retrieve interface object."""
-        try:
-            interfaces = get_interfaces(self)
-        except NoVersionsListed as err:
-            raise ErrorWithStatus(err, WaitingStatus)
-        except NoCompatibleVersions as err:
-            raise ErrorWithStatus(err, BlockedStatus)
-        return interfaces
 
     def _get_backend_store_db_data(self) -> dict:
         db_relation = self.model.get_relation(RELATION_ENDPOINT_FOR_BACKEND_STORE_DB)
@@ -871,29 +857,6 @@ class MlflowCharm(CharmBase):
         if not self.unit.is_leader():
             self.logger.info("Not a leader, skipping setup")
             raise ErrorWithStatus("Waiting for leadership", WaitingStatus)
-
-    def _check_no_conflicting_ingress_relations(self) -> None:
-        """Check that ambient-mode and sidecar-mode ingress relations are not both set.
-
-        Each endpoint may hold any number of relations, so this inspects the full list
-        of relations on each endpoint rather than assuming at most one.
-        """
-        ambient_relations = self.model.relations[INGRESS_MODES_TO_RELATION_NAMES["ambient"]]
-        sidecar_relations = self.model.relations[INGRESS_MODES_TO_RELATION_NAMES["sidecar"]]
-
-        if ambient_relations and sidecar_relations:
-            self.logger.error(
-                f"Both '{INGRESS_MODES_TO_RELATION_NAMES["ambient"]}' and "
-                f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations are present."
-            )
-            raise ErrorWithStatus(
-                (
-                    f"Cannot have both '{INGRESS_MODES_TO_RELATION_NAMES["ambient"]}' and "
-                    f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations at the same time, "
-                    "remove one to unblock."
-                ),
-                BlockedStatus,
-            )
 
     def _check_service_mesh_waypoint_principal_configured(self) -> None:
         """Block when service mesh is enabled without a tracking-server waypoint principal."""
@@ -1443,26 +1406,10 @@ class MlflowCharm(CharmBase):
             manifests.append(manifest)
         return manifests
 
-    def _send_ingress_info(self, interfaces):
-        if interfaces[INGRESS_MODES_TO_RELATION_NAMES["sidecar"]]:
-            interfaces[INGRESS_MODES_TO_RELATION_NAMES["sidecar"]].send_data(
-                {
-                    "prefix": INGRESS_PATH_MATCHED_PREFIX,
-                    "rewrite": INGRESS_PATH_REWRITTEN_PREFIX,
-                    "service": self._service_name,
-                    "namespace": self._namespace,
-                    "port": self._tracking_server_port,
-                }
-            )
-
     def _on_event(self, event) -> None:
         """Perform all required actions for the Charm."""
         try:
             self._check_leader()
-
-            interfaces = self._get_interfaces()
-
-            self._check_no_conflicting_ingress_relations()
 
             self._check_service_mesh_waypoint_principal_configured()
 
@@ -1504,7 +1451,6 @@ class MlflowCharm(CharmBase):
             self._send_manifests(
                 self.poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
             )
-            self._send_ingress_info(interfaces)
 
             # NOTE: MLflow clients' workspace grants are reconciled here, on every holistic charm
             # reconcile with an idempotent approach, rather than by observing the provider
