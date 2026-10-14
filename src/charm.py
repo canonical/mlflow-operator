@@ -420,7 +420,7 @@ class MlflowCharm(CharmBase):
         return self._poddefaults_manifests_wrapper
 
     def _create_service(self):
-        """Create k8s service based on charm'sconfig."""
+        """Create k8s service based on charm's config."""
         tracking_server_port_definition = ServicePort(
             self._tracking_server_port,
             name=f"{self.app.name}",
