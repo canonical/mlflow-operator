@@ -89,7 +89,8 @@ SECRETS_FILES = [
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
 SERVICE_MESH_RELATION_REQUIRED_MESSAGE = (
-    "Missing service-mesh relation. Please relate to `service-mesh`."
+    f"Missing {SERVICE_MESH_RELATION_NAME} relation. "
+    f"Please relate to `{SERVICE_MESH_RELATION_NAME}`."
 )
 SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE = "Missing istio_waypoint_principal config"
 SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE = (
