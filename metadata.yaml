@@ -59,8 +59,9 @@ requires:
       natively provide all information required to build these policies when related
       cross-model.
   service-mesh:
-    limit: 1
     interface: service_mesh
+    limit: 1
+    optional: false
     description: |
       Subscribe this charm into a service mesh to enforce authorization policies.
 provides:

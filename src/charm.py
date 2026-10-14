@@ -88,6 +88,9 @@ SECRETS_FILES = [
     "src/secrets/mlflow-s3-artifact.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
+SERVICE_MESH_RELATION_REQUIRED_MESSAGE = (
+    "Missing service-mesh relation. Please relate to `service-mesh`."
+)
 SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE = "Missing istio_waypoint_principal config"
 SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE = (
     "The service-mesh relation is present but config 'istio_waypoint_principal' is not set. "
@@ -858,12 +861,17 @@ class MlflowCharm(CharmBase):
             self.logger.info("Not a leader, skipping setup")
             raise ErrorWithStatus("Waiting for leadership", WaitingStatus)
 
-    def _check_service_mesh_waypoint_principal_configured(self) -> None:
-        """Block when service mesh is enabled without a tracking-server waypoint principal."""
-        if (
-            self.model.get_relation(SERVICE_MESH_RELATION_NAME)
-            and not self._get_tracking_server_waypoint_principal()
-        ):
+    def _check_service_mesh_configured(self) -> None:
+        """Block when service-mesh relation is missing or when service mesh is enabled without a
+        tracking-server waypoint principal."""
+        if not self.model.get_relation(SERVICE_MESH_RELATION_NAME):
+            self.logger.error(SERVICE_MESH_RELATION_REQUIRED_MESSAGE)
+            raise ErrorWithStatus(
+                SERVICE_MESH_RELATION_REQUIRED_MESSAGE,
+                BlockedStatus,
+            )
+
+        if not self._get_tracking_server_waypoint_principal():
             self.logger.error(SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE)
             raise ErrorWithStatus(
                 SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
@@ -1411,7 +1419,7 @@ class MlflowCharm(CharmBase):
         try:
             self._check_leader()
 
-            self._check_service_mesh_waypoint_principal_configured()
+            self._check_service_mesh_configured()
 
             self._ensure_bucket_exists()
 

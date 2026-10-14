@@ -32,6 +32,7 @@ from charm import (
     S3_CA_BUNDLE_CONTAINER_PATH,
     SCHEMA_OUT_OF_DATE_MARKER,
     SECRETS_FILES,
+    SERVICE_MESH_RELATION_REQUIRED_MESSAGE,
     SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE,
     SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
     MeshType,
@@ -390,6 +391,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     def test_get_artifact_store_data_failure_missing_storage_object(self, harness: Harness):
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
@@ -403,6 +405,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @pytest.mark.parametrize("missing_field", ["access-key", "secret-key", "endpoint"])
     def test_get_artifact_store_data_missing_field(self, harness: Harness, missing_field):
         s3_data = S3_DATA.copy()
@@ -419,6 +422,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
@@ -596,6 +600,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.S3BucketWrapper")
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._get_artifact_store_data",
         return_value={**OBJECT_STORAGE_DATA_NORMALIZED, "bucket": ""},
@@ -615,6 +620,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.S3BucketWrapper")
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._get_artifact_store_data",
         return_value=OBJECT_STORAGE_DATA_NORMALIZED,
@@ -1195,6 +1201,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
@@ -1220,6 +1227,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
@@ -1242,6 +1250,22 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    def test_check_service_mesh_configured_blocks_when_relation_missing(
+        self, harness: Harness, caplog
+    ):
+        """No service-mesh relation blocks the charm."""
+        harness.begin()
+
+        with caplog.at_level(logging.ERROR), pytest.raises(ErrorWithStatus) as exc:
+            harness.charm._check_service_mesh_configured()
+
+        assert exc.value.status == BlockedStatus(SERVICE_MESH_RELATION_REQUIRED_MESSAGE)
+        assert SERVICE_MESH_RELATION_REQUIRED_MESSAGE in caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
     def test_on_event_blocks_when_service_mesh_has_no_waypoint_principal(
         self, harness: Harness, caplog
     ):
@@ -1256,6 +1280,18 @@ class TestCharm:
             SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE
         )
         assert SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE in caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_check_service_mesh_configured_success(self, harness: Harness):
+        """A service-mesh relation with a waypoint principal configured does not block the charm."""
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+        harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: WAYPOINT_PRINCIPAL})
+        harness.begin()
+        # Should not raise ErrorWithStatus
+        harness.charm._check_service_mesh_configured()
 
     @patch(
         "charm.KubernetesServicePatch",
