@@ -20,7 +20,6 @@ from charms.resource_dispatcher.v0.kubernetes_manifests import KUBERNETES_MANIFE
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Service
 from ops.testing import Harness
-from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import (
     ENABLE_TRIGGER_CREATION_SNIPPET,
@@ -28,6 +27,12 @@ from charm import (
     S3_CA_BUNDLE_CONTAINER_PATH,
     SCHEMA_OUT_OF_DATE_MARKER,
     SECRETS_FILES,
+<<<<<<< HEAD
+=======
+    SERVICE_MESH_RELATION_REQUIRED_MESSAGE,
+    SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE,
+    SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     MeshType,
     MlflowCharm,
 )
@@ -135,18 +140,9 @@ EXPECTED_INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
 EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX = "/"
 EXPECTED_K8S_SERVICE_HTTP_PORT = EXPECTED_SERVER_PORT
 RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE = "istio-ingress-route"
-RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE = "ingress"
 RELATION_ENDPOINT_FOR_SERVICE_MESH = "service-mesh"
 RELATION_ENDPOINT_FOR_SECRETS = "secrets"
 RELATION_ENDPOINT_FOR_PODDEFAULTS = "pod-defaults"
-
-INGRESS_DATA = {
-    "prefix": EXPECTED_INGRESS_PATH_MATCHED_PREFIX,
-    "rewrite": EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX,
-    "service": DEFAULT_JUJU_APP_NAME,
-    "namespace": MODEL_NAME,
-    "port": EXPECTED_K8S_SERVICE_HTTP_PORT,
-}
 
 # Rendered manifests expected from the SECRETS_FILES and PODDEFAULTS_FILES templates:
 EXPECTED_MLFLOW_ENDPOINT = (
@@ -373,6 +369,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     @patch("charm.get_interfaces")
     def test_get_interfaces_failure_no_versions_listed(
         self, get_interfaces: MagicMock, harness: Harness
@@ -414,16 +411,34 @@ class TestCharm:
         harness.begin()
         interfaces = harness.charm._get_interfaces()
         assert interfaces["object-storage"] is not None
+=======
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
+    def test_get_artifact_store_data_failure_missing_storage_object(self, harness: Harness):
+        harness.begin_with_initial_hooks()
+        assert harness.charm.model.unit.status == BlockedStatus(
+            "Missing s3-credentials relation. Please relate to `s3-credentials`."
+        )
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_interfaces")
     def test_get_artifact_store_data_failure_missing_storage_object(
         self, _get_interfaces: MagicMock, harness: Harness
     ):
         _get_interfaces.return_value = {"object-storage": ""}
+=======
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
+    @pytest.mark.parametrize("missing_field", ["access-key", "secret-key", "endpoint"])
+    def test_get_artifact_store_data_missing_field(self, harness: Harness, missing_field):
+        s3_data = S3_DATA.copy()
+        del s3_data[missing_field]
+        add_s3_storage_to_harness(harness, s3_data)
+
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
             "Missing object storage relation. "
@@ -451,6 +466,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
@@ -626,6 +642,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.S3BucketWrapper")
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._get_artifact_store_data",
         return_value={**OBJECT_STORAGE_DATA_NORMALIZED, "bucket": ""},
@@ -645,6 +662,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.S3BucketWrapper")
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._get_artifact_store_data",
         return_value=OBJECT_STORAGE_DATA_NORMALIZED,
@@ -700,8 +718,15 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
     @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
+=======
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
         "serve_artifacts, tls_ca_chain, region, expected_environment",
@@ -761,8 +786,15 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
     @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
+=======
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
         "serve_artifacts, tls_ca_chain, expected_environment",
@@ -796,6 +828,109 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
+=======
+    @pytest.mark.parametrize(
+        "raw_config, expected_aliases",
+        [
+            ("", {}),
+            ("   \n  ", {}),
+            ("# only a comment", {}),
+            ("svc-alice-ci: alice@example.com", {"svc-alice-ci": "alice@example.com"}),
+            (
+                "svc-alice-ci: alice@example.com\nkubeflow-profile-for-dan: dan@example.com",
+                {
+                    "svc-alice-ci": "alice@example.com",
+                    "kubeflow-profile-for-dan": "dan@example.com",
+                },
+            ),
+            (
+                "svc-a: alice@example.com\nsvc-b: alice@example.com",
+                {"svc-a": "alice@example.com", "svc-b": "alice@example.com"},
+            ),
+        ],
+        ids=["empty", "blank", "comment-only", "single", "distinct", "many-to-one"],
+    )
+    def test_get_identity_aliases_parses_valid_config(
+        self, harness: Harness, raw_config, expected_aliases
+    ):
+        harness.update_config({"identity_aliases": raw_config})
+        harness.begin()
+        assert harness.charm._get_identity_aliases() == expected_aliases
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "raw_config",
+        [
+            "- not\n- a\n- mapping",
+            "just-a-scalar",
+            "svc-alice-ci: 123",
+            "svc-alice-ci: true",
+            "'': alice@example.com",
+            "svc-alice-ci: ''",
+            "svc-alice-ci: [a, b]",
+            "alice@example.com: bob@example.com\nsvc-ci: alice@example.com",
+            "'unterminated",
+        ],
+        ids=[
+            "list",
+            "scalar",
+            "non-string-value",
+            "boolean-value",
+            "empty-key",
+            "empty-value",
+            "list-value",
+            "chained-alias",
+            "malformed-yaml",
+        ],
+    )
+    def test_get_identity_aliases_rejects_invalid_config(
+        self, harness: Harness, caplog, raw_config
+    ):
+        harness.update_config({"identity_aliases": raw_config})
+        harness.begin()
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(ErrorWithStatus) as exc_info:
+                harness.charm._get_identity_aliases()
+        assert exc_info.value.status_type is BlockedStatus
+        # the status stays short and points at the logs, which carry the full detail:
+        assert "Check the unit logs" in exc_info.value.status.message
+        assert caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
+    @patch("charm.MlflowCharm._get_artifact_store_data")
+    def test_generate_environment_includes_identity_aliases(
+        self, mock_get_artifact_store_data, harness: Harness
+    ):
+        """The parsed alias map is carried in the layer environment as JSON for the auth module."""
+        mock_get_artifact_store_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "bucket": "",
+            "tls_ca_chain": None,
+            "region": "",
+        }
+        harness.update_config({"identity_aliases": "svc-alice-ci: alice@example.com"})
+        harness.begin()
+
+        envs = harness.charm._generate_environment()
+
+        assert json.loads(envs["IDENTITY_ALIASES"]) == {"svc-alice-ci": "alice@example.com"}
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     def test_reconcile_s3_ca_bundle_pushes_bundle_in_proxy_mode_with_tls(self, harness: Harness):
         """A TLS store in proxy mode has its CA chain pushed to the workload container."""
         harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: True})
@@ -894,7 +1029,6 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
     @pytest.mark.parametrize(
@@ -928,7 +1062,6 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
     @pytest.mark.parametrize(
@@ -1123,6 +1256,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
@@ -1148,6 +1282,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
@@ -1170,7 +1305,58 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     def test_on_database_relation_removed(
+=======
+    def test_check_service_mesh_configured_blocks_when_relation_missing(
+        self, harness: Harness, caplog
+    ):
+        """No service-mesh relation blocks the charm."""
+        harness.begin()
+
+        with caplog.at_level(logging.ERROR), pytest.raises(ErrorWithStatus) as exc:
+            harness.charm._check_service_mesh_configured()
+
+        assert exc.value.status == BlockedStatus(SERVICE_MESH_RELATION_REQUIRED_MESSAGE)
+        assert SERVICE_MESH_RELATION_REQUIRED_MESSAGE in caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_event_blocks_when_service_mesh_has_no_waypoint_principal(
+        self, harness: Harness, caplog
+    ):
+        """A service-mesh relation without waypoint principal config blocks the charm."""
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+        harness.begin()
+
+        with caplog.at_level(logging.ERROR):
+            harness.charm._on_event(None)
+
+        assert harness.charm.model.unit.status == BlockedStatus(
+            SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE
+        )
+        assert SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE in caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_check_service_mesh_configured_success(self, harness: Harness):
+        """A service-mesh relation with a waypoint principal configured does not block the charm."""
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+        harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: WAYPOINT_PRINCIPAL})
+        harness.begin()
+        # Should not raise ErrorWithStatus
+        harness.charm._check_service_mesh_configured()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_backend_store_db_relation_removed(
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
         self,
         harness: Harness,
     ):
@@ -1586,8 +1772,6 @@ class TestCharm:
         """A regular reconcile must NOT migrate the schema; that is scoped to upgrade-charm."""
         harness.begin()
         harness.charm._check_leader = MagicMock()
-        harness.charm._get_interfaces = MagicMock(return_value={})
-        harness.charm._check_no_conflicting_ingress_relations = MagicMock()
         harness.charm._ensure_bucket_exists = MagicMock()
         harness.charm._reconcile_database_schema = MagicMock()
 
@@ -1601,17 +1785,6 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_send_ingress_info_success(self, harness: Harness):
-        harness.begin()
-        ingress = MagicMock()
-        interfaces = {"ingress": ingress}
-        harness.charm._send_ingress_info(interfaces)
-        ingress.send_data.assert_called_with(INGRESS_DATA)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
@@ -1619,6 +1792,7 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
     @patch("charm.ServiceMeshConsumer")
@@ -1704,13 +1878,15 @@ class TestCharm:
     )
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
+=======
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     @patch("charm.ServiceMeshConsumer")
     def test_multiple_ambient_ingress_relations(
         self,
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
     ):
         """Test the charm reconciles to active with more than one istio-ingress-route relation."""
@@ -1746,15 +1922,18 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
+=======
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     @patch("charm.ServiceMeshConsumer")
     def test_each_istio_ingress_route_relation_receives_config(
         self,
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
     ):
         """Test that every istio-ingress-route relation databag receives a valid config."""
@@ -1803,8 +1982,12 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
+=======
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     @patch("charm.ServiceMeshConsumer")
     @pytest.mark.parametrize("config_submission_broken", [True, False], ids=["broken", "good"])
     def test_ambient_mode_ingress_configurations(
@@ -1812,7 +1995,6 @@ class TestCharm:
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
         config_submission_broken,
     ):
@@ -1885,8 +2067,12 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
+=======
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     @patch("charm.ServiceMeshConsumer")
     @pytest.mark.parametrize(
         "tls_enabled, expected_port", [(False, 80), (True, 443)], ids=["no-tls", "tls"]
@@ -1896,7 +2082,6 @@ class TestCharm:
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
         tls_enabled,
         expected_port,

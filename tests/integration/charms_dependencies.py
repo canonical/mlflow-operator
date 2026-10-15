@@ -2,17 +2,6 @@
 
 from charmed_kubeflow_chisme.testing import CharmSpec
 
-# for Istio in sidecar mode only:
-ISTIO_GATEWAY = CharmSpec(
-    charm="istio-gateway", channel="latest/edge", config={"kind": "ingress"}, trust=True
-)
-ISTIO_PILOT = CharmSpec(
-    charm="istio-pilot",
-    channel="latest/edge",
-    config={"default-gateway": "test-gateway"},
-    trust=True,
-)
-
 METACONTROLLER_OPERATOR = CharmSpec(
     charm="metacontroller-operator", channel="latest/edge", trust=True
 )

@@ -52,6 +52,7 @@ from ops import ActionEvent, main
 from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Layer
+<<<<<<< HEAD
 from serialized_data_interface import (
     NoCompatibleVersions,
     NoVersionsListed,
@@ -59,13 +60,12 @@ from serialized_data_interface import (
     get_interfaces,
 )
 from serialized_data_interface.errors import RelationDataError
+=======
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
 from services.s3 import S3BucketWrapper
 
-INGRESS_MODES_TO_RELATION_NAMES = {
-    "ambient": "istio-ingress-route",
-    "sidecar": "ingress",
-}
+INGRESS_RELATION_NAME = "istio-ingress-route"
 INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
 INGRESS_PATH_REWRITTEN_PREFIX = "/"
 METRICS_RELATION_NAME = "metrics-endpoint"
@@ -79,6 +79,25 @@ SECRETS_FILES = [
     "src/secrets/mlflow-minio-artifact.j2",
 ]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
+<<<<<<< HEAD
+=======
+SERVICE_MESH_RELATION_REQUIRED_MESSAGE = (
+    f"Missing {SERVICE_MESH_RELATION_NAME} relation. "
+    f"Please relate to `{SERVICE_MESH_RELATION_NAME}`."
+)
+SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE = "Missing istio_waypoint_principal config"
+SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE = (
+    "The service-mesh relation is present but config 'istio_waypoint_principal' is not set. "
+    "Set it to the SPIFFE principal of the platform namespace's waypoint proxy."
+)
+TRAFFIC_EXTENSION_TEMPLATE_PATH = "src/service_mesh/traffic-extension.yaml.j2"
+TrafficExtension = create_namespaced_resource(
+    "extensions.istio.io",
+    "v1alpha1",
+    "TrafficExtension",
+    "trafficextensions",
+)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 # path inside the workload container where the artifact store's TLS CA bundle is written to be then
 # referenced by the AWS_CA_BUNDLE environment variable, so that the tracking server can trust the
 # store's TLS certificate - NOTE: under Pebble's home directory, writable by the non-root user:
@@ -254,7 +273,7 @@ class MlflowCharm(CharmBase):
         )
 
         self.ambient_mode_ingress = IstioIngressRouteRequirer(
-            self, relation_name=INGRESS_MODES_TO_RELATION_NAMES["ambient"]
+            self, relation_name=INGRESS_RELATION_NAME
         )
 
         self.framework.observe(
@@ -350,6 +369,7 @@ class MlflowCharm(CharmBase):
         return self._poddefaults_manifests_wrapper
 
     def _create_service(self):
+<<<<<<< HEAD
         """Create k8s service based on charm'sconfig."""
         if self.config["enable_mlflow_nodeport"]:
             service_type = "NodePort"
@@ -361,6 +381,17 @@ class MlflowCharm(CharmBase):
                 targetPort=self._mlflow_port,
                 nodePort=int(self._node_port),
             )
+=======
+        """Create k8s service based on charm's config."""
+        tracking_server_port_definition = ServicePort(
+            self._tracking_server_port,
+            name=f"{self.app.name}",
+        )
+        metrics_exporter_port_definition = ServicePort(
+            self._exporter_port,
+            name=f"{self.app.name}-prometheus-exporter",
+        )
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
             exporter_port = ServicePort(
                 int(self._exporter_port),
@@ -480,6 +511,7 @@ class MlflowCharm(CharmBase):
         """Return whether the tracking server acts as a proxy to the artifact store."""
         return self.model.config["serve_artifacts"]
 
+<<<<<<< HEAD
     def _get_interfaces(self):
         """Retrieve interface object."""
         try:
@@ -492,6 +524,10 @@ class MlflowCharm(CharmBase):
 
     def _get_relational_db_data(self) -> dict:
         mysql_relation = self.model.get_relation("relational-db")
+=======
+    def _get_backend_store_db_data(self) -> dict:
+        db_relation = self.model.get_relation(RELATION_ENDPOINT_FOR_BACKEND_STORE_DB)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
         # Raise exception and stop execution if the relational-db relation is not established
         if not mysql_relation:
@@ -967,29 +1003,26 @@ class MlflowCharm(CharmBase):
             self.logger.info("Not a leader, skipping setup")
             raise ErrorWithStatus("Waiting for leadership", WaitingStatus)
 
-    def _check_no_conflicting_ingress_relations(self) -> None:
-        """Check that ambient-mode and sidecar-mode ingress relations are not both set.
-
-        Each endpoint may hold any number of relations, so this inspects the full list
-        of relations on each endpoint rather than assuming at most one.
-        """
-        ambient_relations = self.model.relations[INGRESS_MODES_TO_RELATION_NAMES["ambient"]]
-        sidecar_relations = self.model.relations[INGRESS_MODES_TO_RELATION_NAMES["sidecar"]]
-
-        if ambient_relations and sidecar_relations:
-            self.logger.error(
-                f"Both '{INGRESS_MODES_TO_RELATION_NAMES["ambient"]}' and "
-                f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations are present."
-            )
+    def _check_service_mesh_configured(self) -> None:
+        """Block when service-mesh relation is missing or when service mesh is enabled without a
+        tracking-server waypoint principal."""
+        if not self.model.get_relation(SERVICE_MESH_RELATION_NAME):
+            self.logger.error(SERVICE_MESH_RELATION_REQUIRED_MESSAGE)
             raise ErrorWithStatus(
-                (
-                    f"Cannot have both '{INGRESS_MODES_TO_RELATION_NAMES["ambient"]}' and "
-                    f"'{INGRESS_MODES_TO_RELATION_NAMES["sidecar"]}' relations at the same time, "
-                    "remove one to unblock."
-                ),
+                SERVICE_MESH_RELATION_REQUIRED_MESSAGE,
                 BlockedStatus,
             )
 
+<<<<<<< HEAD
+=======
+        if not self._get_tracking_server_waypoint_principal():
+            self.logger.error(SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE)
+            raise ErrorWithStatus(
+                SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
+                BlockedStatus,
+            )
+
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     def _generate_environment(self) -> dict:
         """Return environment variables for the `mlflow server` command.
 
@@ -1127,6 +1160,7 @@ class MlflowCharm(CharmBase):
             manifests.append(manifest)
         return manifests
 
+<<<<<<< HEAD
     def _send_ingress_info(self, interfaces):
         if interfaces[INGRESS_MODES_TO_RELATION_NAMES["sidecar"]]:
             interfaces[INGRESS_MODES_TO_RELATION_NAMES["sidecar"]].send_data(
@@ -1139,14 +1173,20 @@ class MlflowCharm(CharmBase):
                 }
             )
 
+=======
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     def _on_event(self, event) -> None:
         """Perform all required actions for the Charm."""
         try:
             self._check_leader()
 
+<<<<<<< HEAD
             interfaces = self._get_interfaces()
 
             self._check_no_conflicting_ingress_relations()
+=======
+            self._check_service_mesh_configured()
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
             self._ensure_bucket_exists()
 
@@ -1186,7 +1226,6 @@ class MlflowCharm(CharmBase):
             self._send_manifests(
                 self.poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
             )
-            self._send_ingress_info(interfaces)
 
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
