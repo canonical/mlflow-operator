@@ -59,46 +59,6 @@ requires:
     __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
   dashboard-links:
     interface: kubeflow_dashboard_links
-  ingress:
-    interface: ingress
-    schema:
-      v2:
-        requires:
-          type: object
-          properties:
-            service:
-              type: string
-            port:
-              type: integer
-            namespace:
-              type: string
-            prefix:
-              type: string
-            rewrite:
-              type: string
-          required:
-          - service
-          - port
-          - namespace
-          - prefix
-      v1:
-        requires:
-          type: object
-          properties:
-            service:
-              type: string
-            port:
-              type: integer
-            prefix:
-              type: string
-            rewrite:
-              type: string
-          required:
-          - service
-          - port
-          - prefix
-    versions: [v1]
-    __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/ingress.yaml
   istio-ingress-route:
     interface: istio_ingress_route
     description: |
@@ -125,8 +85,9 @@ requires:
       natively provide all information required to build these policies when related
       cross-model.
   service-mesh:
-    limit: 1
     interface: service_mesh
+    limit: 1
+    optional: false
     description: |
       Subscribe this charm into a service mesh to enforce authorization policies.
 provides:

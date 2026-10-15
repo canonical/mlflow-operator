@@ -15,9 +15,28 @@ from charms.istio_ingress_k8s.v0.istio_ingress_route import (
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.pebble import ChangeError, Service
 from ops.testing import Harness
-from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
+<<<<<<< HEAD
 from charm import MeshType, MlflowCharm
+=======
+from charm import (
+    AUTH_CONFIG_CONTAINER_PATH,
+    AUTH_MODULE_CONTAINER_PATH,
+    METRICS_RELATION_NAME,
+    MLFLOW_CLIENT_DEFAULT_TIER,
+    MLFLOW_CLIENT_RELATION_ENDPOINT,
+    MLFLOW_SUPER_ADMIN_USERNAME,
+    PODDEFAULTS_FILES,
+    S3_CA_BUNDLE_CONTAINER_PATH,
+    SCHEMA_OUT_OF_DATE_MARKER,
+    SECRETS_FILES,
+    SERVICE_MESH_RELATION_REQUIRED_MESSAGE,
+    SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE,
+    SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
+    MeshType,
+    MlflowCharm,
+)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
 BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
@@ -67,9 +86,9 @@ EXPECTED_INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
 EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX = "/"
 EXPECTED_K8S_SERVICE_HTTP_PORT = 5000
 RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE = "istio-ingress-route"
-RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE = "ingress"
 RELATION_ENDPOINT_FOR_SERVICE_MESH = "service-mesh"
 
+<<<<<<< HEAD
 INGRESS_DATA = {
     "prefix": EXPECTED_INGRESS_PATH_MATCHED_PREFIX,
     "rewrite": EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX,
@@ -78,6 +97,103 @@ INGRESS_DATA = {
     "port": EXPECTED_K8S_SERVICE_HTTP_PORT,
 }
 
+=======
+# Rendered manifests expected from the SECRETS_FILES and PODDEFAULTS_FILES templates:
+EXPECTED_MLFLOW_ENDPOINT = (
+    f"http://{CHARM_NAME}.{MODEL_NAME}.svc.cluster.local:{EXPECTED_K8S_SERVICE_HTTP_PORT}"
+)
+EXPECTED_SECRET_MANIFEST = {
+    "apiVersion": "v1",
+    "kind": "Secret",
+    "metadata": {"name": SECRET_NAME},
+    "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"},
+}
+# Secret variant for a TLS artifact store: the CA bundle is embedded (base64) under `data`.
+EXPECTED_SECRET_MANIFEST_WITH_CA = {
+    **EXPECTED_SECRET_MANIFEST,
+    "data": {"ca-bundle.pem": EXPECTED_S3_CA_BUNDLE_B64},
+}
+EXPECTED_S3_PODDEFAULT_MANIFEST = {
+    "apiVersion": "kubeflow.org/v1alpha1",
+    "kind": "PodDefault",
+    "metadata": {"name": ACCESS_S3_PODDEFAULT_NAME},
+    "spec": {
+        "desc": "Allow access to S3",
+        "selector": {"matchLabels": {ACCESS_S3_PODDEFAULT_SELECTOR_LABEL: "true"}},
+        "env": [
+            {
+                "name": "AWS_ACCESS_KEY_ID",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": SECRET_NAME,
+                        "key": "AWS_ACCESS_KEY_ID",
+                        "optional": False,
+                    }
+                },
+            },
+            {
+                "name": "AWS_SECRET_ACCESS_KEY",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": SECRET_NAME,
+                        "key": "AWS_SECRET_ACCESS_KEY",
+                        "optional": False,
+                    }
+                },
+            },
+            {"name": "S3_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
+        ],
+    },
+}
+# access-s3 PodDefault variant for a TLS artifact store: the CA bundle Secret key is mounted
+# read-only into client pods and AWS_CA_BUNDLE points boto3 at it.
+EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA = {
+    **EXPECTED_S3_PODDEFAULT_MANIFEST,
+    "spec": {
+        **EXPECTED_S3_PODDEFAULT_MANIFEST["spec"],
+        "env": [
+            *EXPECTED_S3_PODDEFAULT_MANIFEST["spec"]["env"],
+            {"name": "AWS_CA_BUNDLE", "value": "/etc/mlflow/certs/ca-bundle.pem"},
+        ],
+        "volumeMounts": [
+            {"name": "s3-ca-bundle", "mountPath": "/etc/mlflow/certs", "readOnly": True},
+        ],
+        "volumes": [
+            {
+                "name": "s3-ca-bundle",
+                "secret": {
+                    "secretName": SECRET_NAME,
+                    "items": [{"key": "ca-bundle.pem", "path": "ca-bundle.pem"}],
+                },
+            },
+        ],
+    },
+}
+EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE = {
+    "apiVersion": "kubeflow.org/v1alpha1",
+    "kind": "PodDefault",
+    "metadata": {"name": MLFLOW_PODDEFAULT_NAME},
+    "spec": {
+        "desc": "Allow access to MLflow",
+        "env": [
+            {"name": "MLFLOW_S3_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
+            {"name": "MLFLOW_TRACKING_URI", "value": EXPECTED_MLFLOW_ENDPOINT},
+        ],
+        "selector": {"matchLabels": {MLFLOW_PODDEFAULT_SELECTOR_LABEL: "true"}},
+    },
+}
+EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE = {
+    **EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
+    "spec": {
+        **EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE["spec"],
+        "env": [
+            {"name": "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD", "value": "false"},
+            {"name": "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD", "value": "false"},
+            {"name": "MLFLOW_TRACKING_URI", "value": EXPECTED_MLFLOW_ENDPOINT},
+        ],
+    },
+}
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
 class _FakeChangeError(ChangeError):
     """Used to simulate a ChangeError during testing."""
@@ -176,6 +292,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     @patch("charm.get_interfaces")
     def test_get_interfaces_failure_no_versions_listed(
         self, get_interfaces: MagicMock, harness: Harness
@@ -217,16 +334,34 @@ class TestCharm:
         harness.begin()
         interfaces = harness.charm._get_interfaces()
         assert interfaces["object-storage"] is not None
+=======
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
+    def test_get_artifact_store_data_failure_missing_storage_object(self, harness: Harness):
+        harness.begin_with_initial_hooks()
+        assert harness.charm.model.unit.status == BlockedStatus(
+            "Missing s3-credentials relation. Please relate to `s3-credentials`."
+        )
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_interfaces")
     def test_get_object_storage_data_failure_missing_storage_object(
         self, _get_interfaces: MagicMock, harness: Harness
     ):
         _get_interfaces.return_value = {"object-storage": ""}
+=======
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
+    @pytest.mark.parametrize("missing_field", ["access-key", "secret-key", "endpoint"])
+    def test_get_artifact_store_data_missing_field(self, harness: Harness, missing_field):
+        s3_data = S3_DATA.copy()
+        del s3_data[missing_field]
+        add_s3_storage_to_harness(harness, s3_data)
+
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == WaitingStatus(
             "Waiting for object-storage relation data"
@@ -236,6 +371,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_interfaces")
     def test_get_object_storage_data_failure_bad_storage_object(
         self, _get_interfaces: MagicMock, harness: Harness
@@ -243,6 +379,15 @@ class TestCharm:
         storage_object = MagicMock()
         storage_object.get_data.return_value = ["a"]
         _get_interfaces.return_value = {"object-storage": storage_object}
+=======
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
+    @patch(
+        "charm.MlflowCharm._ensure_bucket_exists",
+        lambda *args, **kw: None,
+    )
+    def test_get_artifact_store_data_success(self, harness: Harness):
+        harness = add_s3_storage_to_harness(harness)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
             "Unexpected error unpacking object storage data - data format not as expected. "
@@ -388,9 +533,20 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     def test_validate_default_s3_bucket_failure_bucket_creation_not_allowed(
         self,
         harness: Harness,
+=======
+    @patch("charm.S3BucketWrapper")
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data",
+        return_value={**OBJECT_STORAGE_DATA_NORMALIZED, "bucket": ""},
+    )
+    def test_on_event_missing_bucket_sets_blocked_status(
+        self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     ):
         harness.update_config({"create_default_artifact_root_if_missing": False})
         s3_wrapper = MagicMock()
@@ -408,11 +564,22 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm.container")
     def test_update_layer_failure_container_problem(
         self,
         container: MagicMock,
         harness: Harness,
+=======
+    @patch("charm.S3BucketWrapper")
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data",
+        return_value=OBJECT_STORAGE_DATA_NORMALIZED,
+    )
+    def test_on_event_bucket_connection_error_sets_waiting_status(
+        self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     ):
         change = MagicMock()
         change.tasks = []
@@ -444,13 +611,363 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     def test_get_mlflow_serve_env_vars(
+=======
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
+    @patch("charm.MlflowCharm._get_artifact_store_data")
+    @pytest.mark.parametrize(
+        "serve_artifacts, tls_ca_chain, region, expected_environment",
+        [
+            # config option to serve artifacts not explicitly set -> default value -> no proxy mode:
+            (None, None, "", EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
+            # config option to serve artifacts explicitly set to False -> no proxy mode:
+            (False, None, "", EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
+            # config option to serve artifacts explicitly set to True -> proxy mode:
+            (True, None, "", EXPECTED_ENVIRONMENT_PROXY_MODE),
+            # proxy mode against a TLS store -> CA exposed to the server via AWS_CA_BUNDLE:
+            (
+                True,
+                S3_TLS_CA_CHAIN,
+                "",
+                {**EXPECTED_ENVIRONMENT_PROXY_MODE, "AWS_CA_BUNDLE": S3_CA_BUNDLE_CONTAINER_PATH},
+            ),
+            # proxy mode against a store advertising a region -> region exposed to the server via
+            # AWS_DEFAULT_REGION:
+            (
+                True,
+                None,
+                "us-east-1",
+                {**EXPECTED_ENVIRONMENT_PROXY_MODE, "AWS_DEFAULT_REGION": "us-east-1"},
+            ),
+        ],
+        ids=[
+            "default-no-proxy-mode",
+            "no-proxy-mode",
+            "proxy-mode",
+            "proxy-mode-with-tls",
+            "proxy-mode-with-region",
+        ],
+    )
+    def test_generate_environment(
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
         self,
         harness: Harness,
     ):
         harness.begin()
+<<<<<<< HEAD
         envs = harness.charm._get_mlflow_serve_env_vars(RELATIONAL_DB_DATA, BUCKET_NAME)
         assert envs == EXPECTED_ENVIRONMENT
+=======
+        envs = harness.charm._generate_environment()
+        assert envs == expected_environment
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
+    @patch("charm.MlflowCharm._get_artifact_store_data")
+    @pytest.mark.parametrize(
+        "serve_artifacts, tls_ca_chain, expected_environment",
+        [
+            (True, None, EXPECTED_ENVIRONMENT_PROXY_MODE),
+            (False, S3_TLS_CA_CHAIN, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
+        ],
+        ids=["proxy-mode-without-tls", "tls-without-proxy-mode"],
+    )
+    def test_generate_environment_omits_ca_bundle_when_not_needed(
+        self,
+        mock_get_artifact_store_data,
+        harness: Harness,
+        serve_artifacts,
+        tls_ca_chain,
+        expected_environment,
+    ):
+        """AWS_CA_BUNDLE is only exposed for a TLS artifact store in proxy mode."""
+        mock_get_artifact_store_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "bucket": "",
+            "tls_ca_chain": tls_ca_chain,
+        }
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
+        harness.begin()
+        envs = harness.charm._generate_environment()
+        assert "AWS_CA_BUNDLE" not in envs
+        assert envs == expected_environment
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "raw_config, expected_aliases",
+        [
+            ("", {}),
+            ("   \n  ", {}),
+            ("# only a comment", {}),
+            ("svc-alice-ci: alice@example.com", {"svc-alice-ci": "alice@example.com"}),
+            (
+                "svc-alice-ci: alice@example.com\nkubeflow-profile-for-dan: dan@example.com",
+                {
+                    "svc-alice-ci": "alice@example.com",
+                    "kubeflow-profile-for-dan": "dan@example.com",
+                },
+            ),
+            (
+                "svc-a: alice@example.com\nsvc-b: alice@example.com",
+                {"svc-a": "alice@example.com", "svc-b": "alice@example.com"},
+            ),
+        ],
+        ids=["empty", "blank", "comment-only", "single", "distinct", "many-to-one"],
+    )
+    def test_get_identity_aliases_parses_valid_config(
+        self, harness: Harness, raw_config, expected_aliases
+    ):
+        harness.update_config({"identity_aliases": raw_config})
+        harness.begin()
+        assert harness.charm._get_identity_aliases() == expected_aliases
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "raw_config",
+        [
+            "- not\n- a\n- mapping",
+            "just-a-scalar",
+            "svc-alice-ci: 123",
+            "svc-alice-ci: true",
+            "'': alice@example.com",
+            "svc-alice-ci: ''",
+            "svc-alice-ci: [a, b]",
+            "alice@example.com: bob@example.com\nsvc-ci: alice@example.com",
+            "'unterminated",
+        ],
+        ids=[
+            "list",
+            "scalar",
+            "non-string-value",
+            "boolean-value",
+            "empty-key",
+            "empty-value",
+            "list-value",
+            "chained-alias",
+            "malformed-yaml",
+        ],
+    )
+    def test_get_identity_aliases_rejects_invalid_config(
+        self, harness: Harness, caplog, raw_config
+    ):
+        harness.update_config({"identity_aliases": raw_config})
+        harness.begin()
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(ErrorWithStatus) as exc_info:
+                harness.charm._get_identity_aliases()
+        assert exc_info.value.status_type is BlockedStatus
+        # the status stays short and points at the logs, which carry the full detail:
+        assert "Check the unit logs" in exc_info.value.status.message
+        assert caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
+    @patch("charm.MlflowCharm._get_artifact_store_data")
+    def test_generate_environment_includes_identity_aliases(
+        self, mock_get_artifact_store_data, harness: Harness
+    ):
+        """The parsed alias map is carried in the layer environment as JSON for the auth module."""
+        mock_get_artifact_store_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "bucket": "",
+            "tls_ca_chain": None,
+            "region": "",
+        }
+        harness.update_config({"identity_aliases": "svc-alice-ci: alice@example.com"})
+        harness.begin()
+
+        envs = harness.charm._generate_environment()
+
+        assert json.loads(envs["IDENTITY_ALIASES"]) == {"svc-alice-ci": "alice@example.com"}
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_s3_ca_bundle_pushes_bundle_in_proxy_mode_with_tls(self, harness: Harness):
+        """A TLS store in proxy mode has its CA chain pushed to the workload container."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: True})
+        harness.begin()
+        harness.charm._container.push = MagicMock()
+
+        harness.charm._reconcile_s3_ca_bundle(
+            {**OBJECT_STORAGE_DATA_NORMALIZED, "tls_ca_chain": S3_TLS_CA_CHAIN}
+        )
+
+        harness.charm._container.push.assert_called_once_with(
+            S3_CA_BUNDLE_CONTAINER_PATH, "\n".join(S3_TLS_CA_CHAIN), make_dirs=True
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "serve_artifacts, tls_ca_chain",
+        [
+            (True, None),
+            (False, S3_TLS_CA_CHAIN),
+            (False, None),
+        ],
+        ids=["proxy-mode-without-tls", "tls-without-proxy-mode", "neither"],
+    )
+    def test_reconcile_s3_ca_bundle_skips_push_when_not_needed(
+        self, harness: Harness, serve_artifacts, tls_ca_chain
+    ):
+        """The CA bundle is only pushed in proxy mode against a TLS store."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
+        harness.begin()
+        harness.charm._container.push = MagicMock()
+
+        harness.charm._reconcile_s3_ca_bundle(
+            {**OBJECT_STORAGE_DATA_NORMALIZED, "tls_ca_chain": tls_ca_chain}
+        )
+
+        harness.charm._container.push.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.S3BucketWrapper")
+    @patch(
+        "charm.MlflowCharm._get_artifact_store_data",
+        return_value={**OBJECT_STORAGE_DATA_NORMALIZED, "tls_ca_chain": S3_TLS_CA_CHAIN},
+    )
+    def test_on_event_skips_ca_bundle_push_when_container_not_ready(
+        self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
+    ):
+        """_on_event stops before pushing the CA bundle when the workload container is down."""
+        harness.set_can_connect("mlflow-server", False)
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: True})
+        harness.begin()
+        harness.charm._container.push = MagicMock()
+
+        harness.charm._on_event(None)
+
+        harness.charm._container.push.assert_not_called()
+        assert not isinstance(harness.charm.model.unit.status, ActiveStatus)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
+    def test_proxy_mode(self, harness: Harness, serve_artifacts):
+        """Test that the proxy_mode property mirrors the serve_artifacts config option."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
+        harness.begin()
+        assert harness.charm.proxy_mode is serve_artifacts
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "secure, expected_scheme",
+        [(False, "http"), (True, "https")],
+        ids=["insecure", "secure"],
+    )
+    def test_extract_s3_endpoint(self, harness: Harness, secure, expected_scheme):
+        """Test that the S3 endpoint URL is correctly extracted from artifact store data."""
+        harness.begin()
+        artifact_store_data = {**OBJECT_STORAGE_DATA_NORMALIZED, "secure": secure}
+        endpoint = harness.charm._extract_s3_endpoint(artifact_store_data)
+        assert endpoint == (
+            f"{expected_scheme}://"
+            f"{OBJECT_STORAGE_DATA_NORMALIZED['host']}:{OBJECT_STORAGE_DATA_NORMALIZED['port']}"
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.MlflowCharm._get_artifact_store_data")
+    @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
+    @pytest.mark.parametrize(
+        "tls_ca_chain, expected_ca_bundle_b64",
+        [(None, ""), (S3_TLS_CA_CHAIN, EXPECTED_S3_CA_BUNDLE_B64)],
+        ids=["without-tls", "with-tls"],
+    )
+    def test_secrets_context(
+        self,
+        mock_get_artifact_store_data: MagicMock,
+        harness: Harness,
+        serve_artifacts,
+        tls_ca_chain,
+        expected_ca_bundle_b64,
+    ):
+        """Test that the context for secrets carries the expected data."""
+        mock_get_artifact_store_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "tls_ca_chain": tls_ca_chain,
+        }
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
+        harness.begin()
+        context = harness.charm.secrets_context
+        assert context["app_name"] == DEFAULT_JUJU_APP_NAME
+        assert context["access_key"] == OBJECT_STORAGE_DATA_NORMALIZED["access_key"]
+        assert context["secret_access_key"] == OBJECT_STORAGE_DATA_NORMALIZED["secret_key"]
+        assert context["is_proxy_mode_enabled"] is serve_artifacts
+        assert context["s3_ca_bundle_b64"] == expected_ca_bundle_b64
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.MlflowCharm._get_artifact_store_data")
+    @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
+    @pytest.mark.parametrize(
+        "tls_ca_chain, expected_ca_bundle_present",
+        [(None, False), (S3_TLS_CA_CHAIN, True)],
+        ids=["without-tls", "with-tls"],
+    )
+    def test_poddefaults_context(
+        self,
+        mock_get_artifact_store_data: MagicMock,
+        harness: Harness,
+        serve_artifacts,
+        tls_ca_chain,
+        expected_ca_bundle_present,
+    ):
+        """Test that the context for poddefaults carries the expected data."""
+        mock_get_artifact_store_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "tls_ca_chain": tls_ca_chain,
+        }
+        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
+        harness.begin()
+        context = harness.charm.poddefaults_context
+        assert context["app_name"] == DEFAULT_JUJU_APP_NAME
+        assert context["s3_endpoint"] == EXPECTED_S3_ENDPOINT
+        assert context["mlflow_endpoint"] == (
+            f"http://{CHARM_NAME}.{MODEL_NAME}.svc.cluster.local:{EXPECTED_K8S_SERVICE_HTTP_PORT}"
+        )
+        assert context["is_proxy_mode_enabled"] is serve_artifacts
+        assert context["s3_ca_bundle_present"] is expected_ca_bundle_present
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -492,6 +1009,7 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.S3BucketWrapper.__init__",
         lambda *args, **kw: None,
@@ -515,6 +1033,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._validate_default_s3_bucket_name_and_access", lambda *args, **kw: True
     )
@@ -538,7 +1057,58 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+<<<<<<< HEAD
     def test_on_database_relation_removed(
+=======
+    def test_check_service_mesh_configured_blocks_when_relation_missing(
+        self, harness: Harness, caplog
+    ):
+        """No service-mesh relation blocks the charm."""
+        harness.begin()
+
+        with caplog.at_level(logging.ERROR), pytest.raises(ErrorWithStatus) as exc:
+            harness.charm._check_service_mesh_configured()
+
+        assert exc.value.status == BlockedStatus(SERVICE_MESH_RELATION_REQUIRED_MESSAGE)
+        assert SERVICE_MESH_RELATION_REQUIRED_MESSAGE in caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_event_blocks_when_service_mesh_has_no_waypoint_principal(
+        self, harness: Harness, caplog
+    ):
+        """A service-mesh relation without waypoint principal config blocks the charm."""
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+        harness.begin()
+
+        with caplog.at_level(logging.ERROR):
+            harness.charm._on_event(None)
+
+        assert harness.charm.model.unit.status == BlockedStatus(
+            SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE
+        )
+        assert SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE in caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_check_service_mesh_configured_success(self, harness: Harness):
+        """A service-mesh relation with a waypoint principal configured does not block the charm."""
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+        harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: WAYPOINT_PRINCIPAL})
+        harness.begin()
+        # Should not raise ErrorWithStatus
+        harness.charm._check_service_mesh_configured()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_backend_store_db_relation_removed(
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
         self,
         harness: Harness,
     ):
@@ -651,17 +1221,33 @@ class TestCharm:
                 "secret-access-key": OBJECT_STORAGE_DATA["secret-key"],
             }
         )
+<<<<<<< HEAD
+=======
+        event = MagicMock()
+
+        with patch.object(harness.charm.container, "can_connect", return_value=True):
+            harness.charm._on_upgrade_charm(event)
+
+        assert harness.charm.model.unit.status.__class__ is BlockedStatus
+        event.defer.assert_not_called()
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_send_ingress_info_success(self, harness: Harness):
+    def test_on_event_does_not_migrate_database_schema(self, harness: Harness):
+        """A regular reconcile must NOT migrate the schema; that is scoped to upgrade-charm."""
         harness.begin()
-        ingress = MagicMock()
-        interfaces = {"ingress": ingress}
-        harness.charm._send_ingress_info(interfaces)
-        ingress.send_data.assert_called_with(INGRESS_DATA)
+        harness.charm._check_leader = MagicMock()
+        harness.charm._ensure_bucket_exists = MagicMock()
+        harness.charm._reconcile_database_schema = MagicMock()
+
+        with patch("charm.update_layer", side_effect=ErrorWithStatus("stop", MaintenanceStatus)):
+            with patch.object(harness.charm.container, "can_connect", return_value=True):
+                harness.charm._on_event("some-event")
+
+        harness.charm._reconcile_database_schema.assert_not_called()
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -674,6 +1260,7 @@ class TestCharm:
         "charm.S3BucketWrapper.__init__",
         lambda *args, **kw: None,
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
@@ -761,13 +1348,15 @@ class TestCharm:
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
+=======
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     @patch("charm.ServiceMeshConsumer")
     def test_multiple_ambient_ingress_relations(
         self,
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
     ):
         """Test the charm reconciles to active with more than one istio-ingress-route relation."""
@@ -803,16 +1392,19 @@ class TestCharm:
         "charm.S3BucketWrapper.__init__",
         lambda *args, **kw: None,
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
+=======
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     @patch("charm.ServiceMeshConsumer")
     def test_each_istio_ingress_route_relation_receives_config(
         self,
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
     ):
         """Test that every istio-ingress-route relation databag receives a valid config."""
@@ -861,9 +1453,13 @@ class TestCharm:
         "charm.S3BucketWrapper.__init__",
         lambda *args, **kw: None,
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
+=======
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     @patch("charm.ServiceMeshConsumer")
     @pytest.mark.parametrize("config_submission_broken", [True, False], ids=["broken", "good"])
     def test_ambient_mode_ingress_configurations(
@@ -871,7 +1467,6 @@ class TestCharm:
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
         config_submission_broken,
     ):
@@ -944,9 +1539,13 @@ class TestCharm:
         "charm.S3BucketWrapper.__init__",
         lambda *args, **kw: None,
     )
+<<<<<<< HEAD
     @patch("charm.MlflowCharm._get_object_storage_data", return_value=OBJECT_STORAGE_DATA)
     @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
     @patch("charm.MlflowCharm._get_interfaces")
+=======
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     @patch("charm.ServiceMeshConsumer")
     @pytest.mark.parametrize(
         "tls_enabled, expected_port", [(False, 80), (True, 443)], ids=["no-tls", "tls"]
@@ -956,7 +1555,6 @@ class TestCharm:
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
         tls_enabled,
         expected_port,

@@ -60,6 +60,39 @@ PODDEFAULTS_SUFFIXES = ["-access-minio", "-minio"]
 TESTING_LABELS = ["user.kubeflow.org/enabled"]  # Might be more than one in the future
 SECRET_SUFFIX = "-minio-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
+<<<<<<< HEAD
+=======
+PROFILE_FILE = "./tests/integration/profile.yaml"
+SPOOFED_IDENTITY = "spoofed-user-identity"
+S3_RELATION_NAME = "s3-credentials"
+MISSING_S3_CREDENTIALS_STATUS_MESSAGE = (
+    f"Missing {S3_RELATION_NAME} relation. Please relate to `{S3_RELATION_NAME}`."
+)
+
+
+# A second istio-ingress-k8s instance used to verify multiple-ingress support.
+SECOND_INGRESS_APP = "istio-ingress-k8s-alt"
+INGRESS_CHANNEL = "2/stable"
+ISTIO_K8S_CHANNEL = "dev/edge/upstream-images"
+# Name of the HTTPRoute submitted by mlflow (see charm._ingress_config).
+INGRESS_ROUTE_NAME = "http-route"
+# Gateway listener section for cleartext HTTP on port 80.
+HTTP_SECTION_NAME = "http-80"
+# Path matched by the mlflow HTTPRoute.
+INGRESS_ROUTE_PATH = HTTP_PATH
+
+# for testing user grants across different MLflow workspaces:
+GRANTS_FOR_ADMIN = "admin"
+GRANTS_FOR_READ_ONLY = "read-only"
+RESOURCE_TYPE_FOR_WORKSPACE = "workspace"
+TEST_IDENTITY_ALIAS = f"identity-that-aliases-{TEST_IDENTITY}"
+UPSTREAM_WORKSPACE_HEADER_NAME = "X-MLFLOW-WORKSPACE"
+WORKSPACE_ROLE_PREFIX_IF_CHARM_MANAGED = "charm-mlflow-client-"
+WORKSPACE_WITH_ADMIN_ACCESS_INITIAL = "my-initial-writable-workspace"
+WORKSPACE_WITH_ADMIN_ACCESS_FINAL = "my-final-writable-workspace"
+WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL = "my-initial-read-only-workspace"
+WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL = "my-final-read-only-workspace"
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
 PodDefault = create_namespaced_resource("kubeflow.org", "v1alpha1", "PodDefault", "poddefaults")
 
@@ -182,6 +215,89 @@ class TestCharm:
         """Returns a random string of lower case alphabetic characters and given length."""
         return "".join(choices(ascii_lowercase, k=length))
 
+    async def test_mesh_and_ingress_integrations(self, ops_test: OpsTest):
+        """Setup Istio in ambient mode to include MLflow and any subsidiary charms in the mesh.
+
+        The tracking server is also restricted to in-mesh source principals here, so the rest of
+        the ambient suite exercises the charm under that authorization policy.
+        """
+        # TODO: restore once TrafficExtension is released to the regular Istio channel.
+        # await deploy_and_integrate_service_mesh_charms(CHARM_NAME, ops_test.model)
+
+        # An explicit Juju CLI deploy is temporarily required because python-libjuju cannot parse
+        # this branch channel.
+        await ops_test.juju(
+            "deploy",
+            ISTIO_K8S_APP,
+            "--trust",
+            "--channel",
+            ISTIO_K8S_CHANNEL,
+            "--revision",
+            "76",
+            "--config",
+            "platform=",
+        )
+        await ops_test.model.wait_for_idle(
+            [ISTIO_K8S_APP],
+            raise_on_blocked=False,
+            raise_on_error=False,
+            wait_for_active=True,
+            timeout=900,
+        )
+
+        await ops_test.model.deploy(
+            ISTIO_INGRESS_K8S_APP,
+            channel=INGRESS_CHANNEL,
+            trust=True,
+        )
+        await ops_test.model.wait_for_idle(
+            [ISTIO_INGRESS_K8S_APP],
+            raise_on_blocked=False,
+            raise_on_error=False,
+            wait_for_active=True,
+            timeout=900,
+        )
+
+        await ops_test.model.deploy(
+            ISTIO_BEACON_K8S_APP,
+            channel=INGRESS_CHANNEL,
+            trust=True,
+            config={"model-on-mesh": True},
+        )
+        await ops_test.model.wait_for_idle(
+            [ISTIO_BEACON_K8S_APP],
+            raise_on_blocked=False,
+            raise_on_error=False,
+            wait_for_active=True,
+            timeout=900,
+        )
+
+        await integrate_with_service_mesh(CHARM_NAME, ops_test.model)
+        # restrict the tracking server to the platform waypoint's identity (in-mesh traffic); the
+        # ingress gateway is allowed separately by istio-ingress-k8s's own L4 policy:
+        await ops_test.model.applications[CHARM_NAME].set_config(
+            {
+                "istio_waypoint_principal": _tracking_server_waypoint_principal(
+                    ops_test.model_name
+                ),
+            }
+        )
+
+        await ops_test.model.wait_for_idle(
+            apps=[CHARM_NAME],
+            status="blocked",
+            raise_on_blocked=False,
+            raise_on_error=False,
+            timeout=600,
+            idle_period=60,
+        )
+
+        # the service-mesh gate is satisfied; the charm must now block on the next missing
+        # prerequisite in the pipeline (s3-credentials), not on service-mesh:
+        unit = ops_test.model.applications[CHARM_NAME].units[0]
+        assert unit.workload_status == "blocked"
+        assert unit.workload_status_message == MISSING_S3_CREDENTIALS_STATUS_MESSAGE
+
     @pytest.mark.abort_on_fail
     async def test_add_relational_db_with_relation_expect_active(self, ops_test: OpsTest):
         deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
@@ -205,8 +321,15 @@ class TestCharm:
             raise_on_error=False,
             timeout=600,
         )
+<<<<<<< HEAD
         await ops_test.model.integrate(f"{MINIO.charm}:object-storage", CHARM_NAME)
         await ops_test.model.integrate(MYSQL_K8S.charm, CHARM_NAME)
+=======
+        await ops_test.model.integrate(
+            f"{S3_INTEGRATOR.charm}:{S3_RELATION_NAME}", f"{CHARM_NAME}:{S3_RELATION_NAME}"
+        )
+        await ops_test.model.integrate(POSTGRESQL_K8S.charm, CHARM_NAME)
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
 
         await ops_test.model.wait_for_idle(
             apps=[CHARM_NAME],
@@ -399,6 +522,7 @@ class TestCharm:
             timeout=1200,
         )
 
+<<<<<<< HEAD
     async def test_ingress_relation(self, ops_test: OpsTest):
         """Setup Istio and relate it to the MLflow."""
         await setup_istio(ops_test, ISTIO_GATEWAY, ISTIO_PILOT)
@@ -407,6 +531,8 @@ class TestCharm:
 
         await ops_test.model.wait_for_idle(apps=[CHARM_NAME], status="active", timeout=60 * 5)
 
+=======
+>>>>>>> 3fa57e8 (refactor: remove sidecar-mode Istio (#515))
     @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
     async def test_ingress_url(self, lightkube_client, ops_test: OpsTest):
