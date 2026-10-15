@@ -4,6 +4,7 @@
 import base64
 import json
 import logging
+from collections.abc import Iterator
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import botocore.exceptions
@@ -45,6 +46,21 @@ DEFAULT_JUJU_APP_NAME = CHARM_NAME
 MODEL_NAME = "testing"
 
 CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS = "serve_artifacts"
+
+# Charm methods called inside `_on_event`'s try block, in call order.
+# Keep in sync with `_on_event`: the stops-on-failing-step test relies on this order.
+ON_EVENT_STEPS = [
+    "_check_leader",
+    "_check_service_mesh_configured",
+    "_ensure_bucket_exists",
+    "_reconcile_auth_config",
+    "_generate_environment",
+    "_get_artifact_store_data",
+    "_reconcile_s3_ca_bundle",
+    "_reconcile_policy_resource_manager",
+    "_reconcile_identity_traffic_extension",
+    "_send_manifests",
+]
 
 
 # Normalized artifact store data as returned by MlflowCharm._get_artifact_store_data
@@ -318,6 +334,14 @@ def harness() -> Harness:
     # precedence over this handler
 
     return harness
+
+
+@pytest.fixture
+def on_event_step_mocks() -> Iterator[dict[str, MagicMock]]:
+    """Fixture to mock all on-event reconcile steps in the charm."""
+    mocks = {step: MagicMock() for step in ON_EVENT_STEPS}
+    with patch.multiple("charm.MlflowCharm", **mocks):
+        yield mocks
 
 
 def add_relation(harness: Harness, relation_endpoint: str) -> tuple[int, str]:
@@ -640,6 +664,94 @@ class TestCharm:
             "Waiting for object storage to become accessible"
             in harness.charm.model.unit.status.message
         )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_event_sets_active_status_when_no_step_raises(
+        self, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """When every reconcile step succeeds, `_on_event` sets `ActiveStatus`."""
+        harness.begin()
+        harness.charm._on_event(None)
+
+        assert harness.charm.model.unit.status == ActiveStatus()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize("status_type", [BlockedStatus, MaintenanceStatus, WaitingStatus])
+    @pytest.mark.parametrize("failing_step", ON_EVENT_STEPS)
+    def test_on_event_propagates_error_status_from_any_step(
+        self,
+        failing_step: str,
+        status_type,
+        harness: Harness,
+        on_event_step_mocks: dict[str, MagicMock],
+    ):
+        """`_on_event` sets the unit status to whatever `ErrorWithStatus` a reconcile step can
+        raise, regardless of which step or why - this is its own propagation contract, kept
+        independent from any individual step's business logic."""
+        on_event_step_mocks[failing_step].side_effect = ErrorWithStatus(
+            "status_message", status_type
+        )
+
+        harness.begin()
+        harness.charm._on_event(None)
+
+        assert harness.charm.model.unit.status == status_type("status_message")
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "container_name, error_message",
+        [
+            (CHARM_NAME, f"Container {CHARM_NAME} is not ready"),
+            ("mlflow-prometheus-exporter", "Container mlflow-prometheus-exporter is not ready"),
+        ],
+    )
+    def test_on_event_container_not_ready_sets_waiting_status(
+        self,
+        container_name: str,
+        error_message: str,
+        harness: Harness,
+        on_event_step_mocks: dict[str, MagicMock],
+    ):
+        """`_on_event` reports a WaitingStatus when a workload container isn't ready yet."""
+        harness.set_can_connect(container_name, False)
+        harness.begin()
+        harness.charm._on_event(None)
+
+        assert harness.charm.model.unit.status == WaitingStatus(error_message)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize("failing_step", ON_EVENT_STEPS)
+    def test_on_event_stops_on_failing_step(
+        self, failing_step: str, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """`_on_event` calls preceding steps and skips later steps after a failure."""
+        on_event_step_mocks[failing_step].side_effect = ErrorWithStatus(
+            "status_message", BlockedStatus
+        )
+        harness.begin()
+        harness.charm._on_event(None)
+
+        failing_index = ON_EVENT_STEPS.index(failing_step)
+        first_skipped = failing_index + 1
+        ran = ON_EVENT_STEPS[:first_skipped]
+        skipped = ON_EVENT_STEPS[first_skipped:]
+
+        for step in ran:
+            on_event_step_mocks[step].assert_called()
+        for step in skipped:
+            on_event_step_mocks[step].assert_not_called()
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1227,39 +1339,16 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
-    @patch(
-        "charm.MlflowCharm._ensure_bucket_exists",
-        lambda *args, **kw: None,
-    )
-    @patch(
-        "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
-    )
-    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
-    def test_on_event(
-        self,
-        _: MagicMock,
-        __: MagicMock,
-        harness: Harness,
-    ):
-        harness.begin()
-        harness.charm._on_event(None)
-        assert harness.charm.model.unit.status == ActiveStatus()
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
     def test_check_service_mesh_configured_blocks_when_relation_missing(
         self, harness: Harness, caplog
     ):
         """No service-mesh relation blocks the charm."""
         harness.begin()
 
-        with caplog.at_level(logging.ERROR), pytest.raises(ErrorWithStatus) as exc:
+        with caplog.at_level(logging.ERROR), pytest.raises(ErrorWithStatus) as exc_info:
             harness.charm._check_service_mesh_configured()
 
-        assert exc.value.status == BlockedStatus(SERVICE_MESH_RELATION_REQUIRED_MESSAGE)
+        assert exc_info.value.status == BlockedStatus(SERVICE_MESH_RELATION_REQUIRED_MESSAGE)
         assert SERVICE_MESH_RELATION_REQUIRED_MESSAGE in caplog.text
 
     @patch(
