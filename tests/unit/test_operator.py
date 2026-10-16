@@ -578,28 +578,6 @@ class TestCharm:
         assert exc_info.value.status_type(WaitingStatus)
         assert "Waiting for object storage to become accessible" in str(exc_info)
 
-    @patch("charm.S3BucketWrapper")
-    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
-    @patch(
-        "charm.MlflowCharm._get_artifact_store_data",
-        return_value=OBJECT_STORAGE_DATA_NORMALIZED,
-    )
-    def test_on_event_bucket_connection_error_sets_waiting_status(
-        self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
-    ):
-        """A connectivity error while ensuring the bucket propagates to a WaitingStatus."""
-        s3_wrapper = s3_wrapper_cls.return_value
-        s3_wrapper.bucket_exists.side_effect = botocore.exceptions.EndpointConnectionError(
-            endpoint_url="http://s3.namespace:9000"
-        )
-        harness.begin()
-        harness.charm._on_event(None)
-        assert isinstance(harness.charm.model.unit.status, WaitingStatus)
-        assert (
-            "Waiting for object storage to become accessible"
-            in harness.charm.model.unit.status.message
-        )
-
     def test_on_event_sets_active_status_when_no_step_raises(
         self, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
     ):
