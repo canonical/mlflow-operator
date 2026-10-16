@@ -9,13 +9,13 @@ applications:
     trust: true
     _github_repo_name: minio-operator
     _github_repo_branch: main
-  mlflow-mysql:
-    charm: mysql-k8s
-    channel: 8.0/stable
+  mlflow-postgresql:
+    charm: postgresql-k8s
+    channel: 14/stable
     scale: 1
     trust: true
     constraints: mem=2G
-    _github_dependency_repo_name: mysql-k8s-operator
+    _github_dependency_repo_name: postgresql-k8s-operator
     _github_dependency_repo_branch: main
   mlflow-server:
     charm: mlflow-server
@@ -26,4 +26,4 @@ applications:
     _github_dependency_repo_branch: main
 relations:
 - [mlflow-server, mlflow-minio]
-- [mlflow-server, mlflow-mysql]
+- [mlflow-server, mlflow-postgresql]

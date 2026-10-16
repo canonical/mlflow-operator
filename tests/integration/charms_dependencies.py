@@ -2,32 +2,11 @@
 
 from charmed_kubeflow_chisme.testing import CharmSpec
 
-# for Istio in sidecar mode only:
-ISTIO_GATEWAY = CharmSpec(
-    charm="istio-gateway", channel="latest/edge", config={"kind": "ingress"}, trust=True
-)
-ISTIO_PILOT = CharmSpec(
-    charm="istio-pilot",
-    channel="latest/edge",
-    config={"default-gateway": "test-gateway"},
-    trust=True,
-)
-
 METACONTROLLER_OPERATOR = CharmSpec(
     charm="metacontroller-operator", channel="latest/edge", trust=True
 )
-MINIO = CharmSpec(
-    charm="minio",
-    channel="latest/edge",
-    config={
-        "access-key": "minio",
-        "secret-key": "minio123",
-        "port": "9000",
-    },
-    trust=True,
-)
-MYSQL_K8S = CharmSpec(
-    charm="mysql-k8s", channel="8.0/stable", config={"profile": "testing"}, trust=True
+POSTGRESQL_K8S = CharmSpec(
+    charm="postgresql-k8s", channel="14/stable", config={"profile": "testing"}, trust=True
 )
 RESOURCE_DISPATCHER = CharmSpec(charm="resource-dispatcher", channel="latest/edge", trust=True)
 S3_INTEGRATOR = CharmSpec(charm="s3-integrator", channel="2/stable", trust=False)
@@ -39,4 +18,12 @@ KUBEFLOW_PROFILES = CharmSpec(
         "istio-gateway-service-account": "istio-ingress-k8s-istio",
     },
     trust=True,
+)
+
+# for multi-tenancy, to configure workspace grants for users:
+DATA_INTEGRATOR = CharmSpec(
+    charm="data-integrator",
+    channel="latest/edge",
+    config={},
+    trust=False,
 )

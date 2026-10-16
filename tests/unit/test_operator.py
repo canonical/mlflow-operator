@@ -8,26 +8,33 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 import botocore.exceptions
 import pytest
-import yaml
 from charmed_kubeflow_chisme.exceptions import ErrorWithStatus
 from charmed_kubeflow_chisme.pebble import update_layer
-from charms.istio_ingress_k8s.v0.istio_ingress_route import (
+from charmlibs.interfaces.istio_ingress_route import (
     HTTPPathMatchType,
     IstioIngressRouteConfig,
     ProtocolType,
 )
+from charmlibs.interfaces.service_mesh import UnitPolicy
 from charms.resource_dispatcher.v0.kubernetes_manifests import KUBERNETES_MANIFESTS_FIELD
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Service
 from ops.testing import Harness
-from serialized_data_interface import NoCompatibleVersions, NoVersionsListed
 
 from charm import (
-    ENABLE_TRIGGER_CREATION_SNIPPET,
+    AUTH_CONFIG_CONTAINER_PATH,
+    AUTH_MODULE_CONTAINER_PATH,
+    METRICS_RELATION_NAME,
+    MLFLOW_CLIENT_DEFAULT_TIER,
+    MLFLOW_CLIENT_RELATION_ENDPOINT,
+    MLFLOW_SUPER_ADMIN_USERNAME,
     PODDEFAULTS_FILES,
     S3_CA_BUNDLE_CONTAINER_PATH,
     SCHEMA_OUT_OF_DATE_MARKER,
     SECRETS_FILES,
+    SERVICE_MESH_RELATION_REQUIRED_MESSAGE,
+    SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE,
+    SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
     MeshType,
     MlflowCharm,
 )
@@ -39,29 +46,17 @@ MODEL_NAME = "testing"
 
 CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS = "serve_artifacts"
 
-OBJECT_STORAGE_DATA = {
-    "access-key": "minio-access-key",
-    "namespace": "namespace",
-    "port": 1234,
-    "secret-key": "minio-super-secret-key",
-    "secure": True,
-    "service": "service",
-    "host": "host",
-    "region": "region",
-    "bucket": "bucket",
-}
 
 # Normalized artifact store data as returned by MlflowCharm._get_artifact_store_data
 OBJECT_STORAGE_DATA_NORMALIZED = {
-    "access_key": "minio-access-key",
-    "secret_key": "minio-super-secret-key",
-    "host": "minio.namespace",
+    "access_key": "s3-access-key",
+    "secret_key": "s3-super-secret-key",
+    "host": "s3.namespace",
     "port": 9000,
     "secure": False,
     "region": "",
     "bucket": "relation-bucket",
     "tls_ca_chain": None,
-    "is_s3": True,
 }
 
 # A sample TLS CA chain (list of PEM certificates) as delivered by an s3 store over the relation.
@@ -73,8 +68,17 @@ S3_TLS_CA_CHAIN = [
 # The same CA chain as embedded (joined + base64-encoded) into the artifact-store Secret's data.
 EXPECTED_S3_CA_BUNDLE_B64 = base64.b64encode("\n".join(S3_TLS_CA_CHAIN).encode()).decode()
 
-RELATIONAL_DB_DATA = {
-    "database": "database",
+S3_DATA = {
+    "access-key": "test-access-key",
+    "secret-key": "test-secret-key",
+    "region": "us-west-2",
+    "endpoint": "https://storage.example:9000",
+    "bucket": "test-bucket",
+    "tls-ca-chain": json.dumps(S3_TLS_CA_CHAIN),
+}
+
+BACKEND_STORE_DB_DATA = {
+    "database": "mlflow",
     "host": "host",
     "username": "username",
     "password": "lorem-ipsum",
@@ -86,22 +90,43 @@ SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 EXPECTED_SERVER_HOST = "0.0.0.0"
 EXPECTED_SERVER_METRICS_PATH = "/metrics"
 EXPECTED_SERVER_PORT = 5000
+EXPECTED_EXPORTER_PORT = 8000
+
+CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL = "istio_waypoint_principal"
+WAYPOINT_PRINCIPAL = "cluster.local/ns/kubeflow/sa/kubeflow-istio-beacon-k8s-waypoint"
 EXPECTED_S3_ENDPOINT = (
     f"{'https' if OBJECT_STORAGE_DATA_NORMALIZED['secure'] else 'http'}://"
     f"{OBJECT_STORAGE_DATA_NORMALIZED['host']}:{OBJECT_STORAGE_DATA_NORMALIZED['port']}"
 )
 EXPECTED_S3_URI = f"s3://{BUCKET_NAME}"
+EXPECTED_FLASK_SECRET_KEY = "test-flask-secret-key"
+EXPECTED_ADMIN_PASSWORD = "test-admin-password"
+AUTH_SECRETS = {
+    "flask_secret_key": EXPECTED_FLASK_SECRET_KEY,
+    "admin_password": EXPECTED_ADMIN_PASSWORD,
+}
+EXPECTED_AUTH_ENVIRONMENT = {
+    "MLFLOW_ENABLE_WORKSPACES": "true",
+    "MLFLOW_RBAC_SEED_DEFAULT_ROLES": "false",
+    "MLFLOW_AUTH_CONFIG_PATH": "/var/lib/pebble/default/auth/basic_auth.ini",
+    "MLFLOW_FLASK_SERVER_SECRET_KEY": EXPECTED_FLASK_SECRET_KEY,
+    "IDENTITY_HEADER_NAME": "kubeflow-userid",
+    "IDENTITY_ALIASES": "{}",
+    "PYTHONPATH": "/var/lib/pebble/default/auth",
+    "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
+}
 EXPECTED_ENVIRONMENT_NON_PROXY_MODE = {
-    "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
+    "MLFLOW_BACKEND_STORE_URI": "postgresql://username:lorem-ipsum@host:port/mlflow",
     "MLFLOW_DEFAULT_ARTIFACT_ROOT": EXPECTED_S3_URI,
     "MLFLOW_EXPOSE_PROMETHEUS": EXPECTED_SERVER_METRICS_PATH,
     "MLFLOW_HOST": EXPECTED_SERVER_HOST,
     "MLFLOW_PORT": EXPECTED_SERVER_PORT,
     "MLFLOW_SERVE_ARTIFACTS": "False",
     "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
+    **EXPECTED_AUTH_ENVIRONMENT,
 }
 EXPECTED_ENVIRONMENT_PROXY_MODE = {
-    "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
+    "MLFLOW_BACKEND_STORE_URI": "postgresql://username:lorem-ipsum@host:port/mlflow",
     "MLFLOW_EXPOSE_PROMETHEUS": EXPECTED_SERVER_METRICS_PATH,
     "MLFLOW_HOST": EXPECTED_SERVER_HOST,
     "MLFLOW_PORT": EXPECTED_SERVER_PORT,
@@ -112,6 +137,7 @@ EXPECTED_ENVIRONMENT_PROXY_MODE = {
     "MLFLOW_S3_ENDPOINT_URL": EXPECTED_S3_ENDPOINT,
     "MLFLOW_SERVE_ARTIFACTS": "True",
     "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
+    **EXPECTED_AUTH_ENVIRONMENT,
 }
 
 
@@ -124,7 +150,7 @@ def build_expected_pebble_service_plan(environment_variables: dict) -> dict:
                 "summary": "Entrypoint of mlflow-server image",
                 "startup": "enabled",
                 "override": "replace",
-                "command": "mlflow server",
+                "command": "mlflow server --app-name basic-auth",
                 "environment": environment_variables,
             },
         )
@@ -135,18 +161,16 @@ EXPECTED_INGRESS_PATH_MATCHED_PREFIX = "/mlflow/"
 EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX = "/"
 EXPECTED_K8S_SERVICE_HTTP_PORT = EXPECTED_SERVER_PORT
 RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE = "istio-ingress-route"
-RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE = "ingress"
 RELATION_ENDPOINT_FOR_SERVICE_MESH = "service-mesh"
 RELATION_ENDPOINT_FOR_SECRETS = "secrets"
 RELATION_ENDPOINT_FOR_PODDEFAULTS = "pod-defaults"
+RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "relational-db"
 
-INGRESS_DATA = {
-    "prefix": EXPECTED_INGRESS_PATH_MATCHED_PREFIX,
-    "rewrite": EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX,
-    "service": DEFAULT_JUJU_APP_NAME,
-    "namespace": MODEL_NAME,
-    "port": EXPECTED_K8S_SERVICE_HTTP_PORT,
-}
+ACCESS_S3_PODDEFAULT_NAME = f"{CHARM_NAME}-access-s3"
+ACCESS_S3_PODDEFAULT_SELECTOR_LABEL = "access-s3"
+MLFLOW_PODDEFAULT_NAME = f"{CHARM_NAME}-mlflow"
+MLFLOW_PODDEFAULT_SELECTOR_LABEL = "mlflow-client"
+SECRET_NAME = f"{CHARM_NAME}-s3-artifact"
 
 # Rendered manifests expected from the SECRETS_FILES and PODDEFAULTS_FILES templates:
 EXPECTED_MLFLOW_ENDPOINT = (
@@ -155,7 +179,7 @@ EXPECTED_MLFLOW_ENDPOINT = (
 EXPECTED_SECRET_MANIFEST = {
     "apiVersion": "v1",
     "kind": "Secret",
-    "metadata": {"name": f"{CHARM_NAME}-minio-artifact"},
+    "metadata": {"name": SECRET_NAME},
     "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"},
 }
 # Secret variant for a TLS artifact store: the CA bundle is embedded (base64) under `data`.
@@ -163,19 +187,19 @@ EXPECTED_SECRET_MANIFEST_WITH_CA = {
     **EXPECTED_SECRET_MANIFEST,
     "data": {"ca-bundle.pem": EXPECTED_S3_CA_BUNDLE_B64},
 }
-EXPECTED_MINIO_PODDEFAULT_MANIFEST = {
+EXPECTED_S3_PODDEFAULT_MANIFEST = {
     "apiVersion": "kubeflow.org/v1alpha1",
     "kind": "PodDefault",
-    "metadata": {"name": f"{CHARM_NAME}-access-minio"},
+    "metadata": {"name": ACCESS_S3_PODDEFAULT_NAME},
     "spec": {
-        "desc": "Allow access to Minio",
-        "selector": {"matchLabels": {"access-minio": "true"}},
+        "desc": "Allow access to S3",
+        "selector": {"matchLabels": {ACCESS_S3_PODDEFAULT_SELECTOR_LABEL: "true"}},
         "env": [
             {
                 "name": "AWS_ACCESS_KEY_ID",
                 "valueFrom": {
                     "secretKeyRef": {
-                        "name": f"{CHARM_NAME}-minio-artifact",
+                        "name": SECRET_NAME,
                         "key": "AWS_ACCESS_KEY_ID",
                         "optional": False,
                     }
@@ -185,24 +209,24 @@ EXPECTED_MINIO_PODDEFAULT_MANIFEST = {
                 "name": "AWS_SECRET_ACCESS_KEY",
                 "valueFrom": {
                     "secretKeyRef": {
-                        "name": f"{CHARM_NAME}-minio-artifact",
+                        "name": SECRET_NAME,
                         "key": "AWS_SECRET_ACCESS_KEY",
                         "optional": False,
                     }
                 },
             },
-            {"name": "MINIO_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
+            {"name": "S3_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
         ],
     },
 }
-# access-minio PodDefault variant for a TLS artifact store: the CA bundle Secret key is mounted
+# access-s3 PodDefault variant for a TLS artifact store: the CA bundle Secret key is mounted
 # read-only into client pods and AWS_CA_BUNDLE points boto3 at it.
-EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA = {
-    **EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA = {
+    **EXPECTED_S3_PODDEFAULT_MANIFEST,
     "spec": {
-        **EXPECTED_MINIO_PODDEFAULT_MANIFEST["spec"],
+        **EXPECTED_S3_PODDEFAULT_MANIFEST["spec"],
         "env": [
-            *EXPECTED_MINIO_PODDEFAULT_MANIFEST["spec"]["env"],
+            *EXPECTED_S3_PODDEFAULT_MANIFEST["spec"]["env"],
             {"name": "AWS_CA_BUNDLE", "value": "/etc/mlflow/certs/ca-bundle.pem"},
         ],
         "volumeMounts": [
@@ -212,7 +236,7 @@ EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA = {
             {
                 "name": "s3-ca-bundle",
                 "secret": {
-                    "secretName": f"{CHARM_NAME}-minio-artifact",
+                    "secretName": SECRET_NAME,
                     "items": [{"key": "ca-bundle.pem", "path": "ca-bundle.pem"}],
                 },
             },
@@ -222,28 +246,25 @@ EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA = {
 EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE = {
     "apiVersion": "kubeflow.org/v1alpha1",
     "kind": "PodDefault",
-    "metadata": {"name": f"{CHARM_NAME}-minio"},
+    "metadata": {"name": MLFLOW_PODDEFAULT_NAME},
     "spec": {
-        "desc": "Allow access to MLFlow",
+        "desc": "Allow access to MLflow",
         "env": [
             {"name": "MLFLOW_S3_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
             {"name": "MLFLOW_TRACKING_URI", "value": EXPECTED_MLFLOW_ENDPOINT},
         ],
-        "selector": {"matchLabels": {"mlflow-server-minio": "true"}},
+        "selector": {"matchLabels": {MLFLOW_PODDEFAULT_SELECTOR_LABEL: "true"}},
     },
 }
 EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE = {
-    "apiVersion": "kubeflow.org/v1alpha1",
-    "kind": "PodDefault",
-    "metadata": {"name": f"{CHARM_NAME}-minio"},
+    **EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
     "spec": {
-        "desc": "Allow access to MLFlow",
+        **EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE["spec"],
         "env": [
             {"name": "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD", "value": "false"},
             {"name": "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD", "value": "false"},
             {"name": "MLFLOW_TRACKING_URI", "value": EXPECTED_MLFLOW_ENDPOINT},
         ],
-        "selector": {"matchLabels": {"mlflow-server-minio": "true"}},
     },
 }
 
@@ -290,11 +311,11 @@ def harness() -> Harness:
     harness.handle_exec("mlflow-server", ["python3"], result=0)
     # NOTE: several reconcile paths shell out some Python script execution on the workload via
     # `container.exec(["python3", "-c", <snippet>, backend_store_uri])`, such as
-    # `_ensure_trigger_creation_allowed` and `_is_database_schema_out_of_date`, and without this
-    # registered handler, the Harness would raise on the first such exec, while this makes those
-    # paths succeed by default (exit code 0, empty stdout/stderr) - and then tests that need to
-    # assert on the exec call, or to simulate a failure, replace `harness.charm.container.exec`
-    # with their own MagicMock, which takes precedence over this handler
+    # `_is_database_schema_out_of_date`, and without this registered handler, the Harness would
+    # raise on the first such exec, while this makes those paths succeed by default (exit code
+    # 0, empty stdout/stderr) - and then tests that need to assert on the exec call, or to simulate
+    # a failure, replace `harness.charm.container.exec` with their own MagicMock, which takes
+    # precedence over this handler
 
     return harness
 
@@ -310,13 +331,10 @@ def add_relation(harness: Harness, relation_endpoint: str) -> tuple[int, str]:
     return relation_id, relation_provider_app_name
 
 
-def add_object_storage_to_harness(harness: Harness):
-    """Helper function to handle object storage relation"""
-    object_storage_data = {"_supported_versions": "- v1", "data": yaml.dump(OBJECT_STORAGE_DATA)}
-    object_storage_relation_id, remote_app_name = add_relation(
-        harness, relation_endpoint="object-storage"
-    )
-    harness.update_relation_data(object_storage_relation_id, remote_app_name, object_storage_data)
+def add_s3_storage_to_harness(harness: Harness, s3_data: dict = S3_DATA):
+    """Helper function to handle s3 storage relation"""
+    relation_id, provider_app = add_relation(harness, "s3-credentials")
+    harness.update_relation_data(relation_id, provider_app, s3_data)
     return harness
 
 
@@ -373,101 +391,55 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.get_interfaces")
-    def test_get_interfaces_failure_no_versions_listed(
-        self, get_interfaces: MagicMock, harness: Harness
-    ):
-        relation = MagicMock()
-        relation.name = "A"
-        relation.id = "1"
-        get_interfaces.side_effect = NoVersionsListed(relation)
-        harness.begin()
-        with pytest.raises(ErrorWithStatus) as e_info:
-            harness.charm._get_interfaces()
-
-        assert e_info.value.status_type(WaitingStatus)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    @patch("charm.get_interfaces")
-    def test_get_interfaces_failure_no_compatible_versions(
-        self, get_interfaces: MagicMock, harness: Harness
-    ):
-        relation_error = MagicMock()
-        relation_error.name = "A"
-        relation_error.id = "1"
-        get_interfaces.side_effect = NoCompatibleVersions(relation_error, [], [])
-        harness.begin()
-        with pytest.raises(ErrorWithStatus) as e_info:
-            harness.charm._get_interfaces()
-
-        assert e_info.value.status_type(BlockedStatus)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    def test_get_interfaces_success(self, harness: Harness):
-        harness = add_object_storage_to_harness(harness)
-        harness.begin()
-        interfaces = harness.charm._get_interfaces()
-        assert interfaces["object-storage"] is not None
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    @patch("charm.MlflowCharm._get_interfaces")
-    def test_get_artifact_store_data_failure_missing_storage_object(
-        self, _get_interfaces: MagicMock, harness: Harness
-    ):
-        _get_interfaces.return_value = {"object-storage": ""}
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
+    def test_get_artifact_store_data_failure_missing_storage_object(self, harness: Harness):
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
-            "Missing object storage relation. "
-            "Please relate to one of `object-storage` or `s3-credentials`."
+            "Missing s3-credentials relation. Please relate to `s3-credentials`."
+        )
+
+    # The S3 library filters out secret-key when Juju secret support is disabled.
+    # Report Juju >= 3.0.3; an unset JUJU_VERSION defaults to 0.0.0.
+    @patch.dict("os.environ", {"JUJU_VERSION": "3.6.0"})
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
+    @pytest.mark.parametrize("missing_field", ["access-key", "secret-key", "endpoint"])
+    def test_get_artifact_store_data_missing_field(self, harness: Harness, missing_field):
+        s3_data = S3_DATA.copy()
+        del s3_data[missing_field]
+        add_s3_storage_to_harness(harness, s3_data)
+
+        harness.begin_with_initial_hooks()
+
+        assert harness.charm.model.unit.status == WaitingStatus(
+            f"Waiting for s3-credentials relation data, missing fields: {missing_field}"
         )
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._get_interfaces")
-    def test_get_artifact_store_data_failure_bad_storage_object(
-        self, _get_interfaces: MagicMock, harness: Harness
-    ):
-        add_object_storage_to_harness(harness)
-        storage_object = MagicMock()
-        storage_object.get_data.return_value = ["a"]
-        _get_interfaces.return_value = {"object-storage": storage_object}
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == BlockedStatus(
-            "Unexpected error with object-storage relation data - data not as expected"
-        )
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
     def test_get_artifact_store_data_success(self, harness: Harness):
-        harness = add_object_storage_to_harness(harness)
+        harness = add_s3_storage_to_harness(harness)
         harness.begin_with_initial_hooks()
         assert harness.charm.model.unit.status == BlockedStatus(
-            "Please add relation to the database"
+            f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
         )
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_relational_db_data_success(self, harness: Harness):
-        database = MagicMock()
+    def test_get_backend_store_db_data_success(self, harness: Harness):
+        backend_store_database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {
             "test-db-data": {
@@ -476,11 +448,11 @@ class TestCharm:
                 "password": "password",
             }
         }
-        database.fetch_relation_data = fetch_relation_data
+        backend_store_database.fetch_relation_data = fetch_relation_data
         harness.model.get_relation = MagicMock()
         harness.begin()
-        harness.charm.database = database
-        res = harness.charm._get_relational_db_data()
+        harness.charm.backend_store_database = backend_store_database
+        res = harness.charm._get_backend_store_db_data()
         assert res == {
             "host": "host",
             "password": "password",
@@ -492,36 +464,38 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_relational_db_data_failure_wrong_data(self, harness: Harness):
+    def test_get_backend_store_db_data_failure_wrong_data(self, harness: Harness):
         """Test with missing username and password in databag"""
-        database = MagicMock()
+        backend_store_database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {"test-db-data": {"endpoints": "host:port"}}
-        database.fetch_relation_data = fetch_relation_data
+        backend_store_database.fetch_relation_data = fetch_relation_data
         harness.model.get_relation = MagicMock()
         harness.begin()
-        harness.charm.database = database
+        harness.charm.backend_store_database = backend_store_database
         with pytest.raises(ErrorWithStatus) as e_info:
-            harness.charm._get_relational_db_data()
+            harness.charm._get_backend_store_db_data()
         assert e_info.value.status_type(WaitingStatus)
-        assert "Incorrect data found in relation relational-db" in str(e_info)
+        assert f"Incorrect data found in relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}" in str(
+            e_info
+        )
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_get_relational_db_data_failure_waiting(self, harness: Harness):
-        database = MagicMock()
+    def test_get_backend_store_db_data_failure_waiting(self, harness: Harness):
+        backend_store_database = MagicMock()
         fetch_relation_data = MagicMock()
         fetch_relation_data.return_value = {}
-        database.fetch_relation_data = fetch_relation_data
+        backend_store_database.fetch_relation_data = fetch_relation_data
         harness.begin()
-        harness.charm.database = database
+        harness.charm.backend_store_database = backend_store_database
         with pytest.raises(ErrorWithStatus) as e_info:
-            harness.charm._get_relational_db_data()
+            harness.charm._get_backend_store_db_data()
 
         assert e_info.value.status_type(BlockedStatus)
-        assert "Please add relation to the database" in str(e_info)
+        assert f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}" in str(e_info)
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -531,7 +505,7 @@ class TestCharm:
         """A bucket provided by the relation takes precedence over the config."""
         harness.update_config({"default_artifact_root": "from-config"})
         harness.begin()
-        obj = {"bucket": "from-relation", "is_s3": True}
+        obj = {"bucket": "from-relation"}
         assert harness.charm._resolve_bucket_name(obj) == "from-relation"
 
     @patch(
@@ -542,7 +516,7 @@ class TestCharm:
         """When the relation provides no bucket, fall back to the config option."""
         harness.update_config({"default_artifact_root": "from-config"})
         harness.begin()
-        obj = {"bucket": "", "is_s3": True}
+        obj = {"bucket": ""}
         assert harness.charm._resolve_bucket_name(obj) == "from-config"
 
     @patch(
@@ -553,7 +527,7 @@ class TestCharm:
         """With no relation bucket and no config option, the charm blocks."""
         harness.update_config({"default_artifact_root": ""})
         harness.begin()
-        obj = {"bucket": "", "is_s3": False}
+        obj = {"bucket": ""}
         with pytest.raises(ErrorWithStatus) as exc_info:
             harness.charm._resolve_bucket_name(obj)
         assert exc_info.value.status_type(BlockedStatus)
@@ -613,7 +587,7 @@ class TestCharm:
         """A connectivity error puts the charm in a waiting state."""
         s3_wrapper = s3_wrapper_cls.return_value
         s3_wrapper.bucket_exists.side_effect = botocore.exceptions.EndpointConnectionError(
-            endpoint_url="http://minio.namespace:9000"
+            endpoint_url="http://s3.namespace:9000"
         )
         harness.begin()
         with pytest.raises(ErrorWithStatus) as exc_info:
@@ -626,6 +600,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.S3BucketWrapper")
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._get_artifact_store_data",
         return_value={**OBJECT_STORAGE_DATA_NORMALIZED, "bucket": ""},
@@ -645,6 +620,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     @patch("charm.S3BucketWrapper")
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._get_artifact_store_data",
         return_value=OBJECT_STORAGE_DATA_NORMALIZED,
@@ -655,7 +631,7 @@ class TestCharm:
         """A connectivity error while ensuring the bucket propagates to a WaitingStatus."""
         s3_wrapper = s3_wrapper_cls.return_value
         s3_wrapper.bucket_exists.side_effect = botocore.exceptions.EndpointConnectionError(
-            endpoint_url="http://minio.namespace:9000"
+            endpoint_url="http://s3.namespace:9000"
         )
         harness.begin()
         harness.charm._on_event(None)
@@ -700,8 +676,10 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
-    @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
         "serve_artifacts, tls_ca_chain, region, expected_environment",
@@ -761,8 +739,10 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
-    @patch("charm.MlflowCharm._get_relational_db_data", lambda *args, **kw: RELATIONAL_DB_DATA)
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
         "serve_artifacts, tls_ca_chain, expected_environment",
@@ -791,6 +771,106 @@ class TestCharm:
         envs = harness.charm._generate_environment()
         assert "AWS_CA_BUNDLE" not in envs
         assert envs == expected_environment
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "raw_config, expected_aliases",
+        [
+            ("", {}),
+            ("   \n  ", {}),
+            ("# only a comment", {}),
+            ("svc-alice-ci: alice@example.com", {"svc-alice-ci": "alice@example.com"}),
+            (
+                "svc-alice-ci: alice@example.com\nkubeflow-profile-for-dan: dan@example.com",
+                {
+                    "svc-alice-ci": "alice@example.com",
+                    "kubeflow-profile-for-dan": "dan@example.com",
+                },
+            ),
+            (
+                "svc-a: alice@example.com\nsvc-b: alice@example.com",
+                {"svc-a": "alice@example.com", "svc-b": "alice@example.com"},
+            ),
+        ],
+        ids=["empty", "blank", "comment-only", "single", "distinct", "many-to-one"],
+    )
+    def test_get_identity_aliases_parses_valid_config(
+        self, harness: Harness, raw_config, expected_aliases
+    ):
+        harness.update_config({"identity_aliases": raw_config})
+        harness.begin()
+        assert harness.charm._get_identity_aliases() == expected_aliases
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "raw_config",
+        [
+            "- not\n- a\n- mapping",
+            "just-a-scalar",
+            "svc-alice-ci: 123",
+            "svc-alice-ci: true",
+            "'': alice@example.com",
+            "svc-alice-ci: ''",
+            "svc-alice-ci: [a, b]",
+            "alice@example.com: bob@example.com\nsvc-ci: alice@example.com",
+            "'unterminated",
+        ],
+        ids=[
+            "list",
+            "scalar",
+            "non-string-value",
+            "boolean-value",
+            "empty-key",
+            "empty-value",
+            "list-value",
+            "chained-alias",
+            "malformed-yaml",
+        ],
+    )
+    def test_get_identity_aliases_rejects_invalid_config(
+        self, harness: Harness, caplog, raw_config
+    ):
+        harness.update_config({"identity_aliases": raw_config})
+        harness.begin()
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(ErrorWithStatus) as exc_info:
+                harness.charm._get_identity_aliases()
+        assert exc_info.value.status_type is BlockedStatus
+        # the status stays short and points at the logs, which carry the full detail:
+        assert "Check the unit logs" in exc_info.value.status.message
+        assert caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
+    @patch("charm.MlflowCharm._get_artifact_store_data")
+    def test_generate_environment_includes_identity_aliases(
+        self, mock_get_artifact_store_data, harness: Harness
+    ):
+        """The parsed alias map is carried in the layer environment as JSON for the auth module."""
+        mock_get_artifact_store_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "bucket": "",
+            "tls_ca_chain": None,
+            "region": "",
+        }
+        harness.update_config({"identity_aliases": "svc-alice-ci: alice@example.com"})
+        harness.begin()
+
+        envs = harness.charm._generate_environment()
+
+        assert json.loads(envs["IDENTITY_ALIASES"]) == {"svc-alice-ci": "alice@example.com"}
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -894,7 +974,6 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
     @pytest.mark.parametrize(
@@ -928,7 +1007,6 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._get_interfaces", lambda *args, **kw: None)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
     @pytest.mark.parametrize(
@@ -974,7 +1052,7 @@ class TestCharm:
         manifests_as_json = json.dumps([item.manifest for item in manifests_items])
         assert (
             manifests_as_json
-            == '[{"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "mlpipeline-minio-artifact"}, "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"}}]'  # noqa: E501
+            == '[{"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "mlpipeline-s3-artifact"}, "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"}}]'  # noqa: E501
         )
 
     @patch(
@@ -1001,7 +1079,7 @@ class TestCharm:
                 PODDEFAULTS_FILES,
                 build_poddefaults_context(is_proxy_mode_enabled=False),
                 [
-                    EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+                    EXPECTED_S3_PODDEFAULT_MANIFEST,
                     EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
                 ],
             ),
@@ -1009,7 +1087,7 @@ class TestCharm:
                 PODDEFAULTS_FILES,
                 build_poddefaults_context(is_proxy_mode_enabled=False, s3_ca_bundle_present=True),
                 [
-                    EXPECTED_MINIO_PODDEFAULT_MANIFEST_WITH_CA,
+                    EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA,
                     EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
                 ],
             ),
@@ -1025,7 +1103,7 @@ class TestCharm:
             "secrets-proxy-enabled-skips-empty-document",
             "poddefaults-proxy-disabled-renders-both",
             "poddefaults-proxy-disabled-with-tls-mounts-ca-bundle",
-            "poddefaults-proxy-enabled-skips-minio-poddefault",
+            "poddefaults-proxy-enabled-skips-s3-poddefault",
         ],
     )
     def test_create_manifests_skips_empty_documents(
@@ -1079,7 +1157,7 @@ class TestCharm:
                 PODDEFAULTS_FILES,
                 build_poddefaults_context(is_proxy_mode_enabled=False),
                 [
-                    EXPECTED_MINIO_PODDEFAULT_MANIFEST,
+                    EXPECTED_S3_PODDEFAULT_MANIFEST,
                     EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
                 ],
             ),
@@ -1123,6 +1201,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
@@ -1130,7 +1209,7 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
     def test_on_event_waiting_for_exporter(
         self,
         _: MagicMock,
@@ -1148,6 +1227,7 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
@@ -1155,7 +1235,7 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
     def test_on_event(
         self,
         _: MagicMock,
@@ -1170,15 +1250,145 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_on_database_relation_removed(
+    def test_check_service_mesh_configured_blocks_when_relation_missing(
+        self, harness: Harness, caplog
+    ):
+        """No service-mesh relation blocks the charm."""
+        harness.begin()
+
+        with caplog.at_level(logging.ERROR), pytest.raises(ErrorWithStatus) as exc:
+            harness.charm._check_service_mesh_configured()
+
+        assert exc.value.status == BlockedStatus(SERVICE_MESH_RELATION_REQUIRED_MESSAGE)
+        assert SERVICE_MESH_RELATION_REQUIRED_MESSAGE in caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_event_blocks_when_service_mesh_has_no_waypoint_principal(
+        self, harness: Harness, caplog
+    ):
+        """A service-mesh relation without waypoint principal config blocks the charm."""
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+        harness.begin()
+
+        with caplog.at_level(logging.ERROR):
+            harness.charm._on_event(None)
+
+        assert harness.charm.model.unit.status == BlockedStatus(
+            SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE
+        )
+        assert SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE in caplog.text
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_check_service_mesh_configured_success(self, harness: Harness):
+        """A service-mesh relation with a waypoint principal configured does not block the charm."""
+        add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+        harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: WAYPOINT_PRINCIPAL})
+        harness.begin()
+        # Should not raise ErrorWithStatus
+        harness.charm._check_service_mesh_configured()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_backend_store_db_relation_removed(
         self,
         harness: Harness,
     ):
         harness.begin()
-        harness.charm._on_database_relation_removed(None)
+        harness.charm._on_backend_store_relation_removed(None)
         assert harness.charm.model.unit.status == BlockedStatus(
-            "Please add relation to the database"
+            f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
         )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_on_backend_store_relation_removed_stops_tracking_server(self, harness: Harness):
+        """Removing the backend store relation stops the tracking server and blocks the unit."""
+        harness.begin()
+        harness.charm.container.add_layer(
+            "mlflow-server",
+            {
+                "services": {
+                    "mlflow-server": {
+                        "override": "replace",
+                        "command": "sleep 3600",
+                        "startup": "enabled",
+                    }
+                }
+            },
+            combine=True,
+        )
+        harness.charm.container.start("mlflow-server")
+        assert harness.charm.container.get_service("mlflow-server").is_running()
+
+        harness.charm._on_backend_store_relation_removed(None)
+
+        assert not harness.charm.container.get_service("mlflow-server").is_running()
+        assert harness.charm.model.unit.status == BlockedStatus(
+            f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
+        )
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_or_create_auth_secrets_generates_and_persists(self, harness: Harness):
+        """The leader generates the RBAC credentials once and reuses them on later calls."""
+        harness.begin()
+
+        first = harness.charm._get_or_create_auth_secrets()
+        second = harness.charm._get_or_create_auth_secrets()
+
+        assert first["flask_secret_key"] and first["admin_password"]
+        # the credentials are persisted in a Juju secret, so a later call returns the same values:
+        assert first == second
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_get_or_create_auth_secrets_waits_when_missing_and_not_leader(self, harness: Harness):
+        """A non-leader defers until the leader has generated the shared RBAC credentials."""
+        harness.set_leader(False)
+        harness.begin()
+
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._get_or_create_auth_secrets()
+        assert exc_info.value.status_type is WaitingStatus
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_auth_config_pushes_module_and_rendered_config(self, harness: Harness):
+        """The custom auth module and the rendered basic_auth.ini are pushed to the workload."""
+        mocker_backend_store_uri = "postgresql://u:p@h:5432/mlflow"
+        harness.begin()
+        harness.charm._get_or_create_auth_secrets = MagicMock(return_value=AUTH_SECRETS)
+        harness.charm._get_backend_store_uri = MagicMock(return_value=mocker_backend_store_uri)
+        harness.charm._container.push = MagicMock()
+
+        harness.charm._reconcile_auth_config()
+
+        pushed = {
+            call.args[0]: call.args[1] for call in harness.charm._container.push.call_args_list
+        }
+        # asserting the authentication module is pushed to the workload container:
+        assert "authenticate_request" in pushed[AUTH_MODULE_CONTAINER_PATH]
+        # asserting rendered authentication configurations are pushed to the workload container:
+        rendered_config = pushed[AUTH_CONFIG_CONTAINER_PATH]
+        assert EXPECTED_ADMIN_PASSWORD in rendered_config
+        assert MLFLOW_SUPER_ADMIN_USERNAME in rendered_config
+        assert mocker_backend_store_uri in rendered_config
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1199,8 +1409,13 @@ class TestCharm:
         harness.begin()
         if has_service_mesh_relation:
             add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+            harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: WAYPOINT_PRINCIPAL})
 
         mock_policy_manager = MagicMock()
+        tracking_server_policy = MagicMock()
+        harness.charm._build_tracking_server_authorization_policy = MagicMock(
+            return_value=tracking_server_policy
+        )
 
         with patch.object(
             MlflowCharm,
@@ -1214,8 +1429,13 @@ class TestCharm:
             mock_policy_manager.reconcile.assert_called_once_with(
                 policies=[],
                 mesh_type=harness.charm._mesh.mesh_type,
-                raw_policies=[harness.charm._allow_all_policy],
+                raw_policies=[tracking_server_policy],
             )
+            registered_policies = harness.charm._mesh._policies
+            assert len(registered_policies) == 1
+            assert isinstance(registered_policies[0], UnitPolicy)
+            assert registered_policies[0].relation == METRICS_RELATION_NAME
+            assert registered_policies[0].ports == [EXPECTED_EXPORTER_PORT]
         else:
             mock_policy_manager.reconcile.assert_not_called()
 
@@ -1260,29 +1480,206 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_on_get_minio_credentials_failure(self, harness: Harness):
-        event = MagicMock()
+    @pytest.mark.parametrize(
+        "raw_config, expected_principal",
+        [
+            ("", None),
+            ("   \n  ", None),
+            (WAYPOINT_PRINCIPAL, WAYPOINT_PRINCIPAL),
+            (f"  {WAYPOINT_PRINCIPAL}  ", WAYPOINT_PRINCIPAL),
+        ],
+        ids=["empty", "blank", "single", "surrounding-whitespace"],
+    )
+    def test_get_tracking_server_waypoint_principal(
+        self, harness: Harness, raw_config, expected_principal
+    ):
+        """The config value is trimmed to one waypoint principal."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: raw_config})
         harness.begin()
-        harness.charm._on_get_minio_credentials(event)
-        event.fail.assert_called_with(
-            "Minio is not reachable yet. Please try again in a few minutes."
-        )
+        assert harness.charm._get_tracking_server_waypoint_principal() == expected_principal
 
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_on_get_minio_credentials_success(self, harness: Harness):
-        harness = add_object_storage_to_harness(harness)
-        event = MagicMock()
+    def test_build_tracking_server_authorization_policy_none_when_no_principals(
+        self, harness: Harness
+    ):
+        """With no configured principals, no tracking server authorization policy is created."""
         harness.begin()
-        harness.charm._on_get_minio_credentials(event)
-        event.set_results.assert_called_with(
-            {
-                "access-key": OBJECT_STORAGE_DATA["access-key"],
-                "secret-access-key": OBJECT_STORAGE_DATA["secret-key"],
-            }
-        )
+        assert harness.charm._build_tracking_server_authorization_policy() is None
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_build_tracking_server_authorization_policy_restricts_to_principals(
+        self, harness: Harness
+    ):
+        """Configured principals are the only sources allowed to reach the tracking server port."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: WAYPOINT_PRINCIPAL})
+        harness.begin()
+        policy = harness.charm._build_tracking_server_authorization_policy()
+
+        assert policy.metadata.name == f"{CHARM_NAME}-tracking-server-access"
+        assert policy.metadata.namespace == MODEL_NAME
+        assert policy.spec["action"] == "ALLOW"
+        assert policy.spec["selector"]["matchLabels"] == {"app.kubernetes.io/name": CHARM_NAME}
+
+        rules = policy.spec["rules"]
+        assert len(rules) == 1
+        assert rules[0]["from"] == [{"source": {"principals": [WAYPOINT_PRINCIPAL]}}]
+        # the only allowed destination is the tracking server port (as a string, per Istio):
+        assert rules[0]["to"] == [{"operation": {"ports": [str(EXPECTED_SERVER_PORT)]}}]
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_build_identity_traffic_extension_targets_tracking_server_service(
+        self, harness: Harness
+    ):
+        """The TrafficExtension targets the tracking server's Service, not the whole waypoint."""
+        harness.update_config({"identity_header_name": "mlflow-userid"})
+        harness.begin()
+        traffic_extension = harness.charm._build_identity_traffic_extension()
+
+        assert traffic_extension.metadata.name == f"{CHARM_NAME}-source-namespace-as-identity"
+        assert traffic_extension.metadata.namespace == harness.model.name
+        # a Service targetRef is waypoint-only, so the extension cannot affect other workloads
+        # fronted by the same waypoint:
+        assert traffic_extension.spec["targetRefs"] == [
+            {"kind": "Service", "group": "", "name": CHARM_NAME}
+        ]
+        assert "match" not in traffic_extension.spec
+        # before the authorization filters, so that policies see the stamped identity:
+        assert traffic_extension.spec["phase"] == "AUTHN"
+
+        lua_code = traffic_extension.spec["lua"]["inlineCode"]
+        # the configured user-ID header is the one stamped from the verified source namespace:
+        assert 'local IDENTITY_HEADER = "mlflow-userid"' in lua_code
+        assert 'filterState():get("io.istio.peer_principal")' in lua_code
+        assert "uriSanPeerCertificate" not in lua_code
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "is_leader, has_service_mesh_relation, expected_called",
+        [(True, True, True), (True, False, False), (False, True, False)],
+        ids=["leader-with-service-mesh", "leader-without-service-mesh", "non-leader"],
+    )
+    def test_reconcile_identity_traffic_extension(
+        self,
+        harness: Harness,
+        is_leader,
+        has_service_mesh_relation,
+        expected_called,
+    ):
+        """The TrafficExtension is only reconciled by the leader, with a service-mesh relation."""
+        harness.set_leader(is_leader)
+        harness.begin()
+        if has_service_mesh_relation:
+            add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
+
+        mock_resource_manager = MagicMock()
+        traffic_extension = MagicMock()
+        harness.charm._build_identity_traffic_extension = MagicMock(return_value=traffic_extension)
+
+        with patch.object(
+            MlflowCharm,
+            "_traffic_extension_resource_manager",
+            new_callable=PropertyMock,
+            return_value=mock_resource_manager,
+        ):
+            harness.charm._reconcile_identity_traffic_extension()
+
+        if expected_called:
+            mock_resource_manager.reconcile.assert_called_once_with([traffic_extension])
+        else:
+            mock_resource_manager.reconcile.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @pytest.mark.parametrize(
+        "is_leader, expected_called",
+        [(True, True), (False, False)],
+        ids=["leader", "non-leader"],
+    )
+    def test_remove_identity_traffic_extension(self, harness: Harness, is_leader, expected_called):
+        """TrafficExtension removal is leader-gated before reconciliation."""
+        harness.set_leader(is_leader)
+        harness.begin()
+        mock_resource_manager = MagicMock()
+
+        with patch.object(
+            MlflowCharm,
+            "_traffic_extension_resource_manager",
+            new_callable=PropertyMock,
+            return_value=mock_resource_manager,
+        ):
+            harness.charm._remove_identity_traffic_extension(None)
+
+        if expected_called:
+            mock_resource_manager.reconcile.assert_called_once_with([])
+        else:
+            mock_resource_manager.reconcile.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.ServiceMeshConsumer")
+    def test_service_mesh_relation_broken_removes_identity_traffic_extension(
+        self, _: MagicMock, harness: Harness
+    ):
+        """Service-mesh relation departure dispatches TrafficExtension cleanup."""
+        harness.set_leader(True)
+        harness.begin()
+        mock_resource_manager = MagicMock()
+        mock_policy_resource_manager = MagicMock()
+
+        with (
+            patch.object(
+                MlflowCharm,
+                "_traffic_extension_resource_manager",
+                new_callable=PropertyMock,
+                return_value=mock_resource_manager,
+            ),
+            patch.object(
+                MlflowCharm,
+                "_policy_resource_manager",
+                new_callable=PropertyMock,
+                return_value=mock_policy_resource_manager,
+            ),
+        ):
+            relation_id, _ = add_relation(harness, RELATION_ENDPOINT_FOR_SERVICE_MESH)
+            mock_resource_manager.reset_mock()
+            mock_policy_resource_manager.reset_mock()
+            harness.remove_relation(relation_id)
+
+        mock_resource_manager.reconcile.assert_called_once_with([])
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    @patch("charm.ServiceMeshConsumer")
+    def test_metrics_unit_policy_registered_with_service_mesh(
+        self, service_mesh_consumer: MagicMock, harness: Harness
+    ):
+        """The exporter port is exposed to the meshed metrics consumer via a UnitPolicy."""
+        harness.begin()
+        _, policies_kwarg = service_mesh_consumer.call_args
+        registered_policies = policies_kwarg["policies"]
+        assert len(registered_policies) == 1
+        metrics_policy = registered_policies[0]
+        assert isinstance(metrics_policy, UnitPolicy)
+        assert metrics_policy.relation == METRICS_RELATION_NAME
+        assert metrics_policy.ports == [EXPECTED_EXPORTER_PORT]
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1290,7 +1687,7 @@ class TestCharm:
     )
     def test_run_database_migration_success(self, harness: Harness):
         harness.begin()
-        backend_store_uri = "mysql+pymysql://username:password@host:port/mlflow"
+        backend_store_uri = "postgresql://username:password@host:port/mlflow"
         process = MagicMock()
         process.wait_output.return_value = ("migration output", "")
         exec_mock = MagicMock(return_value=process)
@@ -1298,7 +1695,7 @@ class TestCharm:
         harness.charm._run_database_migration(backend_store_uri)
         exec_mock.assert_called_once_with(["mlflow", "db", "upgrade", backend_store_uri])
         # the command output is consumed so failures surface as an ExecError:
-        process.wait_output.assert_called_once_with()
+        process.wait_output.assert_called_once()
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1313,7 +1710,7 @@ class TestCharm:
         harness.charm.container.exec = MagicMock(return_value=process)
         with caplog.at_level(logging.ERROR):
             with pytest.raises(ErrorWithStatus) as e_info:
-                harness.charm._run_database_migration("mysql+pymysql://u:p@h:3306/mlflow")
+                harness.charm._run_database_migration("postgresql://u:p@h:3306/mlflow")
         assert e_info.value.status.__class__ is BlockedStatus
         assert "Database schema migration failed" in str(e_info)
         # the raw stderr (which can contain the backend store URI/credentials) is not leaked into
@@ -1333,7 +1730,7 @@ class TestCharm:
         Also verifies the probe is read-only: it never invokes `mlflow db upgrade`.
         """
         harness.begin()
-        backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
+        backend_store_uri = "postgresql://u:p@h:3306/mlflow"
         process = MagicMock()
         process.wait_output.return_value = (
             f"some warning line\n{SCHEMA_OUT_OF_DATE_MARKER}\ntrailing\n",
@@ -1359,9 +1756,7 @@ class TestCharm:
         process = MagicMock()
         process.wait_output.return_value = ("", "")
         harness.charm.container.exec = MagicMock(return_value=process)
-        assert not harness.charm._is_database_schema_out_of_date(
-            "mysql+pymysql://u:p@h:3306/mlflow"
-        )
+        assert not harness.charm._is_database_schema_out_of_date("postgresql://u:p@h:3306/mlflow")
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1376,83 +1771,8 @@ class TestCharm:
         )
         harness.charm.container.exec = MagicMock(return_value=process)
         with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._is_database_schema_out_of_date("mysql+pymysql://u:p@h:3306/mlflow")
+            harness.charm._is_database_schema_out_of_date("postgresql://u:p@h:3306/mlflow")
         assert exc_info.value.status_type is WaitingStatus
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-    def test_ensure_trigger_creation_allowed_persists_variable(self, harness: Harness):
-        harness.begin()
-        backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
-        process = MagicMock()
-        process.wait_output.return_value = ("", "")
-        exec_mock = MagicMock(return_value=process)
-        harness.charm.container.exec = exec_mock
-        harness.charm._ensure_trigger_creation_allowed(backend_store_uri)
-        exec_mock.assert_called_once_with(
-            ["python3", "-c", ENABLE_TRIGGER_CREATION_SNIPPET, backend_store_uri]
-        )
-        process.wait_output.assert_called_once_with()
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-    def test_ensure_trigger_creation_allowed_raises_waiting_on_exec_error(self, harness: Harness):
-        """An unreachable database raises Waiting so the caller can defer and retry."""
-        harness.begin()
-        process = MagicMock()
-        process.wait_output.side_effect = ExecError(
-            command=["python3"], exit_code=1, stdout="", stderr="cannot connect"
-        )
-        harness.charm.container.exec = MagicMock(return_value=process)
-        with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._ensure_trigger_creation_allowed("mysql+pymysql://u:p@h:3306/mlflow")
-        assert exc_info.value.status_type is WaitingStatus
-        # the raw stderr (which can contain the backend store URI/credentials) is not leaked:
-        assert "cannot connect" not in str(exc_info.value.status.message)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    # TODO: remove once this issue is fixed: https://github.com/mlflow/mlflow/issues/19943
-    def test_ensure_trigger_creation_allowed_raises_blocked_on_privilege_error(
-        self, harness: Harness
-    ):
-        """A missing SYSTEM_VARIABLES_ADMIN privilege (error 1227) raises Blocked, not Waiting.
-
-        Retrying cannot succeed when the relation user was created without the `charmed_dba` role
-        (e.g. an in-place upgrade), so the charm must surface an actionable Blocked status instead
-        of looping in Waiting.
-        """
-        harness.begin()
-        process = MagicMock()
-        process.wait_output.side_effect = ExecError(
-            command=["python3"],
-            exit_code=1,
-            stdout="",
-            stderr=(
-                "pymysql.err.OperationalError: (1227, 'Access denied; you need (at least one "
-                "of) the SUPER or SYSTEM_VARIABLES_ADMIN privilege(s) for this operation')"
-            ),
-        )
-        harness.charm.container.exec = MagicMock(return_value=process)
-        with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._ensure_trigger_creation_allowed("mysql+pymysql://u:p@h:3306/mlflow")
-        assert exc_info.value.status_type is BlockedStatus
-        # the short status message points the operator to the logs for remediation details:
-        assert (
-            str(exc_info.value.status.message)
-            == "Database user lacks privileges to migrate the schema. Check the unit logs "
-            "and act accordingly."
-        )
-        # the raw stderr (which can contain the backend store URI/credentials) is not leaked:
-        assert "Access denied" not in str(exc_info.value.status.message)
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1460,9 +1780,8 @@ class TestCharm:
     )
     def test_reconcile_database_schema_migrates_when_out_of_date(self, harness: Harness):
         harness.begin()
-        backend_store_uri = "mysql+pymysql://u:p@h:3306/mlflow"
+        backend_store_uri = "postgresql://u:p@h:3306/mlflow"
         harness.charm._get_backend_store_uri = MagicMock(return_value=backend_store_uri)
-        harness.charm._ensure_trigger_creation_allowed = MagicMock()
         harness.charm._is_database_schema_out_of_date = MagicMock(return_value=True)
 
         # capture the unit status observed at the moment the migration is invoked, to assert the
@@ -1475,8 +1794,6 @@ class TestCharm:
         harness.charm._run_database_migration = MagicMock(side_effect=_record_status)
         harness.charm._reconcile_database_schema()
 
-        # the migration trigger is permitted before the migration runs:
-        harness.charm._ensure_trigger_creation_allowed.assert_called_once_with(backend_store_uri)
         harness.charm._is_database_schema_out_of_date.assert_called_once_with(backend_store_uri)
         harness.charm._run_database_migration.assert_called_once_with(backend_store_uri)
         assert isinstance(observed_status["value"], MaintenanceStatus)
@@ -1586,8 +1903,6 @@ class TestCharm:
         """A regular reconcile must NOT migrate the schema; that is scoped to upgrade-charm."""
         harness.begin()
         harness.charm._check_leader = MagicMock()
-        harness.charm._get_interfaces = MagicMock(return_value={})
-        harness.charm._check_no_conflicting_ingress_relations = MagicMock()
         harness.charm._ensure_bucket_exists = MagicMock()
         harness.charm._reconcile_database_schema = MagicMock()
 
@@ -1601,17 +1916,6 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_send_ingress_info_success(self, harness: Harness):
-        harness.begin()
-        ingress = MagicMock()
-        interfaces = {"ingress": ingress}
-        harness.charm._send_ingress_info(interfaces)
-        ingress.send_data.assert_called_with(INGRESS_DATA)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
@@ -1619,98 +1923,13 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
-    @patch("charm.MlflowCharm._get_interfaces")
-    @patch("charm.ServiceMeshConsumer")
-    @pytest.mark.parametrize(
-        "add_ambient_mode_ingress", [True, False], ids=["ambient", "no-ambient"]
-    )
-    @pytest.mark.parametrize(
-        "add_sidecar_mode_ingress", [True, False], ids=["sidecar", "no-sidecar"]
-    )
-    def test_istio_relations_conflict_detector(
-        self,
-        _: MagicMock,
-        __: MagicMock,
-        ___: MagicMock,
-        ____: MagicMock,
-        harness: Harness,
-        add_ambient_mode_ingress,
-        add_sidecar_mode_ingress,
-    ):
-        """Test the status based on conflicting ingress relations."""
-        # arrange:
-
-        harness.begin()
-
-        with patch.object(harness.charm, "_on_ambient_mode_ingress_ready"):
-            # act:
-
-            if add_ambient_mode_ingress:
-                # adding the ambient-mode ingress relation while triggering relation events:
-                relation_id, _ = add_relation(
-                    harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
-                )
-                harness.charm.on[
-                    RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE
-                ].relation_changed.emit(
-                    harness.charm.framework.model.get_relation(
-                        RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE, relation_id
-                    )
-                )
-
-            if add_sidecar_mode_ingress:
-                # adding the sidecar-mode ingress relation while triggering relation events:
-                relation_id, _ = add_relation(
-                    harness, relation_endpoint=RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE
-                )
-                harness.charm.on[
-                    RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE
-                ].relation_changed.emit(
-                    harness.charm.framework.model.get_relation(
-                        RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE, relation_id
-                    )
-                )
-
-            if not add_ambient_mode_ingress and not add_sidecar_mode_ingress:
-                # when no relation events are emitted, some other trigger is necessary:
-                harness.charm.on.config_changed.emit()
-
-            # assert:
-
-            status = harness.charm.model.unit.status
-
-            if add_ambient_mode_ingress and add_sidecar_mode_ingress:
-                assert isinstance(status, BlockedStatus)
-                assert (
-                    f"Cannot have both '{RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE}' and "
-                    f"'{RELATION_ENDPOINT_FOR_INGRESS_IN_SIDECAR_MODE}' relations at the same time"
-                    ", remove one to unblock."
-                ) in status.message
-
-            else:
-                assert isinstance(status, ActiveStatus)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    @patch(
-        "charm.MlflowCharm._ensure_bucket_exists",
-        lambda *args, **kw: None,
-    )
-    @patch(
-        "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
-    )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
-    @patch("charm.MlflowCharm._get_interfaces")
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
     @patch("charm.ServiceMeshConsumer")
     def test_multiple_ambient_ingress_relations(
         self,
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
     ):
         """Test the charm reconciles to active with more than one istio-ingress-route relation."""
@@ -1746,15 +1965,13 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
-    @patch("charm.MlflowCharm._get_interfaces")
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
     @patch("charm.ServiceMeshConsumer")
     def test_each_istio_ingress_route_relation_receives_config(
         self,
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
     ):
         """Test that every istio-ingress-route relation databag receives a valid config."""
@@ -1803,8 +2020,7 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
-    @patch("charm.MlflowCharm._get_interfaces")
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
     @patch("charm.ServiceMeshConsumer")
     @pytest.mark.parametrize("config_submission_broken", [True, False], ids=["broken", "good"])
     def test_ambient_mode_ingress_configurations(
@@ -1812,7 +2028,6 @@ class TestCharm:
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
         config_submission_broken,
     ):
@@ -1885,8 +2100,7 @@ class TestCharm:
     @patch(
         "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
     )
-    @patch("charm.MlflowCharm._get_relational_db_data", return_value=RELATIONAL_DB_DATA)
-    @patch("charm.MlflowCharm._get_interfaces")
+    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
     @patch("charm.ServiceMeshConsumer")
     @pytest.mark.parametrize(
         "tls_enabled, expected_port", [(False, 80), (True, 443)], ids=["no-tls", "tls"]
@@ -1896,7 +2110,6 @@ class TestCharm:
         _: MagicMock,
         __: MagicMock,
         ___: MagicMock,
-        ____: MagicMock,
         harness: Harness,
         tls_enabled,
         expected_port,
@@ -1927,3 +2140,337 @@ class TestCharm:
             assert len(submitted_config.listeners) == 1
             assert submitted_config.listeners[0].port == expected_port
             assert submitted_config.listeners[0].protocol == ProtocolType.HTTP
+
+
+class TestMlflowClientProvider:
+    """Tests for the mlflow-client relation provider."""
+
+    @staticmethod
+    def _permission(resource_type, resource_name="", privileges=None):
+        """Build a stand-in for one requirer `entity-permissions` entry."""
+        return MagicMock(
+            resource_type=resource_type,
+            resource_name=resource_name,
+            privileges=privileges if privileges is not None else [],
+        )
+
+    @staticmethod
+    def _request(entity_name, permissions, request_id="rid-1"):
+        """Build a stand-in mlflow-client request carrying the given entity permissions."""
+        return MagicMock(
+            entity_name=entity_name,
+            entity_permissions=permissions,
+            request_id=request_id,
+            salt="salt-1",
+        )
+
+    @staticmethod
+    def _provider(harness, requests):
+        """Attach a mock mlflow-client provider returning the given requests, and return it."""
+        provider = MagicMock()
+        provider.requests.return_value = requests
+        harness.charm.mlflow_client_provider = provider
+        return provider
+
+    @staticmethod
+    def _stub_exec(harness):
+        """Replace the workload exec with a successful mock and return it."""
+        process = MagicMock()
+        process.wait_output.return_value = ("", "")
+        exec_mock = MagicMock(return_value=process)
+        harness.charm.container.exec = exec_mock
+        return exec_mock
+
+    @staticmethod
+    def _payload(exec_mock):
+        """Return the JSON-decoded reconcile payload the workload exec was called with."""
+        return json.loads(exec_mock.call_args.args[0][3])
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_provisions_workspace_grants_and_responds(self, harness: Harness):
+        harness.begin()
+        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+
+        request = self._request(
+            "alice",
+            [
+                self._permission("workspace", "analytics-team", ["admin"]),
+                self._permission("workspace", "data-team", ["read-only"]),
+            ],
+        )
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_grants()
+
+        # the reconcile script runs once in the workload, with the per-user desired set as a JSON
+        # argument, in the workload service's context (inheriting the tracking server environment):
+        exec_mock.assert_called_once()
+        assert exec_mock.call_args.args[0][:2] == ["python3", "-c"]
+        assert self._payload(exec_mock) == {
+            "users": [
+                {
+                    "username": "alice",
+                    "is_super_admin": False,
+                    "workspace_grants": [["analytics-team", "admin"], ["data-team", "read-only"]],
+                }
+            ],
+            "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
+        }
+        assert exec_mock.call_args.kwargs["service_context"] == "mlflow-server"
+
+        # the requirer is acknowledged by echoing back its entity name (no password, as MLflow
+        # users are externally authenticated), with no other descriptive field on the response:
+        provider.set_response.assert_called_once()
+        response_relation_id, response = provider.set_response.call_args.args
+        assert response_relation_id == relation_id
+        assert response.entity_name == "alice"
+        assert response.entity_password is None
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_provisions_super_admin(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+
+        request = self._request("root", [self._permission("super-admin", "*")])
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_grants()
+
+        assert self._payload(exec_mock)["users"] == [
+            {"username": "root", "is_super_admin": True, "workspace_grants": []}
+        ]
+        provider.set_response.assert_called_once()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_defaults_tier_when_unset(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+
+        request = self._request("alice", [self._permission("workspace", "team-a")])
+        _ = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_grants()
+
+        assert self._payload(exec_mock)["users"] == [
+            {
+                "username": "alice",
+                "is_super_admin": False,
+                "workspace_grants": [["team-a", MLFLOW_CLIENT_DEFAULT_TIER]],
+            }
+        ]
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_unknown_resource_type(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+
+        provider = self._provider(
+            harness, [self._request("alice", [self._permission("nonsense")])]
+        )
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_grants()
+
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_unknown_tier(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+
+        request = self._request("alice", [self._permission("workspace", "team-a", ["root"])])
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_grants()
+
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_super_admin_mixed_with_grants(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+
+        request = self._request(
+            "alice",
+            [
+                self._permission("super-admin", "*"),
+                self._permission("workspace", "team-a", ["edit"]),
+            ],
+        )
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_grants()
+
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_reserved_super_admin_username(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+
+        request = self._request(
+            MLFLOW_SUPER_ADMIN_USERNAME, [self._permission("super-admin", "*")]
+        )
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_grants()
+
+        # a request claiming the charm's own super-admin username is refused: never reaching the
+        # workload nor being acknowledged:
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_when_not_leader(self, harness: Harness):
+        harness.set_leader(False)
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+
+        provider = MagicMock()
+        harness.charm.mlflow_client_provider = provider
+        exec_mock = MagicMock()
+        harness.charm.container.exec = exec_mock
+
+        harness.charm._reconcile_mlflow_client_grants()
+
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_skips_exec_when_empty_and_no_exclusion(self, harness: Harness):
+        harness.begin()
+        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+
+        provider = MagicMock()
+        provider.requests.return_value = []
+        harness.charm.mlflow_client_provider = provider
+        exec_mock = MagicMock()
+        harness.charm.container.exec = exec_mock
+
+        harness.charm._reconcile_mlflow_client_grants()
+
+        # an empty desired set without a removal in progress must not run the snippet, so that a
+        # transient empty request set never prunes roles that are still in use:
+        exec_mock.assert_not_called()
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_prunes_on_exclusion_even_when_empty(self, harness: Harness):
+        harness.begin()
+
+        provider = MagicMock()
+        provider.requests.return_value = []
+        harness.charm.mlflow_client_provider = provider
+        process = MagicMock()
+        process.wait_output.return_value = ("", "")
+        exec_mock = MagicMock(return_value=process)
+        harness.charm.container.exec = exec_mock
+
+        harness.charm._reconcile_mlflow_client_grants(exclude_relation_id=99)
+
+        # a removal reconcile runs even with an empty desired set, so departed grants are pruned:
+        exec_mock.assert_called_once()
+        assert self._payload(exec_mock) == {
+            "users": [],
+            "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
+        }
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_reconcile_excludes_departing_relation(self, harness: Harness):
+        harness.begin()
+        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+
+        request = self._request("alice", [self._permission("workspace", "team-a", ["edit"])])
+        provider = self._provider(harness, [request])
+        exec_mock = self._stub_exec(harness)
+
+        harness.charm._reconcile_mlflow_client_grants(exclude_relation_id=relation_id)
+
+        # the departing relation is skipped, so nothing is provisioned or returned for it and the
+        # script runs with an empty desired set to prune its grants:
+        assert self._payload(exec_mock)["users"] == []
+        provider.set_response.assert_not_called()
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_exec_reconcile_raises_waiting_on_exec_error(self, harness: Harness, caplog):
+        harness.begin()
+        process = MagicMock()
+        process.wait_output.side_effect = ExecError(
+            command=["python3"], exit_code=1, stdout="", stderr="secret-uri-boom"
+        )
+        harness.charm.container.exec = MagicMock(return_value=process)
+
+        users = [
+            {
+                "username": "alice",
+                "is_super_admin": False,
+                "workspace_grants": [["team-a", "edit"]],
+            },
+        ]
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(ErrorWithStatus) as exc_info:
+                harness.charm._exec_mlflow_client_reconcile(users)
+
+        assert exc_info.value.status_type is WaitingStatus
+        # the raw stderr (which can carry credentials) is not leaked into the user-facing status:
+        assert "secret-uri-boom" not in str(exc_info.value.status.message)
+
+    @patch(
+        "charm.KubernetesServicePatch",
+        lambda x, y, service_name, service_type, refresh_event: None,
+    )
+    def test_relation_broken_reconciles_excluding_relation(self, harness: Harness):
+        harness.begin()
+        relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+
+        reconcile_mock = MagicMock()
+        harness.charm._reconcile_mlflow_client_grants = reconcile_mock
+
+        harness.remove_relation(relation_id)
+
+        reconcile_mock.assert_called_once_with(exclude_relation_id=relation_id)

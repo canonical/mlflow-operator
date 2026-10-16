@@ -27,84 +27,12 @@ resources:
     upstream-source: docker.io/charmedkubeflow/mlflow-prometheus-exporter:3.15.1-340fe92-20260826095012
 requires:
   relational-db:
-    interface: mysql_client
+    interface: postgresql_client
   s3-credentials:
     interface: s3
-    optional: true
     limit: 1
-  object-storage:
-    interface: object-storage
-    optional: true
-    limit: 1
-    schema:
-      v1:
-        provides:
-          type: object
-          properties:
-            access-key:
-              type: string
-            namespace:
-              type:
-              - string
-              - 'null'
-            port:
-              type: number
-            secret-key:
-              type: string
-            secure:
-              type: boolean
-            service:
-              type: string
-          required:
-          - access-key
-          - port
-          - secret-key
-          - secure
-          - service
-    versions: [v1]
-    __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/object-storage.yaml
   dashboard-links:
     interface: kubeflow_dashboard_links
-  ingress:
-    interface: ingress
-    schema:
-      v2:
-        requires:
-          type: object
-          properties:
-            service:
-              type: string
-            port:
-              type: integer
-            namespace:
-              type: string
-            prefix:
-              type: string
-            rewrite:
-              type: string
-          required:
-          - service
-          - port
-          - namespace
-          - prefix
-      v1:
-        requires:
-          type: object
-          properties:
-            service:
-              type: string
-            port:
-              type: integer
-            prefix:
-              type: string
-            rewrite:
-              type: string
-          required:
-          - service
-          - port
-          - prefix
-    versions: [v1]
-    __schema_source: https://raw.githubusercontent.com/canonical/operator-schemas/master/ingress.yaml
   istio-ingress-route:
     interface: istio_ingress_route
     description: |
@@ -131,11 +59,20 @@ requires:
       natively provide all information required to build these policies when related
       cross-model.
   service-mesh:
-    limit: 1
     interface: service_mesh
+    limit: 1
+    optional: false
     description: |
       Subscribe this charm into a service mesh to enforce authorization policies.
 provides:
+  mlflow-client:
+    interface: mlflow_client
+    description: |
+      Provisions, for a requirer such as data-integrator, an MLflow user the given username and the
+      given workspace grants, and returns no information, since the username is same the as
+      requested instead of being generated and MLflow users are externally authenticated by the IAM
+      stack, with the tracking server trusting its identities, meaning neither an MLflow password
+      is to be issued nor a direct MLflow endpoint is to be returned.
   metrics-endpoint:
     interface: prometheus_scrape
   grafana-dashboard:
