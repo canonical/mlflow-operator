@@ -44,6 +44,8 @@ BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
 DEFAULT_JUJU_APP_NAME = CHARM_NAME
 MODEL_NAME = "testing"
+EXPORTER_CONTAINER_NAME = "mlflow-prometheus-exporter"
+S3_RELATION_NAME = "s3-credentials"
 
 CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS = "serve_artifacts"
 
@@ -100,6 +102,7 @@ BACKEND_STORE_DB_DATA = {
     "password": "lorem-ipsum",
     "port": "port",
 }
+BACKEND_STORE_URI = "postgresql://u:p@h:3306/mlflow"
 
 SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 
@@ -109,6 +112,8 @@ EXPECTED_SERVER_PORT = 5000
 EXPECTED_EXPORTER_PORT = 8000
 
 CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL = "istio_waypoint_principal"
+CONFIG_OPTION_NAME_FOR_DEFAULT_ARTIFACT_ROOT = "default_artifact_root"
+CONFIG_OPTION_NAME_FOR_IDENTITY_ALIASES = "identity_aliases"
 WAYPOINT_PRINCIPAL = "cluster.local/ns/kubeflow/sa/kubeflow-istio-beacon-k8s-waypoint"
 EXPECTED_S3_ENDPOINT = (
     f"{'https' if OBJECT_STORAGE_DATA_NORMALIZED['secure'] else 'http'}://"
@@ -160,10 +165,10 @@ EXPECTED_ENVIRONMENT_PROXY_MODE = {
 def build_expected_pebble_service_plan(environment_variables: dict) -> dict:
     """Build the expected pebble service plan for the given environment variables."""
     return {
-        "mlflow-server": Service(
-            "mlflow-server",
+        CHARM_NAME: Service(
+            CHARM_NAME,
             raw={
-                "summary": "Entrypoint of mlflow-server image",
+                "summary": f"Entrypoint of {CHARM_NAME} image",
                 "startup": "enabled",
                 "override": "replace",
                 "command": "mlflow server --app-name basic-auth",
@@ -319,12 +324,12 @@ def harness() -> Harness:
 
     harness.set_leader(True)
 
-    harness.set_can_connect("mlflow-server", True)
-    harness.set_can_connect("mlflow-prometheus-exporter", True)
+    harness.set_can_connect(CHARM_NAME, True)
+    harness.set_can_connect(EXPORTER_CONTAINER_NAME, True)
 
     # registering a default no-op handler for any `python3 ...` command executed in the
     # mlflow-server workload container:
-    harness.handle_exec("mlflow-server", ["python3"], result=0)
+    harness.handle_exec(CHARM_NAME, ["python3"], result=0)
     # NOTE: several reconcile paths shell out some Python script execution on the workload via
     # `container.exec(["python3", "-c", <snippet>, backend_store_uri])`, such as
     # `_is_database_schema_out_of_date`, and without this registered handler, the Harness would
@@ -357,7 +362,7 @@ def add_relation(harness: Harness, relation_endpoint: str) -> tuple[int, str]:
 
 def add_s3_storage_to_harness(harness: Harness, s3_data: dict = S3_DATA):
     """Helper function to handle s3 storage relation"""
-    relation_id, provider_app = add_relation(harness, "s3-credentials")
+    relation_id, provider_app = add_relation(harness, S3_RELATION_NAME)
     harness.update_relation_data(relation_id, provider_app, s3_data)
     return harness
 
@@ -396,7 +401,7 @@ class TestCharm:
         lambda x, y, service_name, service_type, refresh_event: None,
     )
     def tests_on_pebble_ready_failure(self, harness: Harness):
-        harness.set_can_connect("mlflow-server", False)
+        harness.set_can_connect(CHARM_NAME, False)
         harness.begin()
         with pytest.raises(ErrorWithStatus):
             harness.charm._on_pebble_ready(None)
@@ -421,7 +426,7 @@ class TestCharm:
             harness.charm._get_artifact_store_data()
 
         assert exc_info.value.status == BlockedStatus(
-            "Missing s3-credentials relation. Please relate to `s3-credentials`."
+            f"Missing {S3_RELATION_NAME} relation. Please relate to `{S3_RELATION_NAME}`."
         )
 
     # The S3 library filters out secret-key when Juju secret support is disabled.
@@ -442,7 +447,7 @@ class TestCharm:
             harness.charm._get_s3_data()
 
         assert exc_info.value.status == WaitingStatus(
-            f"Waiting for s3-credentials relation data, missing fields: {missing_field}"
+            f"Waiting for {S3_RELATION_NAME} relation data, missing fields: {missing_field}"
         )
 
     # The S3 library filters out secret-key when Juju secret support is disabled.
@@ -537,7 +542,7 @@ class TestCharm:
     )
     def test_resolve_bucket_name_from_relation(self, harness: Harness):
         """A bucket provided by the relation takes precedence over the config."""
-        harness.update_config({"default_artifact_root": "from-config"})
+        harness.update_config({CONFIG_OPTION_NAME_FOR_DEFAULT_ARTIFACT_ROOT: "from-config"})
         harness.begin()
         obj = {"bucket": "from-relation"}
         assert harness.charm._resolve_bucket_name(obj) == "from-relation"
@@ -548,7 +553,7 @@ class TestCharm:
     )
     def test_resolve_bucket_name_from_config(self, harness: Harness):
         """When the relation provides no bucket, fall back to the config option."""
-        harness.update_config({"default_artifact_root": "from-config"})
+        harness.update_config({CONFIG_OPTION_NAME_FOR_DEFAULT_ARTIFACT_ROOT: "from-config"})
         harness.begin()
         obj = {"bucket": ""}
         assert harness.charm._resolve_bucket_name(obj) == "from-config"
@@ -559,7 +564,7 @@ class TestCharm:
     )
     def test_resolve_bucket_name_missing(self, harness: Harness):
         """With no relation bucket and no config option, the charm blocks."""
-        harness.update_config({"default_artifact_root": ""})
+        harness.update_config({CONFIG_OPTION_NAME_FOR_DEFAULT_ARTIFACT_ROOT: ""})
         harness.begin()
         obj = {"bucket": ""}
         with pytest.raises(ErrorWithStatus) as exc_info:
@@ -584,7 +589,7 @@ class TestCharm:
         s3_wrapper.bucket_exists.return_value = True
         harness.begin()
         harness.charm._ensure_bucket_exists()
-        s3_wrapper.bucket_exists.assert_called_once_with("relation-bucket")
+        s3_wrapper.bucket_exists.assert_called_once_with(OBJECT_STORAGE_DATA_NORMALIZED["bucket"])
         s3_wrapper.create_bucket.assert_not_called()
 
     @patch(
@@ -604,7 +609,7 @@ class TestCharm:
         s3_wrapper.bucket_exists.return_value = False
         harness.begin()
         harness.charm._ensure_bucket_exists()
-        s3_wrapper.create_bucket.assert_called_once_with("relation-bucket")
+        s3_wrapper.create_bucket.assert_called_once_with(OBJECT_STORAGE_DATA_NORMALIZED["bucket"])
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -701,7 +706,7 @@ class TestCharm:
         "container_name, error_message",
         [
             (CHARM_NAME, f"Container {CHARM_NAME} is not ready"),
-            ("mlflow-prometheus-exporter", "Container mlflow-prometheus-exporter is not ready"),
+            (EXPORTER_CONTAINER_NAME, f"Container {EXPORTER_CONTAINER_NAME} is not ready"),
         ],
     )
     def test_on_event_container_not_ready_sets_waiting_status(
@@ -902,7 +907,7 @@ class TestCharm:
     def test_get_identity_aliases_parses_valid_config(
         self, harness: Harness, raw_config, expected_aliases
     ):
-        harness.update_config({"identity_aliases": raw_config})
+        harness.update_config({CONFIG_OPTION_NAME_FOR_IDENTITY_ALIASES: raw_config})
         harness.begin()
         assert harness.charm._get_identity_aliases() == expected_aliases
 
@@ -938,7 +943,7 @@ class TestCharm:
     def test_get_identity_aliases_rejects_invalid_config(
         self, harness: Harness, caplog, raw_config
     ):
-        harness.update_config({"identity_aliases": raw_config})
+        harness.update_config({CONFIG_OPTION_NAME_FOR_IDENTITY_ALIASES: raw_config})
         harness.begin()
         with caplog.at_level(logging.ERROR):
             with pytest.raises(ErrorWithStatus) as exc_info:
@@ -967,7 +972,9 @@ class TestCharm:
             "tls_ca_chain": None,
             "region": "",
         }
-        harness.update_config({"identity_aliases": "svc-alice-ci: alice@example.com"})
+        harness.update_config(
+            {CONFIG_OPTION_NAME_FOR_IDENTITY_ALIASES: "svc-alice-ci: alice@example.com"}
+        )
         harness.begin()
 
         envs = harness.charm._generate_environment()
@@ -1033,7 +1040,7 @@ class TestCharm:
         self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
     ):
         """_on_event stops before pushing the CA bundle when the workload container is down."""
-        harness.set_can_connect("mlflow-server", False)
+        harness.set_can_connect(CHARM_NAME, False)
         harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: True})
         harness.begin()
         harness.charm._container.push = MagicMock()
@@ -1137,9 +1144,7 @@ class TestCharm:
         context = harness.charm.poddefaults_context
         assert context["app_name"] == DEFAULT_JUJU_APP_NAME
         assert context["s3_endpoint"] == EXPECTED_S3_ENDPOINT
-        assert context["mlflow_endpoint"] == (
-            f"http://{CHARM_NAME}.{MODEL_NAME}.svc.cluster.local:{EXPECTED_K8S_SERVICE_HTTP_PORT}"
-        )
+        assert context["mlflow_endpoint"] == EXPECTED_MLFLOW_ENDPOINT
         assert context["is_proxy_mode_enabled"] is serve_artifacts
         assert context["s3_ca_bundle_present"] is expected_ca_bundle_present
 
@@ -1371,10 +1376,10 @@ class TestCharm:
         """Removing the backend store relation stops the tracking server and blocks the unit."""
         harness.begin()
         harness.charm.container.add_layer(
-            "mlflow-server",
+            CHARM_NAME,
             {
                 "services": {
-                    "mlflow-server": {
+                    CHARM_NAME: {
                         "override": "replace",
                         "command": "sleep 3600",
                         "startup": "enabled",
@@ -1383,12 +1388,12 @@ class TestCharm:
             },
             combine=True,
         )
-        harness.charm.container.start("mlflow-server")
-        assert harness.charm.container.get_service("mlflow-server").is_running()
+        harness.charm.container.start(CHARM_NAME)
+        assert harness.charm.container.get_service(CHARM_NAME).is_running()
 
         harness.charm._on_backend_store_relation_removed(None)
 
-        assert not harness.charm.container.get_service("mlflow-server").is_running()
+        assert not harness.charm.container.get_service(CHARM_NAME).is_running()
         assert harness.charm.model.unit.status == BlockedStatus(
             f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
         )
@@ -1766,7 +1771,7 @@ class TestCharm:
         harness.charm.container.exec = MagicMock(return_value=process)
         with caplog.at_level(logging.ERROR):
             with pytest.raises(ErrorWithStatus) as e_info:
-                harness.charm._run_database_migration("postgresql://u:p@h:3306/mlflow")
+                harness.charm._run_database_migration(BACKEND_STORE_URI)
         assert e_info.value.status.__class__ is BlockedStatus
         assert "Database schema migration failed" in str(e_info)
         # the raw stderr (which can contain the backend store URI/credentials) is not leaked into
@@ -1786,7 +1791,6 @@ class TestCharm:
         Also verifies the probe is read-only: it never invokes `mlflow db upgrade`.
         """
         harness.begin()
-        backend_store_uri = "postgresql://u:p@h:3306/mlflow"
         process = MagicMock()
         process.wait_output.return_value = (
             f"some warning line\n{SCHEMA_OUT_OF_DATE_MARKER}\ntrailing\n",
@@ -1794,7 +1798,7 @@ class TestCharm:
         )
         exec_mock = MagicMock(return_value=process)
         harness.charm.container.exec = exec_mock
-        assert harness.charm._is_database_schema_out_of_date(backend_store_uri)
+        assert harness.charm._is_database_schema_out_of_date(BACKEND_STORE_URI)
         # the probe is read-only: it runs a python3 verification snippet and never shells out to
         # `mlflow db upgrade` (assert intent rather than the exact argv, to avoid coupling to the
         # invocation shape):
@@ -1812,7 +1816,7 @@ class TestCharm:
         process = MagicMock()
         process.wait_output.return_value = ("", "")
         harness.charm.container.exec = MagicMock(return_value=process)
-        assert not harness.charm._is_database_schema_out_of_date("postgresql://u:p@h:3306/mlflow")
+        assert not harness.charm._is_database_schema_out_of_date(BACKEND_STORE_URI)
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1827,7 +1831,7 @@ class TestCharm:
         )
         harness.charm.container.exec = MagicMock(return_value=process)
         with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._is_database_schema_out_of_date("postgresql://u:p@h:3306/mlflow")
+            harness.charm._is_database_schema_out_of_date(BACKEND_STORE_URI)
         assert exc_info.value.status_type is WaitingStatus
 
     @patch(
@@ -1836,8 +1840,7 @@ class TestCharm:
     )
     def test_reconcile_database_schema_migrates_when_out_of_date(self, harness: Harness):
         harness.begin()
-        backend_store_uri = "postgresql://u:p@h:3306/mlflow"
-        harness.charm._get_backend_store_uri = MagicMock(return_value=backend_store_uri)
+        harness.charm._get_backend_store_uri = MagicMock(return_value=BACKEND_STORE_URI)
         harness.charm._is_database_schema_out_of_date = MagicMock(return_value=True)
 
         # capture the unit status observed at the moment the migration is invoked, to assert the
@@ -1850,8 +1853,8 @@ class TestCharm:
         harness.charm._run_database_migration = MagicMock(side_effect=_record_status)
         harness.charm._reconcile_database_schema()
 
-        harness.charm._is_database_schema_out_of_date.assert_called_once_with(backend_store_uri)
-        harness.charm._run_database_migration.assert_called_once_with(backend_store_uri)
+        harness.charm._is_database_schema_out_of_date.assert_called_once_with(BACKEND_STORE_URI)
+        harness.charm._run_database_migration.assert_called_once_with(BACKEND_STORE_URI)
         assert isinstance(observed_status["value"], MaintenanceStatus)
 
     @patch(
@@ -2276,7 +2279,7 @@ class TestMlflowClientProvider:
             ],
             "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
         }
-        assert exec_mock.call_args.kwargs["service_context"] == "mlflow-server"
+        assert exec_mock.call_args.kwargs["service_context"] == CHARM_NAME
 
         # the requirer is acknowledged by echoing back its entity name (no password, as MLflow
         # users are externally authenticated), with no other descriptive field on the response:
