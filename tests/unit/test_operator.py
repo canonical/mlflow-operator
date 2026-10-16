@@ -44,6 +44,8 @@ BUCKET_NAME = "mlflow"
 CHARM_NAME = "mlflow-server"
 DEFAULT_JUJU_APP_NAME = CHARM_NAME
 MODEL_NAME = "testing"
+WORKLOAD_CONTAINER_NAME = CHARM_NAME
+PEBBLE_SERVICE_NAME = CHARM_NAME
 EXPORTER_CONTAINER_NAME = "mlflow-prometheus-exporter"
 S3_RELATION_NAME = "s3-credentials"
 
@@ -165,10 +167,10 @@ EXPECTED_ENVIRONMENT_PROXY_MODE = {
 def build_expected_pebble_service_plan(environment_variables: dict) -> dict:
     """Build the expected pebble service plan for the given environment variables."""
     return {
-        CHARM_NAME: Service(
-            CHARM_NAME,
+        PEBBLE_SERVICE_NAME: Service(
+            PEBBLE_SERVICE_NAME,
             raw={
-                "summary": f"Entrypoint of {CHARM_NAME} image",
+                "summary": f"Entrypoint of {WORKLOAD_CONTAINER_NAME} image",
                 "startup": "enabled",
                 "override": "replace",
                 "command": "mlflow server --app-name basic-auth",
@@ -324,12 +326,12 @@ def harness() -> Harness:
 
     harness.set_leader(True)
 
-    harness.set_can_connect(CHARM_NAME, True)
+    harness.set_can_connect(WORKLOAD_CONTAINER_NAME, True)
     harness.set_can_connect(EXPORTER_CONTAINER_NAME, True)
 
     # registering a default no-op handler for any `python3 ...` command executed in the
     # mlflow-server workload container:
-    harness.handle_exec(CHARM_NAME, ["python3"], result=0)
+    harness.handle_exec(WORKLOAD_CONTAINER_NAME, ["python3"], result=0)
     # NOTE: several reconcile paths shell out some Python script execution on the workload via
     # `container.exec(["python3", "-c", <snippet>, backend_store_uri])`, such as
     # `_is_database_schema_out_of_date`, and without this registered handler, the Harness would
@@ -395,7 +397,7 @@ class TestCharm:
         assert harness.charm.model.unit.status != WaitingStatus("Waiting for leadership")
 
     def tests_on_pebble_ready_failure(self, harness: Harness):
-        harness.set_can_connect(CHARM_NAME, False)
+        harness.set_can_connect(WORKLOAD_CONTAINER_NAME, False)
         harness.begin()
         with pytest.raises(ErrorWithStatus):
             harness.charm._on_pebble_ready(None)
@@ -631,7 +633,7 @@ class TestCharm:
     @pytest.mark.parametrize(
         "container_name, error_message",
         [
-            (CHARM_NAME, f"Container {CHARM_NAME} is not ready"),
+            (WORKLOAD_CONTAINER_NAME, f"Container {WORKLOAD_CONTAINER_NAME} is not ready"),
             (EXPORTER_CONTAINER_NAME, f"Container {EXPORTER_CONTAINER_NAME} is not ready"),
         ],
     )
@@ -926,7 +928,7 @@ class TestCharm:
         self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
     ):
         """_on_event stops before pushing the CA bundle when the workload container is down."""
-        harness.set_can_connect(CHARM_NAME, False)
+        harness.set_can_connect(WORKLOAD_CONTAINER_NAME, False)
         harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: True})
         harness.begin()
         harness.charm._container.push = MagicMock()
@@ -935,7 +937,7 @@ class TestCharm:
 
         harness.charm._container.push.assert_not_called()
         assert harness.charm.model.unit.status == WaitingStatus(
-            f"Container {CHARM_NAME} is not ready"
+            f"Container {WORKLOAD_CONTAINER_NAME} is not ready"
         )
 
     @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
@@ -1210,10 +1212,10 @@ class TestCharm:
         """Removing the backend store relation stops the tracking server and blocks the unit."""
         harness.begin()
         harness.charm.container.add_layer(
-            CHARM_NAME,
+            PEBBLE_SERVICE_NAME,
             {
                 "services": {
-                    CHARM_NAME: {
+                    PEBBLE_SERVICE_NAME: {
                         "override": "replace",
                         "command": "sleep 3600",
                         "startup": "enabled",
@@ -1222,12 +1224,12 @@ class TestCharm:
             },
             combine=True,
         )
-        harness.charm.container.start(CHARM_NAME)
-        assert harness.charm.container.get_service(CHARM_NAME).is_running()
+        harness.charm.container.start(PEBBLE_SERVICE_NAME)
+        assert harness.charm.container.get_service(PEBBLE_SERVICE_NAME).is_running()
 
         harness.charm._on_backend_store_relation_removed(None)
 
-        assert not harness.charm.container.get_service(CHARM_NAME).is_running()
+        assert not harness.charm.container.get_service(PEBBLE_SERVICE_NAME).is_running()
         assert harness.charm.model.unit.status == BlockedStatus(
             f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
         )
@@ -1993,7 +1995,7 @@ class TestMlflowClientProvider:
             ],
             "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
         }
-        assert exec_mock.call_args.kwargs["service_context"] == CHARM_NAME
+        assert exec_mock.call_args.kwargs["service_context"] == PEBBLE_SERVICE_NAME
 
         # the requirer is acknowledged by echoing back its entity name (no password, as MLflow
         # users are externally authenticated), with no other descriptive field on the response:
