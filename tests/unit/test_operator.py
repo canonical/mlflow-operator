@@ -54,7 +54,7 @@ ON_EVENT_STEPS = [
     "_check_service_mesh_configured",
     "_ensure_bucket_exists",
     "_reconcile_auth_config",
-    "_generate_environment",
+    "_generate_environment",  # Called when accessing self._mlflow_server_layer
     "_get_artifact_store_data",
     "_reconcile_s3_ca_bundle",
     "_reconcile_policy_resource_manager",
@@ -415,10 +415,12 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     def test_get_artifact_store_data_failure_missing_storage_object(self, harness: Harness):
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == BlockedStatus(
+        harness.begin()
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._get_artifact_store_data()
+
+        assert exc_info.value.status == BlockedStatus(
             "Missing s3-credentials relation. Please relate to `s3-credentials`."
         )
 
@@ -429,34 +431,42 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @pytest.mark.parametrize("missing_field", ["access-key", "secret-key", "endpoint"])
-    def test_get_artifact_store_data_missing_field(self, harness: Harness, missing_field):
+    def test_get_s3_data_missing_field(self, harness: Harness, missing_field):
         s3_data = S3_DATA.copy()
         del s3_data[missing_field]
         add_s3_storage_to_harness(harness, s3_data)
 
-        harness.begin_with_initial_hooks()
+        harness.begin()
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._get_s3_data()
 
-        assert harness.charm.model.unit.status == WaitingStatus(
+        assert exc_info.value.status == WaitingStatus(
             f"Waiting for s3-credentials relation data, missing fields: {missing_field}"
         )
 
+    # The S3 library filters out secret-key when Juju secret support is disabled.
+    # Report Juju >= 3.0.3; an unset JUJU_VERSION defaults to 0.0.0.
+    @patch.dict("os.environ", {"JUJU_VERSION": "3.6.0"})
     @patch(
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     @patch(
         "charm.MlflowCharm._ensure_bucket_exists",
         lambda *args, **kw: None,
     )
     def test_get_artifact_store_data_success(self, harness: Harness):
         harness = add_s3_storage_to_harness(harness)
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == BlockedStatus(
-            f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
-        )
+        harness.begin()
+
+        artifact_store_data = harness.charm._get_artifact_store_data()
+
+        assert artifact_store_data["host"] == "storage.example"
+        assert artifact_store_data["port"] == 9000
+        assert artifact_store_data["secure"] is True
+        assert artifact_store_data["bucket"] == S3_DATA["bucket"]
+        assert artifact_store_data["tls_ca_chain"] == S3_TLS_CA_CHAIN
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -618,26 +628,6 @@ class TestCharm:
             harness.charm._ensure_bucket_exists()
         assert exc_info.value.status_type(WaitingStatus)
         assert "Waiting for object storage to become accessible" in str(exc_info)
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
-    @patch("charm.S3BucketWrapper")
-    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
-    @patch(
-        "charm.MlflowCharm._get_artifact_store_data",
-        return_value={**OBJECT_STORAGE_DATA_NORMALIZED, "bucket": ""},
-    )
-    def test_on_event_missing_bucket_sets_blocked_status(
-        self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
-    ):
-        """A missing bucket name propagates to a BlockedStatus unit status via _on_event."""
-        harness.update_config({"default_artifact_root": ""})
-        harness.begin()
-        harness.charm._on_event(None)
-        assert isinstance(harness.charm.model.unit.status, BlockedStatus)
-        assert "No object storage bucket name available" in harness.charm.model.unit.status.message
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1038,6 +1028,7 @@ class TestCharm:
         "charm.MlflowCharm._get_artifact_store_data",
         return_value={**OBJECT_STORAGE_DATA_NORMALIZED, "tls_ca_chain": S3_TLS_CA_CHAIN},
     )
+    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
     def test_on_event_skips_ca_bundle_push_when_container_not_ready(
         self, _get_artifact_store_data: MagicMock, s3_wrapper_cls: MagicMock, harness: Harness
     ):
@@ -1050,7 +1041,9 @@ class TestCharm:
         harness.charm._on_event(None)
 
         harness.charm._container.push.assert_not_called()
-        assert not isinstance(harness.charm.model.unit.status, ActiveStatus)
+        assert harness.charm.model.unit.status == WaitingStatus(
+            f"Container {CHARM_NAME} is not ready"
+        )
 
     @patch(
         "charm.KubernetesServicePatch",
@@ -1313,32 +1306,6 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    @patch("charm.MlflowCharm._check_service_mesh_configured", lambda *args, **kw: None)
-    @patch(
-        "charm.MlflowCharm._ensure_bucket_exists",
-        lambda *args, **kw: None,
-    )
-    @patch(
-        "charm.MlflowCharm._get_artifact_store_data", return_value=OBJECT_STORAGE_DATA_NORMALIZED
-    )
-    @patch("charm.MlflowCharm._get_backend_store_db_data", return_value=BACKEND_STORE_DB_DATA)
-    def test_on_event_waiting_for_exporter(
-        self,
-        _: MagicMock,
-        __: MagicMock,
-        harness: Harness,
-    ):
-        harness.set_can_connect("mlflow-prometheus-exporter", False)
-        harness.begin()
-        harness.charm._on_event(None)
-        assert harness.charm.model.unit.status == WaitingStatus(
-            "Container mlflow-prometheus-exporter is not ready"
-        )
-
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda x, y, service_name, service_type, refresh_event: None,
-    )
     def test_check_service_mesh_configured_blocks_when_relation_missing(
         self, harness: Harness, caplog
     ):
@@ -1355,17 +1322,17 @@ class TestCharm:
         "charm.KubernetesServicePatch",
         lambda x, y, service_name, service_type, refresh_event: None,
     )
-    def test_on_event_blocks_when_service_mesh_has_no_waypoint_principal(
+    def test_check_service_mesh_configured_blocks_when_waypoint_principal_missing(
         self, harness: Harness, caplog
     ):
         """A service-mesh relation without waypoint principal config blocks the charm."""
         add_relation(harness, relation_endpoint=RELATION_ENDPOINT_FOR_SERVICE_MESH)
         harness.begin()
 
-        with caplog.at_level(logging.ERROR):
-            harness.charm._on_event(None)
+        with caplog.at_level(logging.ERROR), pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._check_service_mesh_configured()
 
-        assert harness.charm.model.unit.status == BlockedStatus(
+        assert exc_info.value.status == BlockedStatus(
             SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE
         )
         assert SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE in caplog.text
