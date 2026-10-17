@@ -900,6 +900,7 @@ class MlflowCharm(CharmBase):
             "MLFLOW_EXPOSE_PROMETHEUS": METRICS_PATH,
             "MLFLOW_HOST": "0.0.0.0",
             "MLFLOW_PORT": self._tracking_server_port,
+            "MLFLOW_STATIC_PREFIX": INGRESS_PATH_MATCHED_PREFIX,
             # NOTE: security middleware disable as already provided by the outer Istio layer:
             # https://mlflow.org/docs/latest/self-hosting/security/network/#disable-security-middleware  # noqa: E501
             "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
