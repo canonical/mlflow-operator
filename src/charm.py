@@ -76,7 +76,7 @@ from ops.pebble import ExecError, Layer
 from services.s3 import S3BucketWrapper
 
 INGRESS_RELATION_NAME = "istio-ingress-route"
-# TODO: parametrize as per ...issue link...
+# TODO: parametrize as per https://github.com/canonical/mlflow-operator/issues/521
 INGRESS_PATH_MATCHED_PREFIX = "/"
 INGRESS_PATH_REWRITTEN_PREFIX = "/"
 METRICS_RELATION_NAME = "metrics-endpoint"
