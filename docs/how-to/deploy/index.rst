@@ -11,7 +11,7 @@ Explore the available deployment options for `AWS Elastic Kubernetes Service (EK
    deploy-eks
    deploy-mlflow-kubeflow-eks
 
-Try out the experimental support for MLflow 3:
+Try out the newer, experimental Charmed MLflow 3:
 
 .. toctree::
    :maxdepth: 1

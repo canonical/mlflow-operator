@@ -1,5 +1,7 @@
-Deploy MLflow 3 with Terraform
-==============================
+.. _deploy_mlflow_3_with_terraform:
+
+Deploy Charmed MLflow 3 with Terraform
+======================================
 
 This guide describes how to deploy Charmed MLflow 3 (experimental) using `Terraform <https://www.terraform.io/>`__, via the Charmed Kubeflow Terraform solution.
 

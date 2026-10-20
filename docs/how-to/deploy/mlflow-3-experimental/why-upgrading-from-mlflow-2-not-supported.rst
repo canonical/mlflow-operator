@@ -1,5 +1,7 @@
-Upgrade an Existing MLflow 2 Deployment to MLflow 3
-===================================================
+.. _why_upgrading_from_mlflow_2_not_supported:
+
+Why Upgrading from Charmed MLflow 2 is Not Supported
+====================================================
 
 This guide describes how to upgrade an existing Charmed MLflow 2 deployment to the experimental Charmed MLflow 3.
 
