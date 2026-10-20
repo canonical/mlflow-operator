@@ -7,7 +7,7 @@ This guide applies to the newer, experimental Charmed MLflow 3 integrated with t
 
 .. note::
 
-    See ... for installing Charmed MLflow 3.
+    See :ref:`Deploy MLflow 3 with Terraform <_deploy_mlflow_3_with_terraform>` for installing Charmed MLflow 3.
 
 ----------------------------------------------
 Configuring Grants for Users Across Workspaces
@@ -24,7 +24,7 @@ By default, identities have no corresponding MLflow user and no grants across an
 For a given identity, all grants across any workspaces of interest can be:
 1. defined by configuring one instance of a specifically configured data-integrator charm that represents the MLflow user for that identity, specifying:
     - ``entity-name`` as the identity, which will become the username of the corresponding MLflow user
-    - ``entity-permissions`` as the workspace-tier grants for each workspace of interest, as described in ...
+    - ``entity-permissions`` as the workspace-tier grants for each workspace of interest, as described in :ref:`Syntax of ``entity-permissions`` <_syntax_of_entity_permissions>`
 2. applied by adding a Juju integration with that charm to Charmed MLflow over the ``mlflow_client`` interface
 3. in case desirable, modified by updating the configurations of the same data-integrator charm instance
     - if ``entity-permissions`` are modified, grants edits take effect live
@@ -79,6 +79,8 @@ For instance, one may want to be treated as the same MLflow user when reaching t
 .. code-block:: bash
 
     juju config --model mlflow mlflow-server identity_aliases="$OAUTH2_CLIENT_ID: $KRATOS_EMAIL, $K8S_NAMESPACE_NAME: $KRATOS_EMAIL"
+
+.. _syntax_of_entity_permissions:
 
 --------------------------------
 Syntax of ``entity-permissions``
