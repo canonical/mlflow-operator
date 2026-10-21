@@ -3,12 +3,24 @@
 Deploy Charmed MLflow 3 with Terraform (Experimental)
 =====================================================
 
+.. warning::
+    MLflow 3 support is **experimental** and is not intended for production workloads. ``latest/edge`` charm channels are employed, since Charmed MLflow 3 is only available there as of today, and such channels are under active development and may change at any time.
+
 This guide describes how to deploy Charmed MLflow 3 (experimental) using `Terraform <https://www.terraform.io/>`_, as its own standalone product, via the Charmed Kubeflow Terraform solutions.
 
-It uses the Terraform solution from the ``main`` branch of the `charmed-kubeflow-solutions <https://github.com/canonical/charmed-kubeflow-solutions>`_ repository, deployed from the ``latest/edge`` channels. For MLflow, ``latest/edge`` currently provides MLflow 3, which is the only way to deploy it at the moment.
+.. note::
 
-.. warning::
-    MLflow 3 support is **experimental** and is not intended for production workloads. The ``main`` branch of ``charmed-kubeflow-solutions`` and the ``latest/edge`` channels are under active development and may change at any time.
+    Despite the name of the Terraform solutions, this guide does not deploy any component of Charmed Kubeflow, but only Charmed MLflow together with:
+
+    * The components the MLflow application needs:
+
+      * its backend store (a PostgreSQL database)
+      * its artifact store (an S3-compatible storage integrator)
+
+    * The necessary charm ecosystem around the MLflow charm:
+
+      * a service mesh based on Istio in ambient mode
+      * an identity and access management layer based on the Canonical Identity Platform and OAuth2 Proxy
 
 
 Requirements
@@ -21,9 +33,9 @@ Requirements
     * preconfigured to work with Istio (e.g., on Canonical K8s, `configure Cilium accordingly <https://docs.cilium.io/en/latest/network/servicemesh/istio/#cilium-configuration>`_)
     * with at least three external IP addresses available for ingress load balancers
 * The following environment variables set as desired for DNS of external IP addresses:
-    * ``AUTH_HOSTNAME`` for the authentication service (e.g., ``auth.mlflow.com``)
-    * ``API_HOSTNAME`` for the machine-to-machine API hostname (e.g., ``api.mlflow.com``)
-    * ``UI_HOSTNAME`` for the user interface hostname (e.g., ``ui.mlflow.com``)
+    * ``AUTH_HOSTNAME`` for the hostname of the authentication service (e.g., ``auth.mlflow.com``)
+    * ``API_HOSTNAME`` for the hostname of MLflow's machine-to-machine external API (e.g., ``api.mlflow.com``)
+    * ``UI_HOSTNAME`` for the hostname of MLflow's user interface (e.g., ``ui.mlflow.com``)
 * Some S3-compatible storage bucket preconfigured, and the following environment variables set accordingly on your CLI:
     * ``S3_ENDPOINT`` for the endpoint
     * ``S3_ACCESS_KEY`` for the access key
@@ -41,20 +53,6 @@ Deploy Charmed MLflow 3 and Its Charm Ecosystem
 .. code-block:: bash
 
     git clone https://github.com/canonical/charmed-kubeflow-solutions.git
-
-.. note::
-
-    Despite the name of the Git repository, this guide does not deploy any component of Charmed Kubeflow, but only Charmed MLflow together with:
-
-    * The components the MLflow application needs:
-
-      * its backend store (a PostgreSQL database)
-      * its artifact store (an S3-compatible storage integrator)
-
-    * The necessary charm ecosystem around the MLflow charm:
-
-      * a service mesh based on Istio in ambient mode
-      * an identity and access management layer based on the Canonical Identity Platform and OAuth2 Proxy
 
 2. Move into the directory of the Terraform solution for Charmed MLflow 3 with ambient-mode Istio and Identity and Access Management (IAM)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
