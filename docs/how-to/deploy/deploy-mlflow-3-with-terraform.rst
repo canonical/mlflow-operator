@@ -14,7 +14,7 @@ It uses the Terraform solution from the ``main`` branch of the `charmed-kubeflow
 Requirements
 -------------
 
-* `Terraform <https://developer.hashicorp.com/terraform/install>`_ version 1.6 or later
+* `Terraform <https://developer.hashicorp.com/terraform/install>`__ version 1.6 or later
 * `Git <https://git-scm.com/>`_ to download the Terraform source
 * A Kubernetes cluster:
     * of version 1.32, 1.33 or 1.34
@@ -155,4 +155,4 @@ For your host:
 How to Access Charmed MLflow 3
 ------------------------------
 
-Refer to :ref:`Configure RBAC Across MLflow Workspaces in Charmed MLflow 3 <_configure_rbac_across_workspaces>` to configure user grants across MLflow workspaces and control programmatic and UI access to Charmed MLflow 3.
+Refer to :ref:`Configure RBAC Across MLflow Workspaces in Charmed MLflow 3 <configure_rbac_across_workspaces>` to configure user grants across MLflow workspaces and control programmatic and UI access to Charmed MLflow 3.

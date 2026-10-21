@@ -7,7 +7,7 @@ This guide applies to the newer, experimental Charmed MLflow 3 integrated with t
 
 .. note::
 
-    See :ref:`Deploy Charmed MLflow 3 with Terraform (Experimental) <_deploy_mlflow_3_with_terraform>` for installing Charmed MLflow 3.
+    See :ref:`Deploy Charmed MLflow 3 with Terraform (Experimental) <deploy_mlflow_3_with_terraform>` for installing Charmed MLflow 3.
 
 ----------------------------------------------
 Configuring Grants for Users Across Workspaces
@@ -22,13 +22,19 @@ To disambiguate, while the term user will be used loosely, the term "identity" w
 By default, identities have no corresponding MLflow user and no grants across any MLflow workspaces.
 
 For a given identity, all grants across any workspaces of interest can be:
+
 1. defined by configuring one instance of a specifically configured data-integrator charm that represents the MLflow user for that identity, specifying:
-    * ``entity-name`` as the identity, which will become the username of the corresponding MLflow user
-    * ``entity-permissions`` as the workspace-tier grants for each workspace of interest, as described in :ref:`Syntax of ``entity-permissions`` <_syntax_of_entity_permissions>`
+
+   * ``entity-name`` as the identity, which will become the username of the corresponding MLflow user
+   * ``entity-permissions`` as the workspace-tier grants for each workspace of interest, as described in :ref:`Syntax of entity-permissions <syntax_of_entity_permissions>`
+
 2. applied by adding a Juju integration with that charm to Charmed MLflow over the ``mlflow_client`` interface
-3. in case desirable, modified by updating the configurations of the same data-integrator charm instance
-    * if ``entity-permissions`` are modified, grants edits take effect live
-    * if ``entity-name`` is modified, the Juju integration is to be reapplied (removed and re-added)
+
+3. in case desirable, modified by updating the configurations of the same data-integrator charm instance:
+
+   * if ``entity-permissions`` are modified, grants edits take effect live
+   * if ``entity-name`` is modified, the Juju integration is to be reapplied (removed and re-added)
+
 4. revoked by removing the Juju integration with the data-integrator charm
 
 While MLflow users are just-in-time created when their first request reaches MLflow, MLflow user roles are instead automatically created as soon as grants are applied for the respective users and are automatically deleted when their grants are revoked to keep access locked. MLflow workspaces are also automatically created when grants are configured on them if they do not already exist, but they are instead never deleted when grants are removed to avoid unintended data loss.

@@ -23,4 +23,4 @@ For the newer, experimental Charmed MLflow 3, learn how to configure user grants
 .. toctree::
    :maxdepth: 1
 
-   _configure_rbac_across_workspaces
+   configure-rbac-across-workspaces
