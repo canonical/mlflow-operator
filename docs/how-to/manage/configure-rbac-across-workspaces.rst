@@ -68,7 +68,7 @@ To create OAuth2 clients in Hydra with the Canonical Identity Platform, follow `
 .. code-block:: bash
 
     juju run -m iam hydra/0 create-oauth-client \
-        name="client-for-mattia" \
+        name="client-for-your-m2m-app" \
         grant-types='["client_credentials"]' \
         response-types='["token"]' \
         scope='["openid"]'
