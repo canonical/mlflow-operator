@@ -100,6 +100,10 @@ Terraform will create four different Juju models across which all the charm appl
 6. Add your hostnames to the internal DNS of Kubernetes and to the DNS of your host
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. note::
+
+    The hostnames set above do not have to be registered with a public DNS provider if (and only if) the following steps are applied.
+
 Find the IP addresses that correspond to your hostnames from the deployed load balancers:
 
 .. code-block:: bash

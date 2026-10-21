@@ -54,7 +54,7 @@ For UI access, identities correspond to emails of users in the employed identity
 
 The surrounding charm ecosystem will automatically handle the login via the identity provider and let the user reach MLflow maintaining the session and propagating the authenticated identity to MLflow.
 
-To manage Kratos users in the Canonical Identity Platform, follow `this guide <https://canonical-identity.readthedocs-hosted.com/identity-platform/how-to/manage-users/>`_.
+To manage Kratos users in the Canonical Identity Platform, follow `Manage users <https://canonical-identity.readthedocs-hosted.com/identity-platform/how-to/manage-users/>`_.
 
 External Programmatic Access
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -63,7 +63,7 @@ For programmatic access from outside the cluster, identities correspond to OAuth
 
 The surrounding charm ecosystem will expect access tokens generated for the respective OAuth2 clients to be passed as Bearer tokens in the Authorization header of requests sent by clients to MLflow. When not coding requests explicitly but using the MLflow Python client, setting `the MLFLOW_TRACKING_TOKEN environment variable <https://mlflow.org/docs/latest/api_reference/python_api/mlflow.environment_variables.html#mlflow.environment_variables.MLFLOW_TRACKING_TOKEN>`_ achieves the same header behind the scenes.
 
-To create OAuth2 clients in Hydra with the Canonical Identity Platform, follow `this guide <https://canonical-identity.readthedocs-hosted.com/identity-platform/how-to/onboard-an-application-with-charmed-hydra/#register-your-oauth-client>`_. For example:
+To create OAuth2 clients in Hydra with the Canonical Identity Platform, follow `Onboard an application with Charmed Hydra <https://canonical-identity.readthedocs-hosted.com/identity-platform/how-to/onboard-an-application-with-charmed-hydra/#register-your-oauth-client>`_. For example:
 
 .. code-block:: bash
 
@@ -73,7 +73,7 @@ To create OAuth2 clients in Hydra with the Canonical Identity Platform, follow `
         response-types='["token"]' \
         scope='["openid"]'
 
-To issue access tokens for OAuth2 clients from Hydra, call this endpoint on your auth hostname with the OAuth2 client ID (``OAUTH2_CLIENT_ID``) and secret (``OAUTH2_CLIENT_SECRET``) returned by the previous command:
+To issue access tokens for OAuth2 clients from Hydra, make a POST request to the ``/oauth2/token`` endpoint path at your auth hostname using the OAuth2 client ID and secret returned by the previous command as Basic Auth credentials and passing ``grant_type=client_credentials`` and ``scope=openid`` in the request body. For example:
 
 .. code-block:: bash
 
@@ -82,6 +82,10 @@ To issue access tokens for OAuth2 clients from Hydra, call this endpoint on your
         -d "grant_type=client_credentials" \
         -d "scope=openid" \
         | jq -r '.access_token')
+
+.. note::
+
+    The token lifetime cannot be configured via the charm as of today and it defaults to 1 hour.
 
 In-Cluster Programmatic Access
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

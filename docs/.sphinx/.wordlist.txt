@@ -4,6 +4,7 @@ addons
 AGPLv
 API
 APIs
+Auth
 Authorization
 Authorize
 Authorizing
