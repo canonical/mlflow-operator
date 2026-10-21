@@ -54,7 +54,7 @@ For UI access, identities correspond to emails of users in the employed identity
 
 The surrounding charm ecosystem will automatically handle the login via the identity provider and let the user reach MLflow maintaining the session and propagating the authenticated identity to MLflow.
 
-To manage users in Kratos, follow this guide.
+To manage Kratos users in the Canonical Identity Platform, follow `this guide <https://canonical-identity.readthedocs-hosted.com/identity-platform/how-to/manage-users/>`_.
 
 External Programmatic Access
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -63,9 +63,25 @@ For programmatic access from outside the cluster, identities correspond to OAuth
 
 The surrounding charm ecosystem will expect access tokens generated for the respective OAuth2 clients to be passed as Bearer tokens in the Authorization header of requests sent by clients to MLflow. When not coding requests explicitly but using the MLflow Python client, setting `the ``MLFLOW_TRACKING_TOKEN`` environment variable <https://mlflow.org/docs/latest/api_reference/python_api/mlflow.environment_variables.html#mlflow.environment_variables.MLFLOW_TRACKING_TOKEN>`_ achieves the same header behind the scenes.
 
-To create OAuth2 clients in Hydra, follow this guide.
+To create OAuth2 clients in Hydra with the Canonical Identity Platform, follow `this guide <https://canonical-identity.readthedocs-hosted.com/identity-platform/how-to/onboard-an-application-with-charmed-hydra/#register-your-oauth-client>`_. For example:
 
-To issue access tokens for OAuth2 clients from Hydra, follow this guide.
+.. code-block:: bash
+
+    juju run -m iam hydra/0 create-oauth-client \
+        name="client-for-mattia" \
+        grant-types='["client_credentials"]' \
+        response-types='["token"]' \
+        scope='["openid"]'
+
+To issue access tokens for OAuth2 clients from Hydra, call this endpoint on your auth hostname with the OAuth2 client ID (``OAUTH2_CLIENT_ID``) and secret (``OAUTH2_CLIENT_SECRET``) returned by the previous command:
+
+.. code-block:: bash
+
+    ACCESS_TOKEN=$(curl -sk -X POST https://auth.mlflow.com/oauth2/token \
+        -u "$OAUTH2_CLIENT_ID:$OAUTH2_CLIENT_SECRET" \
+        -d "grant_type=client_credentials" \
+        -d "scope=openid" \
+        | jq -r '.access_token')
 
 In-Cluster Programmatic Access
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
