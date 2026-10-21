@@ -7,7 +7,7 @@ This guide applies to the newer, experimental Charmed MLflow 3 integrated with t
 
 .. note::
 
-    See :ref:`Deploy Charmed MLflow 3 with Terraform <_deploy_mlflow_3_with_terraform>` for installing Charmed MLflow 3.
+    See :ref:`Deploy Charmed MLflow 3 with Terraform (Experimental) <_deploy_mlflow_3_with_terraform>` for installing Charmed MLflow 3.
 
 ----------------------------------------------
 Configuring Grants for Users Across Workspaces
