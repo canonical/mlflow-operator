@@ -61,7 +61,7 @@ External Programmatic Access
 
 For programmatic access from outside the cluster, identities correspond to OAuth2 client IDs issued by the employed OpenID Connect provider, which is Hydra for the Canonical Identity Platform.
 
-The surrounding charm ecosystem will expect access tokens generated for the respective OAuth2 clients to be passed as Bearer tokens in the Authorization header of requests sent by clients to MLflow. When not coding requests explicitly but using the MLflow Python client, setting `the ``MLFLOW_TRACKING_TOKEN`` environment variable <https://mlflow.org/docs/latest/api_reference/python_api/mlflow.environment_variables.html#mlflow.environment_variables.MLFLOW_TRACKING_TOKEN>`_ achieves the same header behind the scenes.
+The surrounding charm ecosystem will expect access tokens generated for the respective OAuth2 clients to be passed as Bearer tokens in the Authorization header of requests sent by clients to MLflow. When not coding requests explicitly but using the MLflow Python client, setting `the MLFLOW_TRACKING_TOKEN environment variable <https://mlflow.org/docs/latest/api_reference/python_api/mlflow.environment_variables.html#mlflow.environment_variables.MLFLOW_TRACKING_TOKEN>`_ achieves the same header behind the scenes.
 
 To create OAuth2 clients in Hydra with the Canonical Identity Platform, follow `this guide <https://canonical-identity.readthedocs-hosted.com/identity-platform/how-to/onboard-an-application-with-charmed-hydra/#register-your-oauth-client>`_. For example:
 
