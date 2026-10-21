@@ -20,7 +20,7 @@ This guide describes how to deploy Charmed MLflow 3 (experimental) using `Terraf
     * The necessary charm ecosystem around the MLflow charm:
 
       * a service mesh based on Istio in ambient mode
-      * an identity and access management layer based on the Canonical Identity Platform and OAuth2 Proxy
+      * an identity and access management layer based on the `Canonical Identity Platform <https://canonical-identity.readthedocs-hosted.com/>`_ and OAuth2 Proxy
 
 
 Requirements
