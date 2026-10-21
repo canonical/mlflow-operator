@@ -5,6 +5,7 @@ AGPLv
 API
 APIs
 Auth
+auth
 Authorization
 Authorize
 Authorizing
