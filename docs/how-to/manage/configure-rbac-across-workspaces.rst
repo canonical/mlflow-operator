@@ -37,6 +37,16 @@ For a given identity, all grants across any workspaces of interest can be:
 
 4. revoked by removing the Juju integration with the data-integrator charm
 
+For example, to grant the identity `my-identity` admin access to the `analytics-team` workspace and read-only access to the `data-team` workspace:
+
+.. code-block:: bash
+
+    juju deploy data-integrator mlflow-grants-for-my-identity --trust --model mlflow --channel latest/edge \
+        --config entity-name=my-identity \
+        --config entity-permissions='[{"resource_type": "workspace", "resource_name": "analytics-team", "privileges": ["admin"]}, {"resource_type": "workspace", "resource_name": "data-team", "privileges": ["read-only"]}]'
+
+    juju integrate mlflow-server mlflow-grants-for-my-identity
+
 While MLflow users are just-in-time created when their first request reaches MLflow, MLflow user roles are instead automatically created as soon as grants are applied for the respective users and are automatically deleted when their grants are revoked to keep access locked. MLflow workspaces are also automatically created when grants are configured on them if they do not already exist, but they are instead never deleted when grants are removed to avoid unintended data loss.
 
 ----------------------------------
