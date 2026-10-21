@@ -92,7 +92,7 @@ For instance, one may want to be treated as the same MLflow user when reaching t
 Syntax of ``entity-permissions``
 --------------------------------
 
-The desired MLflow grants are configured via ``entity-permissions`` as a JSON list of objects each with ``resource_name``, ``resource_type`` and ``privileges``, with such object representings either workspace-wide grants or a cross-workspace super-admin.
+The desired MLflow grants are configured via ``entity-permissions`` as a JSON list of objects each with ``resource_name``, ``resource_type`` and ``privileges``, with such object representing either workspace-wide grants or a cross-workspace super-admin.
 
 Workspace-Wide Grants
 ~~~~~~~~~~~~~~~~~~~~~

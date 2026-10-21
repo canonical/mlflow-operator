@@ -128,7 +128,7 @@ For Kubernetes, add the code block rendered by printing this...
 
     kubectl -n kube-system edit configmap $(kubectl -n kube-system get configmap -o name | grep coredns | head -n1 | cut -d/ -f2)
 
-...and eventually make CoreDNS restart to let the ConfigMapchange take effect:
+...and eventually make CoreDNS restart to let the ConfigMap change take effect:
 
 .. code-block:: bash
 
