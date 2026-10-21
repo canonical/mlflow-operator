@@ -33,9 +33,9 @@ Requirements
     * preconfigured to work with Istio (e.g., on Canonical K8s, `configure Cilium accordingly <https://docs.cilium.io/en/latest/network/servicemesh/istio/#cilium-configuration>`_)
     * with at least three external IP addresses available for ingress load balancers
 * The following environment variables set as desired for DNS of external IP addresses:
-    * ``AUTH_HOSTNAME`` for the hostname to be employed for the authentication service (e.g., ``auth.mlflow.com``)
+    * ``AUTH_HOSTNAME`` for the hostname to be employed to authenticate to MLflow (e.g., ``auth.mlflow.com``)
     * ``API_HOSTNAME`` for the hostname to be employed to reach MLflow's API for external, machine-to-machine access (e.g., ``api.mlflow.com``)
-    * ``UI_HOSTNAME`` for the hostname to be employed to reach the user interface of MLflow (e.g., ``ui.mlflow.com``)
+    * ``UI_HOSTNAME`` for the hostname to be employed to reach MLflow's user interface (e.g., ``ui.mlflow.com``)
 * Some S3-compatible storage bucket preconfigured, and the following environment variables set accordingly on your CLI:
     * ``S3_ENDPOINT`` for the endpoint
     * ``S3_ACCESS_KEY`` for the access key
