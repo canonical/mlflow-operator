@@ -48,7 +48,7 @@ Deploy Charmed MLflow 3 and Its Charm Ecosystem
 
     * The components the MLflow application needs:
 
-      * its backend store (a PostgresSQL database)
+      * its backend store (a PostgreSQL database)
       * its artifact store (an S3-compatible storage integrator)
 
     * The necessary charm ecosystem around the MLflow charm:
