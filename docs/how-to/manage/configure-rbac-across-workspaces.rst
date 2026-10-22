@@ -26,11 +26,11 @@ For a given identity, the desired grants across any workspaces of interest are:
 
    For example, to grant the identity `my-identity` admin access to the `analytics-team` workspace and read-only access to the `data-team` workspace:
 
-      .. code-block:: bash
+   .. code-block:: bash
 
-      juju deploy data-integrator mlflow-grants-for-my-identity --trust --model mlflow --channel latest/edge \
-          --config entity-name=my-identity \
-          --config entity-permissions='[{"resource_type": "workspace", "resource_name": "analytics-team", "privileges": ["admin"]}, {"resource_type": "workspace", "resource_name": "data-team", "privileges": ["read-only"]}]'
+       juju deploy data-integrator mlflow-grants-for-my-identity --trust --model mlflow --channel latest/edge \
+           --config entity-name=my-identity \
+           --config entity-permissions='[{"resource_type": "workspace", "resource_name": "analytics-team", "privileges": ["admin"]}, {"resource_type": "workspace", "resource_name": "data-team", "privileges": ["read-only"]}]'
 
 2. applied by integrating the same charm instance to Charmed MLflow over the ``mlflow_client`` interface
 
