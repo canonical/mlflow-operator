@@ -86,7 +86,7 @@ Deploy Charmed MLflow 3 and Its Charm Ecosystem
 
 .. note::
 
-    With this command, ``latest/edge`` channels are selected by default, which is necessary because Charmed MLflow 3 is only available there as of today.
+    With this command, ``latest/edge`` channels are selected by default for all of the deployed charms but the Istio and IAM ones, which is necessary because Charmed MLflow 3 is only available there as of today.
 
 Terraform will create four different Juju models across which all the charm applications will be deployed and integrated:  ``istio-system``, ``iam-core``, ``iam`` and ``mlflow``.
 
