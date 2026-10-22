@@ -69,7 +69,7 @@ The following three types of identities are supported by Charmed MLflow.
 
 .. note::
 
-    Each supported identity type is authenticated by and allowed to reach the MLflow application by the surrounding charm ecosystem (Istio & the Identity Platform). MLflow treats any received identities as authenticated MLflow users (that are just-in-time created if newly seen), but without authorizing any operation until grants are explicitly defined as described in :ref:`Configuring Grants for Users Across Workspaces <_configuring_grants_for_users_across_workspaces>`.
+    Each supported identity type is authenticated by and allowed to reach the MLflow application by the surrounding charm ecosystem (Istio & the Identity Platform). MLflow treats any received identities as authenticated MLflow users (that are just-in-time created if newly seen), but without authorizing any operation until grants are explicitly defined as described in :ref:`Configuring Grants for Users Across Workspaces <configuring_grants_for_users_across_workspaces>`.
 
 UI Access
 ~~~~~~~~~
