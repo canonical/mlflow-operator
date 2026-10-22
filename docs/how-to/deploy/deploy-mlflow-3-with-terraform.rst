@@ -43,6 +43,7 @@ Requirements
     * ``S3_SECRET_KEY`` for the secret key
     * ``S3_BUCKET_NAME`` for the bucket name
 * The `Juju <https://juju.is/>`_ client installed, with a controller bootstrapped on your Kubernetes cloud - the Terraform Juju provider operates on the controller your Juju client is currently connected to
+* `kubectl <https://kubernetes.io/docs/reference/kubectl/>`_, already configured to access your cluster
 
 
 Deploy Charmed MLflow 3 and Its Charm Ecosystem
