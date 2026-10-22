@@ -116,6 +116,8 @@ For instance, one may want to be treated as the same MLflow user when reaching t
 
     juju config --model mlflow mlflow-server identity_aliases="$OAUTH2_CLIENT_ID: $KRATOS_EMAIL, $K8S_NAMESPACE_NAME: $KRATOS_EMAIL"
 
+In this case, only the identity ``$KRATOS_EMAIL`` is to be granted workspace access via data-integrator, as it is the only identity directly mapped to an MLflow user with the same username, while ``$OAUTH2_CLIENT_ID`` and ``$K8S_NAMESPACE_NAME`` need no direct grants via data-integrator as they are aliased to that same MLflow user already granted the desired permissions.
+
 .. _syntax_of_entity_permissions:
 
 --------------------------------
