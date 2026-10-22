@@ -9,69 +9,81 @@ This guide applies to the newer, experimental Charmed MLflow 3 integrated with t
 
     See :ref:`Deploy Charmed MLflow 3 with Terraform (Experimental) <deploy_mlflow_3_with_terraform>` for installing Charmed MLflow 3.
 
+.. _configuring_grants_for_users_across_workspaces:
+
 ----------------------------------------------
 Configuring Grants for Users Across Workspaces
 ----------------------------------------------
 
-Different workspace-tier grants can be configured across different workspaces for different users.
+Different workspace-tier grants can be configured across different MLflow workspaces for different identities that exists in the charm ecosystem surrounding MLflow. See :ref:`mapping_identities_to_mlflow_users` to understand what such identities are.
 
-For example, user A could have admin access to workspace X while having read-only access to workspace Y, while user B could have read-only access to workspace X, admin access to workspace Y and edit access to workspace Z.
+For a given identity, the desired grants across any workspaces of interest are:
 
-To disambiguate, while the term user will be used loosely, the term "identity" will precisely refer to a user that exists in the charm ecosystem surrounding MLflow (e.g., Kratos users of the Canonical Identity Platform) and the term "MLflow user" will refer to users that only exist within the MLflow application.
+1. defined by deploying and configuring a ``data-integrator`` charm instance for that identity, specifying:
 
-By default, identities have no corresponding MLflow user and no grants across any MLflow workspaces.
+    * ``entity-name`` as the identity, which will become the corresponding MLflow user's username
+    * ``entity-permissions`` as the workspace-tier grants for each workspace of interest, as described in :ref:`Syntax of entity-permissions <syntax_of_entity_permissions>`
 
-For a given identity, all grants across any workspaces of interest can be:
+    For example, to grant the identity `my-identity` admin access to the `analytics-team` workspace and read-only access to the `data-team` workspace:
 
-1. defined by configuring one instance of a specifically configured data-integrator charm that represents the MLflow user for that identity, specifying:
+    .. code-block:: bash
 
-   * ``entity-name`` as the identity, which will become the username of the corresponding MLflow user
-   * ``entity-permissions`` as the workspace-tier grants for each workspace of interest, as described in :ref:`Syntax of entity-permissions <syntax_of_entity_permissions>`
+        juju deploy data-integrator mlflow-grants-for-my-identity --trust --model mlflow --channel latest/edge \
+            --config entity-name=my-identity \
+            --config entity-permissions='[{"resource_type": "workspace", "resource_name": "analytics-team", "privileges": ["admin"]}, {"resource_type": "workspace", "resource_name": "data-team", "privileges": ["read-only"]}]'
 
-2. applied by adding a Juju integration with that charm to Charmed MLflow over the ``mlflow_client`` interface
+2. applied by integrating the same charm instance to Charmed MLflow over the ``mlflow_client`` interface
 
-3. in case desirable, modified by updating the configurations of the same data-integrator charm instance:
+    For instance, continuing the example above:
 
-   * if ``entity-permissions`` are modified, grants edits take effect live
-   * if ``entity-name`` is modified, the Juju integration is to be reapplied (removed and re-added)
+    .. code-block:: bash
 
-4. revoked by removing the Juju integration with the data-integrator charm
+        juju integrate mlflow-server:mlflow-client mlflow-grants-for-my-identity:mlflow
 
-For example, to grant the identity `my-identity` admin access to the `analytics-team` workspace and read-only access to the `data-team` workspace:
+3. in case desirable, modified by updating the configurations of the charm instance:
 
-.. code-block:: bash
+    * if ``entity-permissions`` are modified, grant edits take effect live
+    * if ``entity-name`` is modified, the Juju integration is to be reapplied (removed and re-added)
 
-    juju deploy data-integrator mlflow-grants-for-my-identity --trust --model mlflow --channel latest/edge \
-        --config entity-name=my-identity \
-        --config entity-permissions='[{"resource_type": "workspace", "resource_name": "analytics-team", "privileges": ["admin"]}, {"resource_type": "workspace", "resource_name": "data-team", "privileges": ["read-only"]}]'
+4. revoked by removing the Juju integration
 
-    juju integrate mlflow-server mlflow-grants-for-my-identity
+    For instance, continuing the example above:
 
-While MLflow users are just-in-time created when their first request reaches MLflow, MLflow user roles are instead automatically created as soon as grants are applied for the respective users and are automatically deleted when their grants are revoked to keep access locked. MLflow workspaces are also automatically created when grants are configured on them if they do not already exist, but they are instead never deleted when grants are removed to avoid unintended data loss.
+    .. code-block:: bash
+
+        juju remove-relation mlflow-server:mlflow-client mlflow-grants-for-my-identity:mlflow
+
+By default, identities have no grants across any MLflow workspaces. 
+
+.. note::
+
+    While MLflow users are just-in-time created when their first request reaches MLflow, MLflow user roles are instead automatically created as soon as grants are applied for the respective users and are automatically deleted when their grants are revoked to keep access locked. MLflow workspaces are also automatically created when grants are configured on them if they do not already exist, but they are instead never deleted when grants are removed to avoid unintended data loss.
+
+.. _mapping_identities_to_mlflow_users:
 
 ----------------------------------
 Mapping Identities to MLflow Users
 ----------------------------------
 
-Three types of identities are supported by Charmed MLflow, based on the type of access being requested.
+The following three types of identities are supported by Charmed MLflow.
 
-Each supported identity type is authenticated by and allowed to reach the MLflow application by the surrounding charm ecosystem (Istio & the Identity Platform), with MLflow treating any received identities as authenticated MLflow users (that are just-in-time created if newly seen), but without authorizing any operation until grants are explicitly defined for the respective users.
+.. note::
+
+    Each supported identity type is authenticated by and allowed to reach the MLflow application by the surrounding charm ecosystem (Istio & the Identity Platform). MLflow treats any received identities as authenticated MLflow users (that are just-in-time created if newly seen), but without authorizing any operation until grants are explicitly defined as described in :ref:`Configuring Grants for Users Across Workspaces <_configuring_grants_for_users_across_workspaces>`.
 
 UI Access
 ~~~~~~~~~
 
 For UI access, identities correspond to emails of users in the employed identity provider, which is Kratos for the Canonical Identity Platform.
 
-The surrounding charm ecosystem will automatically handle the login via the identity provider and let the user reach MLflow maintaining the session and propagating the authenticated identity to MLflow.
+To create and manage Kratos users in the Canonical Identity Platform, follow `Manage users <https://canonical-identity.readthedocs-hosted.com/identity-platform/how-to/manage-users/>`_.
 
-To manage Kratos users in the Canonical Identity Platform, follow `Manage users <https://canonical-identity.readthedocs-hosted.com/identity-platform/how-to/manage-users/>`_.
+The charm ecosystem will handle the login via the identity provider and let the user reach MLflow.
 
 External Programmatic Access
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For programmatic access from outside the cluster, identities correspond to OAuth2 client IDs issued by the employed OpenID Connect provider, which is Hydra for the Canonical Identity Platform.
-
-The surrounding charm ecosystem will expect access tokens generated for the respective OAuth2 clients to be passed as Bearer tokens in the Authorization header of requests sent by clients to MLflow. When not coding requests explicitly but using the MLflow Python client, setting `the MLFLOW_TRACKING_TOKEN environment variable <https://mlflow.org/docs/latest/api_reference/python_api/mlflow.environment_variables.html#mlflow.environment_variables.MLFLOW_TRACKING_TOKEN>`_ achieves the same header behind the scenes.
 
 To create OAuth2 clients in Hydra with the Canonical Identity Platform, follow `Onboard an application with Charmed Hydra <https://canonical-identity.readthedocs-hosted.com/identity-platform/how-to/onboard-an-application-with-charmed-hydra/#register-your-oauth-client>`_. For example:
 
@@ -83,7 +95,9 @@ To create OAuth2 clients in Hydra with the Canonical Identity Platform, follow `
         response-types='["token"]' \
         scope='["openid"]'
 
-To issue access tokens for OAuth2 clients from Hydra, make a POST request to the ``/oauth2/token`` endpoint path at your auth hostname using the OAuth2 client ID and secret returned by the previous command as Basic Auth credentials and passing ``grant_type=client_credentials`` and ``scope=openid`` in the request body. For example:
+The charm ecosystem will expect access tokens generated for the respective OAuth2 clients to be passed as Bearer tokens in requests sent by clients to MLflow (either directly as headers or via `the MLFLOW_TRACKING_TOKEN environment variable <https://mlflow.org/docs/latest/api_reference/python_api/mlflow.environment_variables.html#mlflow.environment_variables.MLFLOW_TRACKING_TOKEN>`_ when using the MLflow Python client).
+
+To issue such access tokens, make a POST request to the ``/oauth2/token`` endpoint path at your auth hostname using the OAuth2 client ID and secret returned by the previous command as Basic Auth credentials and passing ``grant_type=client_credentials`` and ``scope=openid`` in the request body. For example:
 
 .. code-block:: bash
 
@@ -102,7 +116,7 @@ In-Cluster Programmatic Access
 
 For programmatic access from within the cluster, identities correspond to names of namespaces traffic originates from. Only traffic from in-mesh namespaces is allowed.
 
-The surrounding charm ecosystem will automatically impose the identity as the source namespace and clients will not be expected to set extra headers, unlike for external programmatic access.
+The charm ecosystem will automacally impose the identity and clients will not be expected to set Bearer tokens, unlike for external programmatic access.
 
 -----------------------------------------------------
 Aliasing Different Identities to the Same MLflow User
@@ -110,13 +124,13 @@ Aliasing Different Identities to the Same MLflow User
 
 In case different identities, be them of the same type or of different types, have to be mapped to the same MLflow user, Charmed MLflow can be configured to alias one identity to another via ``identity_aliases``.
 
-For instance, one may want to be treated as the same MLflow user when reaching the UI after logging in with Kratos, when calling MLflow programmatically from outside the cluster with an access token issued for an OAuth2 client, and when connecting to MLflow from a Jupyter notebook run in a Kubeflow Profile (a workload from a namespace in the mesh). To do so:
+For instance, one may want to be treated as the same MLflow user when reaching the UI after logging in with Kratos, when calling MLflow programmatically from outside the cluster with an access token issued for a given OAuth2 client, and when connecting to MLflow from an in-cluster workload from a namespace in the mesh. To do so:
 
 .. code-block:: bash
 
     juju config --model mlflow mlflow-server identity_aliases="$OAUTH2_CLIENT_ID: $KRATOS_EMAIL, $K8S_NAMESPACE_NAME: $KRATOS_EMAIL"
 
-In this case, only the identity ``$KRATOS_EMAIL`` is to be granted workspace access via data-integrator, as it is the only identity directly mapped to an MLflow user with the same username, while ``$OAUTH2_CLIENT_ID`` and ``$K8S_NAMESPACE_NAME`` need no direct grants via data-integrator as they are aliased to that same MLflow user already granted the desired permissions.
+In this case, only the identity ``$KRATOS_EMAIL`` is to be granted workspace access via ``data-integrator``, being the only identity directly mapped to an MLflow user, while ``$OAUTH2_CLIENT_ID`` and ``$K8S_NAMESPACE_NAME`` need no direct grants via ``data-integrator`` as they alias that same MLflow user.
 
 .. _syntax_of_entity_permissions:
 
