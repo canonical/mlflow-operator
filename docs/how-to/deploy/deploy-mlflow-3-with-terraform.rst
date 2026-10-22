@@ -159,4 +159,4 @@ For your host:
 How to Access Charmed MLflow 3
 ------------------------------
 
-Refer to :ref:`Configure Role-Based Access Control Across MLflow Workspaces in Charmed MLflow 3 (Experimental) <configure_rbac_across_workspaces>` to configure user grants across MLflow workspaces and control programmatic and UI access to Charmed MLflow 3.
+Refer to :ref:`Configure RBAC Across MLflow Workspaces in Charmed MLflow 3 (Experimental) <configure_rbac_across_workspaces>` to configure user grants across MLflow workspaces and control programmatic and UI access to Charmed MLflow 3.
