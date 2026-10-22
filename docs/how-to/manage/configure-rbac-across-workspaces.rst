@@ -116,7 +116,7 @@ In-Cluster Programmatic Access
 
 For programmatic access from within the cluster, identities correspond to names of namespaces traffic originates from. Only traffic from in-mesh namespaces is allowed.
 
-The charm ecosystem will automacally impose the identity and clients will not be expected to set Bearer tokens, unlike for external programmatic access.
+The charm ecosystem will automatically impose the identity and clients will not be expected to set Bearer tokens, unlike for external programmatic access.
 
 -----------------------------------------------------
 Aliasing Different Identities to the Same MLflow User
