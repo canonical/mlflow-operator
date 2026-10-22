@@ -1,7 +1,7 @@
 .. _configure_rbac_across_workspaces:
 
-Configure RBAC Across MLflow Workspaces in Charmed MLflow 3 (Experimental)
-==========================================================================
+Configure Role-Based Access Control Across MLflow Workspaces in Charmed MLflow 3 (Experimental)
+===============================================================================================
 
 This guide applies to the newer, experimental Charmed MLflow 3 integrated with the Canonical Identity Platform, and describes how to configure user grants across MLflow workspaces and to control UI, external programmatic and in-cluster programmatic access to MLflow.
 
