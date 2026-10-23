@@ -188,3 +188,7 @@ For instance:
 .. code-block:: bash
 
     juju config data-integrator entity-name='my-username' entity-permissions='[{"resource_type": "super-admin", "resource_name": "", "privileges": []}]'
+
+.. warning::
+
+    Use workspace-wide grants when possible and avoid super-admin grants unless strictly necessary, as super-admins have unrestricted permissions and can (inadvertently or not) compromise the charm functionality, which also internally acts as a super-admin to manage the MLflow application.
