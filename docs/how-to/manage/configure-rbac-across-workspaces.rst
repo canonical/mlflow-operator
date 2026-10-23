@@ -25,9 +25,12 @@ Configuring Grants for Users Across Workspaces
 
 Different workspace-tier grants can be configured across different MLflow workspaces for different identities that exist in the charm ecosystem surrounding MLflow. See :ref:`mapping_identities_to_mlflow_users` to understand what such identities are.
 
-For a given identity, the desired grants across any workspaces of interest are:
+For a given identity, here is how to manage the desired grants across any workspaces of interest:
 
-1. defined by deploying and configuring a ``data-integrator`` charm instance for that identity, specifying:
+1. Defining Grants
+^^^^^^^^^^^^^^^^^^
+
+Grants are defined by deploying and configuring a ``data-integrator`` charm instance for that identity, specifying:
 
    * ``entity-name`` as the identity, which will become the corresponding MLflow user's username
    * ``entity-permissions`` as the workspace-tier grants for each workspace of interest, as described in :ref:`Syntax of entity-permissions <syntax_of_entity_permissions>`
@@ -40,7 +43,10 @@ For a given identity, the desired grants across any workspaces of interest are:
            --config entity-name=my-identity \
            --config entity-permissions='[{"resource_type": "workspace", "resource_name": "analytics-team", "privileges": ["admin"]}, {"resource_type": "workspace", "resource_name": "data-team", "privileges": ["read-only"]}]'
 
-2. applied by integrating the same charm instance to Charmed MLflow over the ``mlflow_client`` interface
+2. Applying Grants
+^^^^^^^^^^^^^^^^^^
+
+Grants are applied by integrating the same charm instance to Charmed MLflow over the ``mlflow_client`` interface
 
    For instance, to apply the grants of the example above:
 
@@ -48,18 +54,27 @@ For a given identity, the desired grants across any workspaces of interest are:
 
        juju integrate mlflow-server:mlflow-client mlflow-grants-for-my-identity:mlflow
 
-3. in case desirable, modified by updating the configurations of the charm instance:
+3. Modifying Grants
+^^^^^^^^^^^^^^^^^^^
+
+In case desirable, grants can be modified by updating the configurations of the charm instance:
 
    * if ``entity-permissions`` are modified, grant edits take effect live
    * if ``entity-name`` is modified, the Juju integration is to be reapplied (removed and re-added)
 
-4. revoked by removing the Juju integration
+4. Revoking Grants
+^^^^^^^^^^^^^^^^^^
+
+Grants are revoked by removing the Juju integration
 
    For instance, to revoke the grants of the example above:
 
    .. code-block:: bash
 
        juju remove-relation mlflow-server:mlflow-client mlflow-grants-for-my-identity:mlflow
+
+Default Grants
+^^^^^^^^^^^^^^
 
 By default, identities have no grants across any MLflow workspaces. 
 
