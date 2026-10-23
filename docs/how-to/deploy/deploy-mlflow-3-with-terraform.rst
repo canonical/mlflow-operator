@@ -5,7 +5,7 @@ Deploy Charmed MLflow 3 with Terraform (Experimental)
 
 .. warning::
 
-    MLflow 3 support is **experimental** and is not intended for production workloads. ``latest/edge`` charm channels are employed, since Charmed MLflow 3 is only available there as of today, and such channels are under active development and may change at any time.
+    MLflow 3 support is **experimental** and is not intended for production workloads. ``latest/edge`` charm channels are employed, since Charmed MLflow 3 is currently only available there, and such channels are under active development and may change at any time.
 
 This guide describes how to deploy Charmed MLflow 3 (experimental) using `Terraform <https://www.terraform.io/>`_, as its own standalone product, via the Charmed Kubeflow Terraform solutions.
 
@@ -87,7 +87,7 @@ Deploy Charmed MLflow 3 and Its Charm Ecosystem
 
 .. note::
 
-    With this command, ``latest/edge`` channels are selected by default for all of the deployed charms but the Istio and IAM ones, which is necessary because Charmed MLflow 3 is only available there as of today.
+    With this command, ``latest/edge`` channels are selected by default for all of the deployed charms but the Istio and IAM ones, which is necessary because Charmed MLflow 3 is currently only available there.
 
 Terraform will create four different Juju models across which all the charm applications will be deployed and integrated:  ``istio-system``, ``iam-core``, ``iam`` and ``mlflow``.
 

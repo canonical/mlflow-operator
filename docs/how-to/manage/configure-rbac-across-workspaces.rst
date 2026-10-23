@@ -117,7 +117,7 @@ To issue such access tokens, make a POST request to the ``/oauth2/token`` endpoi
 
 .. note::
 
-    The token lifetime cannot be configured via the charm as of today and it defaults to 1 hour.
+    The token lifetime cannot currently be configured via the charm and it defaults to 1 hour.
 
 In-Cluster Programmatic Access
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
