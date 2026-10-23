@@ -23,7 +23,7 @@ This guide applies to the newer, experimental Charmed MLflow 3 integrated with t
 Configuring Grants for Users Across Workspaces
 ----------------------------------------------
 
-Different workspace-tier grants can be configured across different MLflow workspaces for different identities that exists in the charm ecosystem surrounding MLflow. See :ref:`mapping_identities_to_mlflow_users` to understand what such identities are.
+Different workspace-tier grants can be configured across different MLflow workspaces for different identities that exist in the charm ecosystem surrounding MLflow. See :ref:`mapping_identities_to_mlflow_users` to understand what such identities are.
 
 For a given identity, the desired grants across any workspaces of interest are:
 
