@@ -17,3 +17,10 @@ Learn how to manage its data:
 
    backup
    restore
+
+For the newer, experimental Charmed MLflow 3, learn how to configure user grants across MLflow workspaces and control programmatic and UI access:
+
+.. toctree::
+   :maxdepth: 1
+
+   configure-rbac-across-workspaces
