@@ -146,8 +146,8 @@ For your host:
     echo "$API_IP $API_HOSTNAME" | sudo tee -a /etc/hosts
     echo "$UI_IP $UI_HOSTNAME" | sudo tee -a /etc/hosts
 
-7. Wait for all of the charm applications in the ``istio-system``, ``iam`` and ``mlflow`` models to become ``active`` to know Charmed MLflow 3 is ready
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7. Wait for all of the charm applications in the ``istio-system``, ``iam`` and ``mlflow`` models to become ``active``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
