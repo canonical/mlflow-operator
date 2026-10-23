@@ -28,7 +28,7 @@ Different workspace-tier grants can be configured across different MLflow worksp
 For a given identity, here is how to manage the desired grants across any workspaces of interest:
 
 1. Defining Grants
-^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~
 
 Grants are defined by deploying and configuring a ``data-integrator`` charm instance for that identity, specifying:
 
@@ -44,7 +44,7 @@ Grants are defined by deploying and configuring a ``data-integrator`` charm inst
            --config entity-permissions='[{"resource_type": "workspace", "resource_name": "analytics-team", "privileges": ["admin"]}, {"resource_type": "workspace", "resource_name": "data-team", "privileges": ["read-only"]}]'
 
 2. Applying Grants
-^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~
 
 Grants are applied by integrating the same charm instance to Charmed MLflow over the ``mlflow_client`` interface
 
@@ -55,7 +55,7 @@ Grants are applied by integrating the same charm instance to Charmed MLflow over
        juju integrate mlflow-server:mlflow-client mlflow-grants-for-my-identity:mlflow
 
 3. Modifying Grants
-^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~
 
 In case desirable, grants can be modified by updating the configurations of the charm instance:
 
@@ -63,7 +63,7 @@ In case desirable, grants can be modified by updating the configurations of the 
    * if ``entity-name`` is modified, the Juju integration is to be reapplied (removed and re-added)
 
 4. Revoking Grants
-^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~
 
 Grants are revoked by removing the Juju integration
 
@@ -74,7 +74,7 @@ Grants are revoked by removing the Juju integration
        juju remove-relation mlflow-server:mlflow-client mlflow-grants-for-my-identity:mlflow
 
 Default Grants
-^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~
 
 By default, identities have no grants across any MLflow workspaces. 
 
