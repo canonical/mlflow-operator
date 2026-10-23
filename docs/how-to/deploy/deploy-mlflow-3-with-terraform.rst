@@ -113,30 +113,32 @@ Find the IP addresses that correspond to your hostnames from the deployed load b
     API_IP=$(kubectl -n mlflow get svc istio-ingress-k8s-m2m-istio -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
     UI_IP=$(kubectl -n mlflow get svc istio-ingress-k8s-ui-istio -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-For Kubernetes, copy the code block rendered by running this command...
+For Kubernetes:
 
-.. code-block:: bash
+a. copy the code block rendered by running this command:
 
-    cat <<EOF
-            hosts {
-                $AUTH_IP $AUTH_HOSTNAME
-                $API_IP $API_HOSTNAME
-                $UI_IP $UI_HOSTNAME
-                fallthrough
-            }
-    EOF
+   .. code-block:: bash
 
-...add it (with proper indentation) to the CoreDNS ConfigMap of your cluster, inside the ``.:53`` block...
+       cat <<EOF
+               hosts {
+                   $AUTH_IP $AUTH_HOSTNAME
+                   $API_IP $API_HOSTNAME
+                   $UI_IP $UI_HOSTNAME
+                   fallthrough
+               }
+       EOF
 
-.. code-block:: bash
+b. add it (with proper indentation) to the CoreDNS ConfigMap of your cluster, inside the ``.:53`` block:
 
-    kubectl -n kube-system edit configmap $(kubectl -n kube-system get configmap -o name | grep coredns | head -n1 | cut -d/ -f2)
+   .. code-block:: bash
 
-...and eventually make CoreDNS restart to let the ConfigMap change take effect:
+       kubectl -n kube-system edit configmap $(kubectl -n kube-system get configmap -o name | grep coredns | head -n1 | cut -d/ -f2)
 
-.. code-block:: bash
+c. make CoreDNS restart to let the ConfigMap change take effect:
 
-    kubectl -n kube-system rollout restart deployments/coredns
+   .. code-block:: bash
+
+       kubectl -n kube-system rollout restart deployments/coredns
 
 For your host:
 
