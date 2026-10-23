@@ -166,7 +166,7 @@ The desired MLflow grants are configured via ``entity-permissions`` as a JSON li
 Workspace-Wide Grants
 ~~~~~~~~~~~~~~~~~~~~~
 
-Each grant is defined with ``resource_type`` set to ``workspace``, with ``resource_name`` as the workspace name and with ``privileges`` containing one of the allowed permission levels, which provide sensible combinations of `the upstream permission levels <https://mlflow.org/docs/latest/self-hosting/security/role-based-access-control/#permission-levels>`_ and `workspace permissions <https://mlflow.org/docs/latest/self-hosting/workspaces/permissions/>`_ to cover the most common use cases:
+Each grant is defined with ``resource_type`` set to ``workspace``, with ``resource_name`` as the workspace name and with ``privileges`` containing one of the allowed permission levels, which provide sensible combinations of the upstream, native `permission levels <https://mlflow.org/docs/latest/self-hosting/security/role-based-access-control/#permission-levels>`_ and `workspace permissions <https://mlflow.org/docs/latest/self-hosting/workspaces/permissions/>`_ to cover the most common use cases:
 - ``read-only``: native ``READ`` type-wide grants on all resource types in the workspace
 - ``member``:  native ``USE`` workspace-tier grant on the workspace
 - ``edit``  native ``USE`` workspace-tier grant on the workspace plus native ``EDIT`` type-wide grants on all resource types in the workspace
