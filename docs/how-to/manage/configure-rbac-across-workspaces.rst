@@ -42,7 +42,7 @@ For a given identity, the desired grants across any workspaces of interest are:
 
 2. applied by integrating the same charm instance to Charmed MLflow over the ``mlflow_client`` interface
 
-   For instance, continuing the example above:
+   For instance, to apply the grants of the example above:
 
    .. code-block:: bash
 
@@ -55,7 +55,7 @@ For a given identity, the desired grants across any workspaces of interest are:
 
 4. revoked by removing the Juju integration
 
-   For instance, continuing the example above:
+   For instance, to revoke the grants of the example above:
 
    .. code-block:: bash
 
