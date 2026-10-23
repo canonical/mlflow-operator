@@ -181,7 +181,7 @@ For instance:
 A Cross-Workspace Super-Admin Grant
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The (only) grant is defined with ``resource_type`` set to ``super-admin`` and without any redundant ``resource_name`` or ``privileges``, since super-admins can already access all workspaces with admin privileges. This corresponds to `the upstream platform admin <https://mlflow.org/docs/latest/self-hosting/security/role-based-access-control#user-tiers>`_.
+A super-admin grant is defined with ``resource_type`` set to ``super-admin`` and without any redundant ``resource_name`` or ``privileges``, since super-admins can already access all workspaces with admin privileges — only one grant is in fact sufficient for a given identity to become a super admin. This corresponds to `the upstream platform admin <https://mlflow.org/docs/latest/self-hosting/security/role-based-access-control#user-tiers>`_.
 
 For instance:
 
