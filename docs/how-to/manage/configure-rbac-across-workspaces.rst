@@ -145,7 +145,7 @@ The charm ecosystem will automatically impose the identity and clients will not 
 Aliasing Different Identities to the Same MLflow User
 -----------------------------------------------------
 
-In case different identities, be them of the same type or of different types, have to be mapped to the same MLflow user, Charmed MLflow can be configured to alias one identity to another via ``identity_aliases``.
+In case different identities, whether of the same or different types, have to be mapped to the same MLflow user, Charmed MLflow can be configured to alias one identity to another via ``identity_aliases``.
 
 For instance, one may want to be treated as the same MLflow user when reaching the UI after logging in with Kratos, when calling MLflow programmatically from outside the cluster with an access token issued for a given OAuth2 client, and when connecting to MLflow from an in-cluster workload from a namespace in the mesh. To do so:
 
