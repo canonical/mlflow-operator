@@ -15,8 +15,8 @@ This guide describes how to deploy Charmed MLflow 3 (experimental) using `Terraf
 
     * The components the MLflow application needs:
 
-      * its backend store (a PostgreSQL database)
-      * its artifact store (an S3-compatible storage integrator)
+      * a PostgreSQL database as its backend store
+      * an S3-compatible storage integrator as its artifact store
 
     * The necessary charm ecosystem around the MLflow charm:
 
