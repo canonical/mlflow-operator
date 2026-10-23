@@ -46,7 +46,7 @@ For example, to grant the identity `my-identity` admin access to the `analytics-
 2. Applying Grants
 ~~~~~~~~~~~~~~~~~~
 
-Grants are applied by integrating the same charm instance to Charmed MLflow over the ``mlflow_client`` interface
+Grants are applied by integrating the same charm instance to Charmed MLflow over the ``mlflow_client`` interface.
 
 For instance, to apply the grants of the example above:
 
@@ -57,7 +57,7 @@ For instance, to apply the grants of the example above:
 3. Modifying Grants
 ~~~~~~~~~~~~~~~~~~~
 
-In case desirable, grants can be modified by updating the configurations of the charm instance:
+In case desirable, grants can be modified by updating the configurations of the charm instance, considering that:
 
 * if ``entity-permissions`` are modified, grant edits take effect live
 * if ``entity-name`` is modified, the Juju integration is to be reapplied (removed and re-added)
@@ -65,7 +65,7 @@ In case desirable, grants can be modified by updating the configurations of the 
 4. Revoking Grants
 ~~~~~~~~~~~~~~~~~~
 
-Grants are revoked by removing the Juju integration
+Grants are revoked by removing the Juju integration.
 
 For instance, to revoke the grants of the example above:
 
