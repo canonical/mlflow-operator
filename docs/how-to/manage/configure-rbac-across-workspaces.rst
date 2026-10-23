@@ -12,8 +12,8 @@ This guide applies to the newer, experimental Charmed MLflow 3 integrated with t
 .. note::
 
     In this guide, the term "user" will be used loosely. To disambiguate:
-    - the term "identity" will precisely refer to a user that exists in the charm ecosystem surrounding MLflow (e.g., Kratos users of the Canonical Identity Platform)
-    - the term "MLflow user" will refer to users that only exist within the MLflow application
+       * the term "identity" will precisely refer to a user that exists in the charm ecosystem surrounding MLflow (e.g., Kratos users of the Canonical Identity Platform)
+       * the term "MLflow user" will refer to users that only exist within the MLflow application
 
 .. _configuring_grants_for_users_across_workspaces:
 
