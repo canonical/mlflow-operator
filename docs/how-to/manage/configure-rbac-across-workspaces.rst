@@ -32,46 +32,46 @@ For a given identity, here is how to manage the desired grants across any worksp
 
 Grants are defined by deploying and configuring a ``data-integrator`` charm instance for that identity, specifying:
 
-   * ``entity-name`` as the identity, which will become the corresponding MLflow user's username
-   * ``entity-permissions`` as the workspace-tier grants for each workspace of interest, as described in :ref:`Syntax of entity-permissions <syntax_of_entity_permissions>`
+* ``entity-name`` as the identity, which will become the corresponding MLflow user's username
+* ``entity-permissions`` as the workspace-tier grants for each workspace of interest, as described in :ref:`Syntax of entity-permissions <syntax_of_entity_permissions>`
 
-   For example, to grant the identity `my-identity` admin access to the `analytics-team` workspace and read-only access to the `data-team` workspace:
+For example, to grant the identity `my-identity` admin access to the `analytics-team` workspace and read-only access to the `data-team` workspace:
 
-   .. code-block:: bash
+.. code-block:: bash
 
-       juju deploy data-integrator mlflow-grants-for-my-identity --trust --model mlflow --channel latest/edge \
-           --config entity-name=my-identity \
-           --config entity-permissions='[{"resource_type": "workspace", "resource_name": "analytics-team", "privileges": ["admin"]}, {"resource_type": "workspace", "resource_name": "data-team", "privileges": ["read-only"]}]'
+    juju deploy data-integrator mlflow-grants-for-my-identity --trust --model mlflow --channel latest/edge \
+        --config entity-name=my-identity \
+        --config entity-permissions='[{"resource_type": "workspace", "resource_name": "analytics-team", "privileges": ["admin"]}, {"resource_type": "workspace", "resource_name": "data-team", "privileges": ["read-only"]}]'
 
 2. Applying Grants
 ~~~~~~~~~~~~~~~~~~
 
 Grants are applied by integrating the same charm instance to Charmed MLflow over the ``mlflow_client`` interface
 
-   For instance, to apply the grants of the example above:
+For instance, to apply the grants of the example above:
 
-   .. code-block:: bash
+.. code-block:: bash
 
-       juju integrate mlflow-server:mlflow-client mlflow-grants-for-my-identity:mlflow
+    juju integrate mlflow-server:mlflow-client mlflow-grants-for-my-identity:mlflow
 
 3. Modifying Grants
 ~~~~~~~~~~~~~~~~~~~
 
 In case desirable, grants can be modified by updating the configurations of the charm instance:
 
-   * if ``entity-permissions`` are modified, grant edits take effect live
-   * if ``entity-name`` is modified, the Juju integration is to be reapplied (removed and re-added)
+* if ``entity-permissions`` are modified, grant edits take effect live
+* if ``entity-name`` is modified, the Juju integration is to be reapplied (removed and re-added)
 
 4. Revoking Grants
 ~~~~~~~~~~~~~~~~~~
 
 Grants are revoked by removing the Juju integration
 
-   For instance, to revoke the grants of the example above:
+For instance, to revoke the grants of the example above:
 
-   .. code-block:: bash
+.. code-block:: bash
 
-       juju remove-relation mlflow-server:mlflow-client mlflow-grants-for-my-identity:mlflow
+    juju remove-relation mlflow-server:mlflow-client mlflow-grants-for-my-identity:mlflow
 
 Default Grants
 ~~~~~~~~~~~~~~
