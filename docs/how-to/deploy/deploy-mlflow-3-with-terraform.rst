@@ -113,7 +113,7 @@ Find the IP addresses that correspond to your hostnames from the deployed load b
     API_IP=$(kubectl -n mlflow get svc istio-ingress-k8s-m2m-istio -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
     UI_IP=$(kubectl -n mlflow get svc istio-ingress-k8s-ui-istio -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-For Kubernetes, add (with proper indentation)the code block rendered by printing this...
+For Kubernetes, copy the code block rendered by running this command...
 
 .. code-block:: bash
 
@@ -126,7 +126,7 @@ For Kubernetes, add (with proper indentation)the code block rendered by printing
             }
     EOF
 
-...to the CoreDNS ConfigMap of your cluster, inside the ``.:53`` block...
+...add it (with proper indentation) to the CoreDNS ConfigMap of your cluster, inside the ``.:53`` block...
 
 .. code-block:: bash
 
