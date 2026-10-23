@@ -31,7 +31,7 @@ Requirements
 * `Git <https://git-scm.com/>`_ to download the Terraform source
 * A Kubernetes cluster:
     * of version 1.32, 1.33 or 1.34
-    * preconfigured to work with Istio (e.g., on Canonical K8s, `configure Cilium accordingly <https://docs.cilium.io/en/latest/network/servicemesh/istio/#cilium-configuration>`_)
+    * preconfigured to work with Istio (e.g., on Canonical K8s, `configure Cilium for Istio <https://docs.cilium.io/en/latest/network/servicemesh/istio/#cilium-configuration>`_)
     * with at least three external IP addresses available for ingress load balancers
 * The following environment variables set as desired for DNS of external IP addresses:
     * ``AUTH_HOSTNAME`` for the hostname to be employed to authenticate to MLflow (e.g., ``auth.mlflow.com``)
