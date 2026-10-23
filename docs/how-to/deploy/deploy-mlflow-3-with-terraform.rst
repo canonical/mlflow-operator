@@ -30,7 +30,7 @@ Requirements
 * `Terraform <https://developer.hashicorp.com/terraform/install>`__ version 1.6 or later
 * `Git <https://git-scm.com/>`_ to download the Terraform source
 * A Kubernetes cluster:
-    * of version 1.32, 1.33 or 1.34
+    * of version 1.32 to 1.34
     * preconfigured to work with Istio (e.g., on Canonical K8s, `configure Cilium for Istio <https://docs.cilium.io/en/latest/network/servicemesh/istio/#cilium-configuration>`_)
     * with at least three external IP addresses available for ingress load balancers
 * The following environment variables set on your CLI as desired for DNS of external IP addresses:
