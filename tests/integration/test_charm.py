@@ -44,7 +44,6 @@ from charms_dependencies import (
     KUBEFLOW_PROFILES,
     METACONTROLLER_OPERATOR,
     POSTGRESQL_K8S,
-    RESOURCE_DISPATCHER,
     S3_INTEGRATOR,
 )
 from helpers import CurlPod
@@ -71,7 +70,6 @@ METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 CHARM_NAME = METADATA["name"]
 CONTAINERS_SECURITY_CONTEXT_MAP = generate_container_securitycontext_map(METADATA)
 HTTP_PATH = "/"
-PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
 ACCESS_S3_PODDEFAULT_NAME = f"{CHARM_NAME}-access-s3"
 MLFLOW_PODDEFAULT_NAME = f"{CHARM_NAME}-mlflow"
 PODDEFAULT_NAMES = [ACCESS_S3_PODDEFAULT_NAME, MLFLOW_PODDEFAULT_NAME]
@@ -381,7 +379,6 @@ class TestCharm:
 
     @pytest.mark.abort_on_fail
     async def test_add_s3_and_db_relation_expect_active(self, ops_test: OpsTest):
-        deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
         await deploy_and_assert_s3_integrator(
             ops_test.model, add_ca_chain=True, s3_integrator=S3_INTEGRATOR
         )
@@ -926,7 +923,7 @@ class TestCharm:
                 assert charm_managed_workspace_roles == []
 
     @pytest.mark.abort_on_fail
-    async def test_deploy_resource_dispatcher(self, ops_test: OpsTest):
+    async def test_deploy_metacontroller(self, ops_test: OpsTest):
         await ops_test.model.deploy(
             entity_url=METACONTROLLER_OPERATOR.charm,
             channel=METACONTROLLER_OPERATOR.channel,
@@ -938,34 +935,6 @@ class TestCharm:
             raise_on_blocked=False,
             raise_on_error=False,
             timeout=120,
-        )
-        await ops_test.model.deploy(
-            RESOURCE_DISPATCHER.charm,
-            channel=RESOURCE_DISPATCHER.channel,
-            trust=RESOURCE_DISPATCHER.trust,
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[CHARM_NAME],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=120,
-            idle_period=60,
-        )
-
-        await ops_test.model.relate(
-            f"{CHARM_NAME}:pod-defaults", f"{RESOURCE_DISPATCHER.charm}:pod-defaults"
-        )
-        await ops_test.model.relate(
-            f"{CHARM_NAME}:secrets", f"{RESOURCE_DISPATCHER.charm}:secrets"
-        )
-
-        await ops_test.model.wait_for_idle(
-            apps=[RESOURCE_DISPATCHER.charm],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=1200,
         )
 
     @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
@@ -1098,6 +1067,7 @@ class TestCharm:
         assert current_user["user"]["username"] == TEST_IDENTITY
         assert current_user["user"]["username"] != SPOOFED_IDENTITY
 
+    @pytest.mark.skip(reason="Kubeflow integration removed; to be re-added in later tasks")
     @pytest.mark.abort_on_fail
     async def test_new_user_namespace_has_manifests(
         self,
@@ -1245,6 +1215,7 @@ class TestCharm:
         """The tracking server UI must remain reachable after switching to proxy mode."""
         await assert_ui_is_accessible(ops_test)
 
+    @pytest.mark.skip(reason="Kubeflow integration removed; to be re-added in later tasks")
     @retry(stop=stop_after_delay(600), wait=wait_fixed(10), reraise=True)
     @pytest.mark.abort_on_fail
     async def test_proxy_mode_updates_dispatched_manifests(

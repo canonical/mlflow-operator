@@ -10,9 +10,6 @@ from pytest_operator.plugin import OpsTest
 KUBEFLOW_CHANNEL = os.environ.get(
     "KUBEFLOW_CHANNEL", "1.9/stable"
 )  # Default to '1.9/stable' if not set
-RESOURCE_DISPATCHER_CHANNEL = os.environ.get(
-    "RESOURCE_DISPATCHER_CHANNEL", "2.0/stable"
-)  # Default to '2.0/stable' if not set
 
 
 @pytest.fixture()
@@ -38,12 +35,12 @@ async def deploy_bundle(ops_test: OpsTest, bundle_path, trust: bool) -> None:
 
 class TestCharm:
     @pytest.mark.abort_on_fail
-    async def test_deploy_bundles_and_resource_dispatcher(
+    async def test_deploy_bundles(
         self, ops_test: OpsTest, lightkube_client, bundle_path
     ):
         """
         Deploy the Kubeflow bundle, a custom bundle from the given bundle path,
-        and the resource-dispatcher charm. Then, integrate the components
+        Then, integrate the components
         and wait for the model to become active and idle.
         """
         # Deploy Kubeflow with channel and trust
@@ -56,25 +53,9 @@ class TestCharm:
         # Deploy the bundle path
         await deploy_bundle(ops_test, bundle_path, trust=True)
 
-        # Deploy resource-dispatcher with its channel and trust
-        await ops_test.model.deploy(
-            entity_url="resource-dispatcher",
-            channel=RESOURCE_DISPATCHER_CHANNEL,
-            trust=True,
-        )
-
-        # Relate services as per Juju integrations
-        await ops_test.model.relate("mlflow-server:secrets", "resource-dispatcher:secrets")
-        await ops_test.model.relate(
-            "mlflow-server:pod-defaults", "resource-dispatcher:pod-defaults"
-        )
         await ops_test.model.relate(
             "mlflow-minio:object-storage", "kserve-controller:object-storage"
         )
-        await ops_test.model.relate(
-            "kserve-controller:service-accounts", "resource-dispatcher:service-accounts"
-        )
-        await ops_test.model.relate("kserve-controller:secrets", "resource-dispatcher:secrets")
         await ops_test.model.relate("mlflow-server:ingress", "istio-pilot:ingress")
         await ops_test.model.relate("mlflow-server:dashboard-links", "kubeflow-dashboard:links")
 
