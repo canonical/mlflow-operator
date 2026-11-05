@@ -1067,6 +1067,7 @@ class TestCharm:
         assert current_user["user"]["username"] == TEST_IDENTITY
         assert current_user["user"]["username"] != SPOOFED_IDENTITY
 
+    # TODO: Remove once integration with Kubeflow is reinstated        
     @pytest.mark.skip(reason="Kubeflow integration removed; to be re-added in later tasks")
     @pytest.mark.abort_on_fail
     async def test_new_user_namespace_has_manifests(
@@ -1215,6 +1216,7 @@ class TestCharm:
         """The tracking server UI must remain reachable after switching to proxy mode."""
         await assert_ui_is_accessible(ops_test)
 
+    # TODO: Remove once integration with Kubeflow is reinstated
     @pytest.mark.skip(reason="Kubeflow integration removed; to be re-added in later tasks")
     @retry(stop=stop_after_delay(600), wait=wait_fixed(10), reraise=True)
     @pytest.mark.abort_on_fail
