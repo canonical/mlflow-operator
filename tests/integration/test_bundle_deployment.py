@@ -35,9 +35,7 @@ async def deploy_bundle(ops_test: OpsTest, bundle_path, trust: bool) -> None:
 
 class TestCharm:
     @pytest.mark.abort_on_fail
-    async def test_deploy_bundles(
-        self, ops_test: OpsTest, lightkube_client, bundle_path
-    ):
+    async def test_deploy_bundles(self, ops_test: OpsTest, lightkube_client, bundle_path):
         """
         Deploy the Kubeflow bundle, a custom bundle from the given bundle path,
         Then, integrate the components
