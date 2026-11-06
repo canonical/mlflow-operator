@@ -2,23 +2,10 @@
 
 from charmed_kubeflow_chisme.testing import CharmSpec
 
-METACONTROLLER_OPERATOR = CharmSpec(
-    charm="metacontroller-operator", channel="latest/edge", trust=True
-)
 POSTGRESQL_K8S = CharmSpec(
     charm="postgresql-k8s", channel="14/stable", config={"profile": "testing"}, trust=True
 )
-RESOURCE_DISPATCHER = CharmSpec(charm="resource-dispatcher", channel="latest/edge", trust=True)
 S3_INTEGRATOR = CharmSpec(charm="s3-integrator", channel="2/stable", trust=False)
-KUBEFLOW_PROFILES = CharmSpec(
-    charm="kubeflow-profiles",
-    channel="latest/edge",
-    config={
-        "service-mesh-mode": "istio-ambient",
-        "istio-gateway-service-account": "istio-ingress-k8s-istio",
-    },
-    trust=True,
-)
 
 # for multi-tenancy, to configure workspace grants for users:
 DATA_INTEGRATOR = CharmSpec(
