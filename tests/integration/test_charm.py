@@ -40,7 +40,6 @@ from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_
 from charms_dependencies import (
     DATA_INTEGRATOR,
     KUBEFLOW_PROFILES,
-    METACONTROLLER_OPERATOR,
     POSTGRESQL_K8S,
     S3_INTEGRATOR,
 )
@@ -887,21 +886,6 @@ class TestCharm:
             else:
                 # asserting the MLflow user has no grants:
                 assert charm_managed_workspace_roles == []
-
-    @pytest.mark.abort_on_fail
-    async def test_deploy_metacontroller(self, ops_test: OpsTest):
-        await ops_test.model.deploy(
-            entity_url=METACONTROLLER_OPERATOR.charm,
-            channel=METACONTROLLER_OPERATOR.channel,
-            trust=METACONTROLLER_OPERATOR.trust,
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[METACONTROLLER_OPERATOR.charm],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=120,
-        )
 
     @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
