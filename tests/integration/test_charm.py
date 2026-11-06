@@ -4,7 +4,6 @@
 
 """Integration tests for MLflow against the s3-credentials interface in ambient mode."""
 
-import base64
 import json
 import logging
 import os
@@ -14,13 +13,13 @@ import time
 from pathlib import Path
 from random import choices
 from string import ascii_lowercase
+from uuid import uuid4
 
 import lightkube
 import mlflow
 import pytest
 import requests
 import yaml
-from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
 from charmed_kubeflow_chisme.testing import (
     ISTIO_BEACON_K8S_APP,
     ISTIO_INGRESS_K8S_APP,
@@ -39,24 +38,12 @@ from charmed_kubeflow_chisme.testing import (
     integrate_with_service_mesh,
 )
 from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_integrator
-from charms_dependencies import (
-    DATA_INTEGRATOR,
-    KUBEFLOW_PROFILES,
-    METACONTROLLER_OPERATOR,
-    POSTGRESQL_K8S,
-    RESOURCE_DISPATCHER,
-    S3_INTEGRATOR,
-)
+from charms_dependencies import DATA_INTEGRATOR, POSTGRESQL_K8S, S3_INTEGRATOR
 from helpers import CurlPod
-from lightkube import codecs
 from lightkube.core.exceptions import ApiError
-from lightkube.generic_resource import (
-    create_global_resource,
-    create_namespaced_resource,
-    load_in_cluster_generic_resources,
-)
+from lightkube.generic_resource import create_namespaced_resource
 from lightkube.models.meta_v1 import ObjectMeta
-from lightkube.resources.core_v1 import Namespace, Secret
+from lightkube.resources.core_v1 import Namespace
 from mlflow.artifacts import download_artifacts
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
@@ -71,15 +58,11 @@ METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 CHARM_NAME = METADATA["name"]
 CONTAINERS_SECURITY_CONTEXT_MAP = generate_container_securitycontext_map(METADATA)
 HTTP_PATH = "/"
-PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
-ACCESS_S3_PODDEFAULT_NAME = f"{CHARM_NAME}-access-s3"
-MLFLOW_PODDEFAULT_NAME = f"{CHARM_NAME}-mlflow"
-PODDEFAULT_NAMES = [ACCESS_S3_PODDEFAULT_NAME, MLFLOW_PODDEFAULT_NAME]
-SECRET_SUFFIX = "-s3-artifact"
 TEST_EXPERIMENT_NAME = "test-experiment"
-PROFILE_FILE = "./tests/integration/profile.yaml"
 SPOOFED_IDENTITY = "spoofed-user-identity"
 S3_RELATION_NAME = "s3-credentials"
+# label enrolling a namespace's workloads in the Istio ambient mesh:
+AMBIENT_DATAPLANE_MODE_LABEL = {"istio.io/dataplane-mode": "ambient"}
 MISSING_S3_CREDENTIALS_STATUS_MESSAGE = (
     f"Missing {S3_RELATION_NAME} relation. Please relate to `{S3_RELATION_NAME}`."
 )
@@ -108,8 +91,6 @@ WORKSPACE_WITH_ADMIN_ACCESS_FINAL = "my-final-writable-workspace"
 WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL = "my-initial-read-only-workspace"
 WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL = "my-final-read-only-workspace"
 
-PodDefault = create_namespaced_resource("kubeflow.org", "v1alpha1", "PodDefault", "poddefaults")
-Profile = create_global_resource("kubeflow.org", "v1", "Profile", "profiles")
 # Gateway API generic resources, resolved at runtime via lightkube.
 HTTPROUTE_RESOURCE = create_namespaced_resource(
     "gateway.networking.k8s.io", "v1", "HTTPRoute", "httproutes"
@@ -162,15 +143,6 @@ class _PortForward:
                 )
 
 
-def _safe_load_file_to_text(filename: str) -> str:
-    """Returns the contents of filename if it is an existing file, else it returns filename."""
-    try:
-        text = Path(filename).read_text()
-    except FileNotFoundError:
-        text = filename
-    return text
-
-
 def _tracking_server_waypoint_principal(namespace: str) -> str:
     """SPIFFE principal of the platform waypoint proxy, for the tracking server restriction.
 
@@ -210,15 +182,6 @@ def curl_pod(request) -> CurlPod:
         yield pod
 
 
-def deploy_k8s_resources(template_files: str):
-    lightkube_client = lightkube.Client(field_manager=CHARM_NAME)
-    k8s_resource_handler = KubernetesResourceHandler(
-        field_manager=CHARM_NAME, template_files=template_files, context={}
-    )
-    load_in_cluster_generic_resources(lightkube_client)
-    k8s_resource_handler.apply()
-
-
 async def assert_ui_is_accessible(ops_test: OpsTest):
     """Verify that UI is accessible through the ingress gateway."""
     await assert_path_reachable_through_ingress(
@@ -232,62 +195,17 @@ async def assert_ui_is_accessible(ops_test: OpsTest):
 
 
 @pytest.fixture(scope="module")
-async def profile_namespace(ops_test: OpsTest, lightkube_client: lightkube.Client) -> str:
-    """Ensure a kubeflow profile namespace exists for tests and clean it up afterwards."""
-    if KUBEFLOW_PROFILES.charm not in ops_test.model.applications:
-        pytest.fail("kubeflow-profiles must be deployed before creating a profile")
-
-    profile_manifest = yaml.safe_load(_safe_load_file_to_text(PROFILE_FILE))
-    profile_name = profile_manifest["metadata"]["name"]
-    profile_manifest["kind"] = Profile.__name__
-
-    load_in_cluster_generic_resources(lightkube_client)
-    profile = codecs.from_dict(profile_manifest)
-    try:
-        lightkube_client.apply(profile)
-    except ApiError as err:
-        pytest.fail(f"Failed to apply Profile resource: {err}")
-
-    # Profile reconciliation is asynchronous; wait until the namespace is created.
-    for _ in range(18):
-        try:
-            namespace = lightkube_client.get(Namespace, profile_name)
-            assert namespace.metadata.name == profile_name
-            break
-        except ApiError:
-            time.sleep(5)
-    else:
-        pytest.fail(f"Timed out waiting for namespace '{profile_name}' to be created")
-
-    yield profile_name
-
-    try:
-        lightkube_client.delete(Profile, profile_name)
-    except ApiError:
-        pass
-
-    try:
-        lightkube_client.delete(Namespace, profile_name)
-    except ApiError:
-        pass
-
-
-def _assert_resource_cleared(lightkube_client, resource, name: str, namespace: str):
-    """Assert a previously existing namespaced resource is cleared by resource-dispatcher.
-
-    Raises a retryable AssertionError if the resource is still present, so callers can wrap this
-    in a tenacity retry to give the reconciliation loop time to propagate the change.
-    """
-    try:
-        lightkube_client.get(resource, name, namespace=namespace)
-    except ApiError as api_error:
-        if api_error.status.code == 404:
-            return
-        raise
-    raise AssertionError(
-        f"{resource.__name__} '{name}' still exists in namespace '{namespace}'; "
-        "expected it to be cleared in proxy mode"
+def in_mesh_namespace(lightkube_client: lightkube.Client) -> str:
+    """Create a namespace enrolled in the ambient mesh, cleaned up after the test module."""
+    namespace = f"mlflow-mesh-{str(uuid4()).split('-')[0]}"  # first portion of uuid
+    lightkube_client.create(
+        Namespace(metadata=ObjectMeta(name=namespace, labels=AMBIENT_DATAPLANE_MODE_LABEL))
     )
+    yield namespace
+    try:
+        lightkube_client.delete(Namespace, namespace)
+    except ApiError:
+        pass
 
 
 class TestCharm:
@@ -381,7 +299,6 @@ class TestCharm:
 
     @pytest.mark.abort_on_fail
     async def test_add_s3_and_db_relation_expect_active(self, ops_test: OpsTest):
-        deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
         await deploy_and_assert_s3_integrator(
             ops_test.model, add_ca_chain=True, s3_integrator=S3_INTEGRATOR
         )
@@ -926,95 +843,15 @@ class TestCharm:
                 assert charm_managed_workspace_roles == []
 
     @pytest.mark.abort_on_fail
-    async def test_deploy_resource_dispatcher(self, ops_test: OpsTest):
-        await ops_test.model.deploy(
-            entity_url=METACONTROLLER_OPERATOR.charm,
-            channel=METACONTROLLER_OPERATOR.channel,
-            trust=METACONTROLLER_OPERATOR.trust,
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[METACONTROLLER_OPERATOR.charm],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=120,
-        )
-        await ops_test.model.deploy(
-            RESOURCE_DISPATCHER.charm,
-            channel=RESOURCE_DISPATCHER.channel,
-            trust=RESOURCE_DISPATCHER.trust,
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[CHARM_NAME],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=120,
-            idle_period=60,
-        )
-
-        await ops_test.model.relate(
-            f"{CHARM_NAME}:pod-defaults", f"{RESOURCE_DISPATCHER.charm}:pod-defaults"
-        )
-        await ops_test.model.relate(
-            f"{CHARM_NAME}:secrets", f"{RESOURCE_DISPATCHER.charm}:secrets"
-        )
-
-        await ops_test.model.wait_for_idle(
-            apps=[RESOURCE_DISPATCHER.charm],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=1200,
-        )
-
-    @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
-    @pytest.mark.abort_on_fail
-    async def test_deploy_kubeflow_profiles(self, ops_test: OpsTest):
-        """Deploy kubeflow-profiles in ambient mode and integrate it with the service mesh."""
-        ambient_config = KUBEFLOW_PROFILES.config | {
-            "istio-gateway-namespace": ops_test.model_name,
-        }
-
-        if KUBEFLOW_PROFILES.charm not in ops_test.model.applications:
-            await ops_test.model.deploy(
-                KUBEFLOW_PROFILES.charm,
-                channel=KUBEFLOW_PROFILES.channel,
-                config=ambient_config,
-                trust=KUBEFLOW_PROFILES.trust,
-            )
-
-        await ops_test.model.wait_for_idle(
-            apps=[KUBEFLOW_PROFILES.charm],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=900,
-        )
-
-        await integrate_with_service_mesh(
-            KUBEFLOW_PROFILES.charm,
-            ops_test.model,
-            relate_to_ingress_route_endpoint=False,
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[KUBEFLOW_PROFILES.charm],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=900,
-        )
-
-    @pytest.mark.abort_on_fail
-    async def test_configure_profile_identity_alias(
-        self, ops_test: OpsTest, profile_namespace: str
+    async def test_configure_in_mesh_namespace_identity_alias(
+        self, ops_test: OpsTest, in_mesh_namespace: str
     ):
-        """Alias the verified Profile namespace identity to the provisioned MLflow user."""
+        """Alias the verified in-mesh namespace identity to the provisioned MLflow user."""
         await ops_test.model.applications[CHARM_NAME].set_config(
             {
                 "identity_aliases": (
                     f"{TEST_IDENTITY_ALIAS}: {TEST_IDENTITY}\n"
-                    f"{profile_namespace}: {TEST_IDENTITY}\n"
+                    f"{in_mesh_namespace}: {TEST_IDENTITY}\n"
                 )
             }
         )
@@ -1040,10 +877,10 @@ class TestCharm:
         retry=retry_if_exception_type(subprocess.CalledProcessError),
         reraise=True,
     )
-    @pytest.mark.parametrize("curl_pod", ["profile_namespace"], indirect=True)
+    @pytest.mark.parametrize("curl_pod", ["in_mesh_namespace"], indirect=True)
     @pytest.mark.abort_on_fail
-    async def test_can_create_experiment_from_user_namespace(self, ops_test: OpsTest, curl_pod):
-        """Use the aliased Profile identity to authenticate and create an experiment."""
+    async def test_can_create_experiment_from_in_mesh_namespace(self, ops_test: OpsTest, curl_pod):
+        """Use the aliased in-mesh namespace identity to authenticate and create an experiment."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
         experiment_name = f"{TEST_EXPERIMENT_NAME}-{self.generate_random_string(6)}"
@@ -1080,10 +917,12 @@ class TestCharm:
         retry=retry_if_exception_type(subprocess.CalledProcessError),
         reraise=True,
     )
-    @pytest.mark.parametrize("curl_pod", ["profile_namespace"], indirect=True)
+    @pytest.mark.parametrize("curl_pod", ["in_mesh_namespace"], indirect=True)
     @pytest.mark.abort_on_fail
-    async def test_profile_identity_header_cannot_be_spoofed(self, ops_test: OpsTest, curl_pod):
-        """Replace a client-supplied identity with the verified Profile namespace identity."""
+    async def test_in_mesh_namespace_identity_header_cannot_be_spoofed(
+        self, ops_test: OpsTest, curl_pod
+    ):
+        """Replace a client-supplied identity with the verified in-mesh namespace identity."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
         tracking_uri = f"http://{CHARM_NAME}.{ops_test.model_name}.svc.cluster.local:{mlflow_port}"
@@ -1097,52 +936,6 @@ class TestCharm:
         current_user = json.loads(result.stdout)
         assert current_user["user"]["username"] == TEST_IDENTITY
         assert current_user["user"]["username"] != SPOOFED_IDENTITY
-
-    @pytest.mark.abort_on_fail
-    async def test_new_user_namespace_has_manifests(
-        self,
-        ops_test: OpsTest,
-        lightkube_client: lightkube.Client,
-        profile_namespace: str,
-    ):
-        time.sleep(30)  # sync can take up to 10 seconds for reconciliation loop to trigger
-        secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
-        secret = lightkube_client.get(Secret, secret_name, namespace=profile_namespace)
-        # The s3-integrator generates random credentials, so assert the expected keys are
-        # dispatched into the user namespace rather than their exact values. Because this store
-        # advertises a TLS CA chain, the CA bundle is embedded too for direct client I/O.
-        assert set(secret.data.keys()) == {
-            "AWS_ACCESS_KEY_ID",
-            "AWS_SECRET_ACCESS_KEY",
-            "ca-bundle.pem",
-        }
-        for value in secret.data.values():
-            assert value
-        # The embedded CA bundle must be a valid PEM certificate chain once base64-decoded.
-        ca_bundle = base64.b64decode(secret.data["ca-bundle.pem"]).decode("utf-8")
-        assert "BEGIN CERTIFICATE" in ca_bundle
-
-        for name in PODDEFAULT_NAMES:
-            pod_default = lightkube_client.get(PodDefault, name, namespace=profile_namespace)
-            assert pod_default is not None
-
-        # The access-s3 PodDefault must wire the CA bundle into client pods so their direct
-        # (non-proxy) boto3 connections trust the TLS artifact store.
-        access_s3_poddefault = lightkube_client.get(
-            PodDefault, ACCESS_S3_PODDEFAULT_NAME, namespace=profile_namespace
-        )
-        spec = access_s3_poddefault.spec
-        ca_bundle_env = next((env for env in spec["env"] if env["name"] == "AWS_CA_BUNDLE"), None)
-        assert ca_bundle_env is not None
-        assert ca_bundle_env["value"] == "/etc/mlflow/certs/ca-bundle.pem"
-        volume = next((vol for vol in spec["volumes"] if vol["name"] == "s3-ca-bundle"), None)
-        assert volume is not None
-        assert volume["secret"]["secretName"] == secret_name
-        volume_mount = next(
-            (vm for vm in spec["volumeMounts"] if vm["name"] == "s3-ca-bundle"), None
-        )
-        assert volume_mount is not None
-        assert volume_mount["mountPath"] == "/etc/mlflow/certs"
 
     @pytest.mark.abort_on_fail
     async def test_deploy_and_relate_second_ingress(self, ops_test: OpsTest):
@@ -1245,33 +1038,6 @@ class TestCharm:
         """The tracking server UI must remain reachable after switching to proxy mode."""
         await assert_ui_is_accessible(ops_test)
 
-    @retry(stop=stop_after_delay(600), wait=wait_fixed(10), reraise=True)
-    @pytest.mark.abort_on_fail
-    async def test_proxy_mode_updates_dispatched_manifests(
-        self, ops_test: OpsTest, lightkube_client: lightkube.Client, profile_namespace: str
-    ):
-        """In proxy mode the artifact-store credentials are no longer dispatched to users.
-
-        The S3 artifact Secret and the access-s3 PodDefault (which grant direct object
-        storage access) must be cleared, while the mlflow PodDefault must remain but expose only
-        the tracking URI, since artifacts now flow through the tracking server.
-        """
-        secret_name = f"{CHARM_NAME}{SECRET_SUFFIX}"
-        _assert_resource_cleared(lightkube_client, Secret, secret_name, profile_namespace)
-
-        _assert_resource_cleared(
-            lightkube_client, PodDefault, ACCESS_S3_PODDEFAULT_NAME, profile_namespace
-        )
-
-        mlflow_poddefault = lightkube_client.get(
-            PodDefault, MLFLOW_PODDEFAULT_NAME, namespace=profile_namespace
-        )
-        env_var_names = {env_var["name"] for env_var in mlflow_poddefault.spec["env"]}
-        assert "MLFLOW_TRACKING_URI" in env_var_names
-        assert "MLFLOW_S3_ENDPOINT_URL" not in env_var_names
-        assert "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD" in env_var_names
-        assert "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD" in env_var_names
-
     @pytest.mark.abort_on_fail
     async def test_client_logs_and_fetches_artifact_via_tracking_server(self, ops_test: OpsTest):
         """A client without object-storage access must round-trip artifacts in proxy mode.
@@ -1352,7 +1118,7 @@ class TestCharm:
         identities may reach the tracking server. A pod in a namespace that is not part of the mesh
         presents no identity, so the mesh must reject its connection at L4. The positive path
         (legitimate sources still reach the server) is covered by `test_ui_is_accessible` and
-        `test_can_create_experiment_from_user_namespace`.
+        `test_can_create_experiment_from_in_mesh_namespace`.
         """
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
