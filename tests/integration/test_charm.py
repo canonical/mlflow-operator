@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from random import choices
 from string import ascii_lowercase
+from uuid import uuid4
 
 import lightkube
 import mlflow
@@ -37,20 +38,10 @@ from charmed_kubeflow_chisme.testing import (
     integrate_with_service_mesh,
 )
 from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_integrator
-from charms_dependencies import (
-    DATA_INTEGRATOR,
-    KUBEFLOW_PROFILES,
-    POSTGRESQL_K8S,
-    S3_INTEGRATOR,
-)
+from charms_dependencies import DATA_INTEGRATOR, POSTGRESQL_K8S, S3_INTEGRATOR
 from helpers import CurlPod
-from lightkube import codecs
 from lightkube.core.exceptions import ApiError
-from lightkube.generic_resource import (
-    create_global_resource,
-    create_namespaced_resource,
-    load_in_cluster_generic_resources,
-)
+from lightkube.generic_resource import create_namespaced_resource
 from lightkube.models.meta_v1 import ObjectMeta
 from lightkube.resources.core_v1 import Namespace
 from mlflow.artifacts import download_artifacts
@@ -68,9 +59,10 @@ CHARM_NAME = METADATA["name"]
 CONTAINERS_SECURITY_CONTEXT_MAP = generate_container_securitycontext_map(METADATA)
 HTTP_PATH = "/"
 TEST_EXPERIMENT_NAME = "test-experiment"
-PROFILE_FILE = "./tests/integration/profile.yaml"
 SPOOFED_IDENTITY = "spoofed-user-identity"
 S3_RELATION_NAME = "s3-credentials"
+# label enrolling a namespace's workloads in the Istio ambient mesh:
+AMBIENT_DATAPLANE_MODE_LABEL = {"istio.io/dataplane-mode": "ambient"}
 MISSING_S3_CREDENTIALS_STATUS_MESSAGE = (
     f"Missing {S3_RELATION_NAME} relation. Please relate to `{S3_RELATION_NAME}`."
 )
@@ -99,7 +91,6 @@ WORKSPACE_WITH_ADMIN_ACCESS_FINAL = "my-final-writable-workspace"
 WORKSPACE_WITH_READ_ONLY_ACCESS_INITIAL = "my-initial-read-only-workspace"
 WORKSPACE_WITH_READ_ONLY_ACCESS_FINAL = "my-final-read-only-workspace"
 
-Profile = create_global_resource("kubeflow.org", "v1", "Profile", "profiles")
 # Gateway API generic resources, resolved at runtime via lightkube.
 HTTPROUTE_RESOURCE = create_namespaced_resource(
     "gateway.networking.k8s.io", "v1", "HTTPRoute", "httproutes"
@@ -150,15 +141,6 @@ class _PortForward:
                 raise ConnectionError(
                     f"port-forward to svc/{self._charm_name}:{self._port} was not ready in time"
                 )
-
-
-def _safe_load_file_to_text(filename: str) -> str:
-    """Returns the contents of filename if it is an existing file, else it returns filename."""
-    try:
-        text = Path(filename).read_text()
-    except FileNotFoundError:
-        text = filename
-    return text
 
 
 def _tracking_server_waypoint_principal(namespace: str) -> str:
@@ -213,42 +195,15 @@ async def assert_ui_is_accessible(ops_test: OpsTest):
 
 
 @pytest.fixture(scope="module")
-async def profile_namespace(ops_test: OpsTest, lightkube_client: lightkube.Client) -> str:
-    """Ensure a kubeflow profile namespace exists for tests and clean it up afterwards."""
-    if KUBEFLOW_PROFILES.charm not in ops_test.model.applications:
-        pytest.fail("kubeflow-profiles must be deployed before creating a profile")
-
-    profile_manifest = yaml.safe_load(_safe_load_file_to_text(PROFILE_FILE))
-    profile_name = profile_manifest["metadata"]["name"]
-    profile_manifest["kind"] = Profile.__name__
-
-    load_in_cluster_generic_resources(lightkube_client)
-    profile = codecs.from_dict(profile_manifest)
+def in_mesh_namespace(lightkube_client: lightkube.Client) -> str:
+    """Create a namespace enrolled in the ambient mesh, cleaned up after the test module."""
+    namespace = f"mlflow-mesh-{str(uuid4()).split('-')[0]}"  # first portion of uuid
+    lightkube_client.create(
+        Namespace(metadata=ObjectMeta(name=namespace, labels=AMBIENT_DATAPLANE_MODE_LABEL))
+    )
+    yield namespace
     try:
-        lightkube_client.apply(profile)
-    except ApiError as err:
-        pytest.fail(f"Failed to apply Profile resource: {err}")
-
-    # Profile reconciliation is asynchronous; wait until the namespace is created.
-    for _ in range(18):
-        try:
-            namespace = lightkube_client.get(Namespace, profile_name)
-            assert namespace.metadata.name == profile_name
-            break
-        except ApiError:
-            time.sleep(5)
-    else:
-        pytest.fail(f"Timed out waiting for namespace '{profile_name}' to be created")
-
-    yield profile_name
-
-    try:
-        lightkube_client.delete(Profile, profile_name)
-    except ApiError:
-        pass
-
-    try:
-        lightkube_client.delete(Namespace, profile_name)
+        lightkube_client.delete(Namespace, namespace)
     except ApiError:
         pass
 
@@ -887,53 +842,16 @@ class TestCharm:
                 # asserting the MLflow user has no grants:
                 assert charm_managed_workspace_roles == []
 
-    @retry(stop=stop_after_delay(600), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
-    async def test_deploy_kubeflow_profiles(self, ops_test: OpsTest):
-        """Deploy kubeflow-profiles in ambient mode and integrate it with the service mesh."""
-        ambient_config = KUBEFLOW_PROFILES.config | {
-            "istio-gateway-namespace": ops_test.model_name,
-        }
-
-        if KUBEFLOW_PROFILES.charm not in ops_test.model.applications:
-            await ops_test.model.deploy(
-                KUBEFLOW_PROFILES.charm,
-                channel=KUBEFLOW_PROFILES.channel,
-                config=ambient_config,
-                trust=KUBEFLOW_PROFILES.trust,
-            )
-
-        await ops_test.model.wait_for_idle(
-            apps=[KUBEFLOW_PROFILES.charm],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=900,
-        )
-
-        await integrate_with_service_mesh(
-            KUBEFLOW_PROFILES.charm,
-            ops_test.model,
-            relate_to_ingress_route_endpoint=False,
-        )
-        await ops_test.model.wait_for_idle(
-            apps=[KUBEFLOW_PROFILES.charm],
-            status="active",
-            raise_on_blocked=False,
-            raise_on_error=False,
-            timeout=900,
-        )
-
-    @pytest.mark.abort_on_fail
-    async def test_configure_profile_identity_alias(
-        self, ops_test: OpsTest, profile_namespace: str
+    async def test_configure_in_mesh_namespace_identity_alias(
+        self, ops_test: OpsTest, in_mesh_namespace: str
     ):
-        """Alias the verified Profile namespace identity to the provisioned MLflow user."""
+        """Alias the verified in-mesh namespace identity to the provisioned MLflow user."""
         await ops_test.model.applications[CHARM_NAME].set_config(
             {
                 "identity_aliases": (
                     f"{TEST_IDENTITY_ALIAS}: {TEST_IDENTITY}\n"
-                    f"{profile_namespace}: {TEST_IDENTITY}\n"
+                    f"{in_mesh_namespace}: {TEST_IDENTITY}\n"
                 )
             }
         )
@@ -959,10 +877,10 @@ class TestCharm:
         retry=retry_if_exception_type(subprocess.CalledProcessError),
         reraise=True,
     )
-    @pytest.mark.parametrize("curl_pod", ["profile_namespace"], indirect=True)
+    @pytest.mark.parametrize("curl_pod", ["in_mesh_namespace"], indirect=True)
     @pytest.mark.abort_on_fail
-    async def test_can_create_experiment_from_user_namespace(self, ops_test: OpsTest, curl_pod):
-        """Use the aliased Profile identity to authenticate and create an experiment."""
+    async def test_can_create_experiment_from_in_mesh_namespace(self, ops_test: OpsTest, curl_pod):
+        """Use the aliased in-mesh namespace identity to authenticate and create an experiment."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
         experiment_name = f"{TEST_EXPERIMENT_NAME}-{self.generate_random_string(6)}"
@@ -999,10 +917,12 @@ class TestCharm:
         retry=retry_if_exception_type(subprocess.CalledProcessError),
         reraise=True,
     )
-    @pytest.mark.parametrize("curl_pod", ["profile_namespace"], indirect=True)
+    @pytest.mark.parametrize("curl_pod", ["in_mesh_namespace"], indirect=True)
     @pytest.mark.abort_on_fail
-    async def test_profile_identity_header_cannot_be_spoofed(self, ops_test: OpsTest, curl_pod):
-        """Replace a client-supplied identity with the verified Profile namespace identity."""
+    async def test_in_mesh_namespace_identity_header_cannot_be_spoofed(
+        self, ops_test: OpsTest, curl_pod
+    ):
+        """Replace a client-supplied identity with the verified in-mesh namespace identity."""
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
         tracking_uri = f"http://{CHARM_NAME}.{ops_test.model_name}.svc.cluster.local:{mlflow_port}"
@@ -1198,7 +1118,7 @@ class TestCharm:
         identities may reach the tracking server. A pod in a namespace that is not part of the mesh
         presents no identity, so the mesh must reject its connection at L4. The positive path
         (legitimate sources still reach the server) is covered by `test_ui_is_accessible` and
-        `test_can_create_experiment_from_user_namespace`.
+        `test_can_create_experiment_from_in_mesh_namespace`.
         """
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         mlflow_port = config["mlflow_port"]["value"]
