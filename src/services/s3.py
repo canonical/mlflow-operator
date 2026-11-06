@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import boto3
 import botocore.client
@@ -25,6 +25,7 @@ class S3BucketWrapper:
         secure: bool = False,
         region: str = "",
         tls_ca_chain: Optional[List[str]] = None,
+        proxies: Optional[Dict[str, str]] = None,
     ):
         """Initialize S3 Bucket Wrapper.
 
@@ -35,6 +36,7 @@ class S3BucketWrapper:
         secure - whether to use HTTPS (default: False)
         region - S3 region, used for bucket creation location constraint (default: "")
         tls_ca_chain - list of PEM CA certificates for TLS verification (default: None)
+        proxies - proxies by URL scheme, as botocore takes them (default: None, no proxy)
         """
 
         self.access_key: str = access_key
@@ -43,6 +45,7 @@ class S3BucketWrapper:
         self.s3_port: str = str(s3_port)
         self.secure: bool = secure
         self.region: str = region
+        self.proxies: Optional[Dict[str, str]] = proxies
 
         self._ca_file: Optional[str] = None
         if tls_ca_chain:
@@ -113,7 +116,11 @@ class S3BucketWrapper:
                 endpoint_url=self.s3_url,
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_access_key,
-                config=Config(connect_timeout=CONNECT_TIMEOUT, read_timeout=READ_TIMEOUT),
+                config=Config(
+                    connect_timeout=CONNECT_TIMEOUT,
+                    read_timeout=READ_TIMEOUT,
+                    proxies=self.proxies,
+                ),
                 verify=self._ca_file,
             )
             return self._client
