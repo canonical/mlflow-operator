@@ -147,3 +147,30 @@ def test_s3_url(secure, expected_url):
         secure=secure,
     )
     assert wrapper.s3_url == expected_url
+
+
+def test_proxies_are_passed_to_the_client(mocker):
+    boto3_client_class = mocker.patch("boto3.client")
+    proxies = {"https": "http://egress.internal:3128"}
+    wrapper = S3BucketWrapper(
+        access_key="a",
+        secret_access_key="b",
+        s3_service="s3.example.com",
+        s3_port=443,
+        secure=True,
+        proxies=proxies,
+    )
+    wrapper.client
+    assert boto3_client_class.call_args.kwargs["config"].proxies == proxies
+
+
+def test_no_proxies_by_default(mocker):
+    boto3_client_class = mocker.patch("boto3.client")
+    wrapper = S3BucketWrapper(
+        access_key="a",
+        secret_access_key="b",
+        s3_service="s3.example.com",
+        s3_port=443,
+    )
+    wrapper.client
+    assert boto3_client_class.call_args.kwargs["config"].proxies is None
