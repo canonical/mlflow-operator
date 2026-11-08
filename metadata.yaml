@@ -40,10 +40,6 @@ requires:
       (HTTP, gRPC) using typed configuration models. Requirers can define custom
       Gateway listeners and routes. If the ingress has authentication configured,
       all routes will have authentication applied to them.
-  secrets:
-    interface: kubernetes_manifest
-  pod-defaults:
-    interface: kubernetes_manifest
   logging:
     interface: loki_push_api
     optional: true
