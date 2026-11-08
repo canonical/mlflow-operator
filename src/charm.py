@@ -130,6 +130,8 @@ except Exception as exc:
 # rendered basic_auth.ini and the custom authentication module's files - NOTE: under Pebble's home
 # directory, writable by the non-root user:
 AUTH_CONFIG_DIR = "/var/lib/pebble/default/auth"
+# name of the Pebble check that tells Kubernetes whether this unit's tracking server is ready:
+TRACKING_SERVER_READY_CHECK = "mlflow-server-ready"
 AUTH_CONFIG_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/basic_auth.ini"
 AUTH_MODULE_NAME = "custom_userid_header_auth"
 AUTH_MODULE_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/{AUTH_MODULE_NAME}.py"
@@ -207,6 +209,9 @@ class MlflowCharm(CharmBase):
         self._create_service()
 
         self.framework.observe(self.on.update_status, self._on_event)
+        # a unit that becomes the leader takes over the leader-only work without waiting for the
+        # next update-status:
+        self.framework.observe(self.on.leader_elected, self._on_event)
         self.framework.observe(self.backend_store_database.on.database_created, self._on_event)
         self.framework.observe(self.backend_store_database.on.endpoints_changed, self._on_event)
         self.framework.observe(
@@ -431,6 +436,20 @@ class MlflowCharm(CharmBase):
                     "startup": "enabled",
                     "environment": self.service_environment,  # defaults `mlflow server` CLI options
                 }
+            },
+            # Juju maps "ready" checks to the pod's readiness probe, so a unit whose tracking server
+            # is not answering, while it starts, restarts or waits for a schema migration, is taken
+            # out of the Kubernetes Service instead of receiving a share of the requests. A "ready"
+            # check does not restart anything:
+            "checks": {
+                TRACKING_SERVER_READY_CHECK: {
+                    "override": "replace",
+                    "level": "ready",
+                    "http": {"url": f"http://localhost:{self._tracking_server_port}/health"},
+                    "period": "10s",
+                    "timeout": "3s",
+                    "threshold": 3,
+                },
             },
         }
 
@@ -785,12 +804,6 @@ class MlflowCharm(CharmBase):
             self.container.push(
                 S3_CA_BUNDLE_CONTAINER_PATH, "\n".join(tls_ca_chain), make_dirs=True
             )
-
-    def _check_leader(self):
-        """Check if this unit is a leader."""
-        if not self.unit.is_leader():
-            self.logger.info("Not a leader, skipping setup")
-            raise ErrorWithStatus("Waiting for leadership", WaitingStatus)
 
     def _check_service_mesh_configured(self) -> None:
         """Block when service-mesh relation is missing or when service mesh is enabled without a
@@ -1330,8 +1343,11 @@ class MlflowCharm(CharmBase):
     def _on_event(self, event) -> None:
         """Perform all required actions for the Charm."""
         try:
-            self._check_leader()
-
+            # NOTE: every unit runs the tracking server, so the application can be scaled out
+            # behind its Kubernetes Service. Only what exists once per application is left to the
+            # leader: the RBAC credentials, the workspace grants, the Kubernetes resources and the
+            # ingress configuration, each guarded in its own method, and the schema migration on
+            # upgrade-charm:
             self._check_service_mesh_configured()
 
             self._ensure_bucket_exists()
@@ -1348,6 +1364,7 @@ class MlflowCharm(CharmBase):
             update_layer(
                 self._container_name, self._container, self._mlflow_server_layer, self.logger
             )
+            self._reconcile_server_checks()
 
             self._reconcile_s3_ca_bundle(self._get_artifact_store_data())
 
@@ -1386,6 +1403,18 @@ class MlflowCharm(CharmBase):
             return
 
         self.model.unit.status = ActiveStatus()
+
+    def _reconcile_server_checks(self) -> None:
+        """Add the tracking server's health checks to the plan when they differ from it.
+
+        `update_layer` only compares services, so a unit whose services are unchanged, such as one
+        deployed before the checks existed, would otherwise never receive them. Adding checks
+        restarts no service.
+        """
+        layer = self._mlflow_server_layer
+        if self.container.get_plan().checks != layer.checks:
+            self.container.add_layer(self._container_name, layer, combine=True)
+            self.container.replan()
 
     def _on_ambient_mode_ingress_ready(self, _):
         """Configure the ingess for ambient mode."""

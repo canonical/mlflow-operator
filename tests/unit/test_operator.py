@@ -32,6 +32,7 @@ from charm import (
     SERVICE_MESH_RELATION_REQUIRED_MESSAGE,
     SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE,
     SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
+    TRACKING_SERVER_READY_CHECK,
     MeshType,
     MlflowCharm,
 )
@@ -50,7 +51,6 @@ CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS = "serve_artifacts"
 # Charm methods called inside `_on_event`'s try block, in call order.
 # Keep in sync with `_on_event`: the stops-on-failing-step test relies on this order.
 ON_EVENT_STEPS = [
-    "_check_leader",
     "_check_service_mesh_configured",
     "_ensure_bucket_exists",
     "_reconcile_auth_config",
@@ -249,14 +249,73 @@ class TestCharm:
             harness.begin()
             mock_logging.assert_called_once_with(charm=harness.charm)
 
-    def test_check_leader_failure(self, harness: Harness):
-        harness.set_leader(False)
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == WaitingStatus("Waiting for leadership")
+    @pytest.mark.parametrize("is_leader", [True, False], ids=["leader", "non-leader"])
+    def test_every_unit_runs_the_tracking_server(
+        self, is_leader: bool, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """Leader or not, a unit plans the tracking server and becomes active, so that the
+        application can be scaled out."""
+        harness.set_leader(is_leader)
+        harness.begin()
+        harness.charm._on_event(None)
 
-    def test_check_leader_success(self, harness: Harness):
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status != WaitingStatus("Waiting for leadership")
+        assert harness.charm.model.unit.status == ActiveStatus()
+        assert PEBBLE_SERVICE_NAME in harness.charm.container.get_plan().services
+
+    def test_leader_elected_reconciles(self, harness: Harness):
+        """A unit that becomes the leader reconciles at once, to take over the leader-only work."""
+        harness.set_leader(False)
+        with patch.object(MlflowCharm, "_on_event", autospec=True) as on_event:
+            harness.begin()
+            harness.set_leader(True)
+
+        on_event.assert_called_once()
+
+    def test_tracking_server_layer_has_a_readiness_check(
+        self, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """The tracking server's layer has a "ready" check on its health endpoint, which Juju maps
+        to the pod's readiness probe."""
+        harness.begin()
+        checks = harness.charm._mlflow_server_layer.to_dict()["checks"]
+
+        assert checks == {
+            TRACKING_SERVER_READY_CHECK: {
+                "override": "replace",
+                "level": "ready",
+                "http": {"url": f"http://localhost:{EXPECTED_SERVER_PORT}/health"},
+                "period": "10s",
+                "timeout": "3s",
+                "threshold": 3,
+            }
+        }
+
+    def test_reconcile_server_checks_adds_missing_checks(
+        self, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """A unit whose plan has the tracking server but not its checks, such as one deployed
+        before they existed, receives them although its services are unchanged."""
+        harness.begin()
+        layer = harness.charm._mlflow_server_layer.to_dict()
+        layer.pop("checks")
+        harness.charm.container.add_layer(PEBBLE_SERVICE_NAME, layer, combine=True)
+        assert not harness.charm.container.get_plan().checks
+
+        harness.charm._on_event(None)
+
+        assert TRACKING_SERVER_READY_CHECK in harness.charm.container.get_plan().checks
+
+    def test_reconcile_server_checks_does_not_replan_when_unchanged(
+        self, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """Once the checks are in the plan, reconciling again does not replan."""
+        harness.begin()
+        harness.charm._on_event(None)
+
+        with patch.object(harness.charm.container, "replan") as replan:
+            harness.charm._reconcile_server_checks()
+
+        replan.assert_not_called()
 
     def tests_on_pebble_ready_failure(self, harness: Harness):
         harness.set_can_connect(WORKLOAD_CONTAINER_NAME, False)
