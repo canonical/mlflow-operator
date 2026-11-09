@@ -1339,7 +1339,6 @@ class MlflowCharm(CharmBase):
     def _on_event(self, event) -> None:
         """Perform all required actions for the Charm."""
         try:
-            # every unit runs the server, and leader-only work is guarded where it happens:
             self._check_service_mesh_configured()
 
             self._ensure_bucket_exists()
