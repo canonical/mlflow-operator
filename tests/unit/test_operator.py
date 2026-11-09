@@ -16,13 +16,20 @@ from charmlibs.interfaces.istio_ingress_route import (
     ProtocolType,
 )
 from charmlibs.interfaces.service_mesh import UnitPolicy
-from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
+from ops.model import (
+    ActiveStatus,
+    BlockedStatus,
+    MaintenanceStatus,
+    SecretNotFoundError,
+    WaitingStatus,
+)
 from ops.pebble import ExecError, Service
 from ops.testing import Harness
 
 from charm import (
     AUTH_CONFIG_CONTAINER_PATH,
     AUTH_MODULE_CONTAINER_PATH,
+    AUTH_SECRET_LABEL,
     METRICS_RELATION_NAME,
     MLFLOW_CLIENT_DEFAULT_TIER,
     MLFLOW_CLIENT_RELATION_ENDPOINT,
@@ -1921,3 +1928,84 @@ class TestMlflowClientProvider:
         harness.remove_relation(relation_id)
 
         reconcile_mock.assert_called_once_with(exclude_relation_id=relation_id)
+
+
+class TestLeaderOnlyWork:
+    """Every unit runs the same reconcile, so what exists once per application is written by the
+    leader alone. Each test runs the same reconcile on the leader and on another unit."""
+
+    @pytest.mark.parametrize("is_leader", [True, False], ids=["leader", "non-leader"])
+    @patch("charm.ServiceMeshConsumer")
+    def test_only_the_leader_writes_what_exists_once(
+        self, _: MagicMock, is_leader: bool, harness: Harness
+    ):
+        """Only the leader reconciles the Kubernetes resources and the client grants, while both
+        units plan the tracking server."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: WAYPOINT_PRINCIPAL})
+        policy_manager = MagicMock()
+        traffic_extension_manager = MagicMock()
+        with (
+            patch.object(
+                MlflowCharm,
+                "_policy_resource_manager",
+                new_callable=PropertyMock,
+                return_value=policy_manager,
+            ),
+            patch.object(
+                MlflowCharm,
+                "_traffic_extension_resource_manager",
+                new_callable=PropertyMock,
+                return_value=traffic_extension_manager,
+            ),
+            patch.object(MlflowCharm, "_ensure_bucket_exists"),
+            patch.object(
+                MlflowCharm,
+                "_get_artifact_store_data",
+                return_value=OBJECT_STORAGE_DATA_NORMALIZED,
+            ),
+            patch.object(MlflowCharm, "_get_backend_store_uri", return_value=BACKEND_STORE_URI),
+            patch.object(MlflowCharm, "_exec_mlflow_client_reconcile") as exec_grants,
+        ):
+            harness.begin()
+            add_relation(harness, RELATION_ENDPOINT_FOR_SERVICE_MESH)
+            add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+            # the leader has created the shared credentials before the other unit reconciles:
+            harness.charm._get_or_create_auth_secrets()
+            harness.set_leader(is_leader)
+
+            request = TestMlflowClientProvider._request(
+                "alice", [TestMlflowClientProvider._permission("workspace", "team", ["admin"])]
+            )
+            provider = TestMlflowClientProvider._provider(harness, [request])
+            policy_manager.reset_mock()
+            traffic_extension_manager.reset_mock()
+            exec_grants.reset_mock()
+
+            harness.charm._on_event(None)
+
+        assert harness.charm.model.unit.status == ActiveStatus()
+        assert PEBBLE_SERVICE_NAME in harness.charm.container.get_plan().services
+        assert policy_manager.reconcile.called is is_leader
+        assert traffic_extension_manager.reconcile.called is is_leader
+        assert exec_grants.called is is_leader
+        assert provider.set_response.called is is_leader
+
+    @pytest.mark.parametrize("is_leader", [True, False], ids=["leader", "non-leader"])
+    def test_only_the_leader_creates_the_shared_credentials(
+        self, is_leader: bool, harness: Harness
+    ):
+        """Without the credentials secret, the leader creates it and another unit waits for it."""
+        harness.set_leader(is_leader)
+        harness.begin()
+
+        if is_leader:
+            harness.charm._get_or_create_auth_secrets()
+            assert harness.model.get_secret(label=AUTH_SECRET_LABEL)
+        else:
+            with pytest.raises(ErrorWithStatus) as error:
+                harness.charm._get_or_create_auth_secrets()
+            assert error.value.status == WaitingStatus(
+                "Waiting for the leader to generate the RBAC credentials"
+            )
+            with pytest.raises(SecretNotFoundError):
+                harness.model.get_secret(label=AUTH_SECRET_LABEL)
