@@ -83,3 +83,9 @@ provides:
       are cross-model, relate that app to this additional relation to retrieve additional
       data required for these policies. This is required because Juju does not natively
       provide all information required to build these policies when related cross-model.
+peers:
+  mlflow-peers:
+    interface: mlflow_peers
+    description: |
+      Lets the leader tell the other units that the database schema is current, so they start
+      their tracking servers.
