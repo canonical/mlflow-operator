@@ -435,7 +435,8 @@ class MlflowCharm(CharmBase):
                     "environment": self.service_environment,  # defaults `mlflow server` CLI options
                 }
             },
-            # Juju maps "ready" checks to the pod's readiness probe, and they restart nothing:
+            # Kubernetes sends requests only to units whose "ready" checks pass. A failing check
+            # takes the unit out of rotation and does not restart the server:
             "checks": {
                 TRACKING_SERVER_READY_CHECK: {
                     "override": "replace",
