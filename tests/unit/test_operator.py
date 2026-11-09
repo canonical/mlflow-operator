@@ -29,13 +29,17 @@ from ops.testing import Harness
 from charm import (
     AUTH_CONFIG_CONTAINER_PATH,
     AUTH_MODULE_CONTAINER_PATH,
+    AUTH_SCHEMA_MIGRATION_SNIPPET,
     AUTH_SECRET_LABEL,
     METRICS_RELATION_NAME,
     MLFLOW_CLIENT_DEFAULT_TIER,
     MLFLOW_CLIENT_RELATION_ENDPOINT,
     MLFLOW_SUPER_ADMIN_USERNAME,
+    PEER_RELATION_NAME,
     S3_CA_BUNDLE_CONTAINER_PATH,
+    SCHEMA_CURRENT_SNIPPET,
     SCHEMA_OUT_OF_DATE_MARKER,
+    SCHEMA_REVISIONS_KEY,
     SERVICE_MESH_RELATION_REQUIRED_MESSAGE,
     SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE,
     SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
@@ -62,6 +66,7 @@ ON_EVENT_STEPS = [
     "_ensure_bucket_exists",
     "_reconcile_auth_config",
     "_generate_environment",  # Called when accessing self._mlflow_server_layer
+    "_ensure_database_schema",
     "_get_artifact_store_data",
     "_reconcile_s3_ca_bundle",
     "_reconcile_policy_resource_manager",
@@ -312,17 +317,29 @@ class TestCharm:
 
         assert TRACKING_SERVER_READY_CHECK in harness.charm.container.get_plan().checks
 
-    def test_reconcile_server_checks_does_not_replan_when_unchanged(
+    def test_reconcile_server_checks_starts_no_service(
         self, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
     ):
-        """Once the checks are in the plan, reconciling again does not replan."""
+        """Adding the checks does not start the service that the workload image defines, which
+        Juju holds until the charm's own layer replaces it."""
         harness.begin()
-        harness.charm._on_event(None)
+        harness.charm.container.add_layer(
+            "image",
+            {
+                "services": {
+                    PEBBLE_SERVICE_NAME: {
+                        "override": "replace",
+                        "command": "mlflow",
+                        "startup": "enabled",
+                    }
+                }
+            },
+        )
 
-        with patch.object(harness.charm.container, "replan") as replan:
-            harness.charm._reconcile_server_checks()
+        harness.charm._reconcile_server_checks()
 
-        replan.assert_not_called()
+        assert TRACKING_SERVER_READY_CHECK in harness.charm.container.get_plan().checks
+        assert not harness.charm.container.get_service(PEBBLE_SERVICE_NAME).is_running()
 
     def tests_on_pebble_ready_failure(self, harness: Harness):
         harness.set_can_connect(WORKLOAD_CONTAINER_NAME, False)
@@ -1943,6 +1960,9 @@ class TestLeaderOnlyWork:
             ),
             patch.object(MlflowCharm, "_get_backend_store_uri", return_value=BACKEND_STORE_URI),
             patch.object(MlflowCharm, "_exec_mlflow_client_reconcile") as exec_grants,
+            patch.object(
+                MlflowCharm, "_get_current_schema_revisions", return_value=["tracking", "auth"]
+            ),
         ):
             harness.begin()
             add_relation(harness, RELATION_ENDPOINT_FOR_SERVICE_MESH)
@@ -1987,3 +2007,143 @@ class TestLeaderOnlyWork:
             )
             with pytest.raises(SecretNotFoundError):
                 harness.model.get_secret(label=AUTH_SECRET_LABEL)
+
+
+class TestDatabaseSchema:
+    """Only the leader creates or migrates the database schema, and no tracking server starts
+    before it is current."""
+
+    CURRENT = "MLFLOW_SCHEMA_CURRENT tracking-head auth-head\n"
+
+    @staticmethod
+    def _exec(harness: Harness, schema_check_outputs: list[str]) -> MagicMock:
+        """Replace the workload exec: each schema check prints the next given output, and every
+        other command succeeds."""
+        outputs = iter(schema_check_outputs)
+
+        def run(command, **_):
+            process = MagicMock()
+            is_check = command[:3] == ["python3", "-c", SCHEMA_CURRENT_SNIPPET]
+            process.wait_output.return_value = (next(outputs) if is_check else "", "")
+            return process
+
+        exec_mock = MagicMock(side_effect=run)
+        harness.charm.container.exec = exec_mock
+        return exec_mock
+
+    @staticmethod
+    def _commands(exec_mock: MagicMock) -> list[list[str]]:
+        return [call.args[0][:3] for call in exec_mock.call_args_list]
+
+    @pytest.fixture
+    def charm(self, harness: Harness) -> Iterator[Harness]:
+        harness.add_relation(PEER_RELATION_NAME, DEFAULT_JUJU_APP_NAME)
+        with patch.object(MlflowCharm, "_get_backend_store_uri", return_value=BACKEND_STORE_URI):
+            yield harness
+
+    def test_leader_creates_the_schema_and_publishes_it(self, charm: Harness):
+        charm.begin()
+        exec_mock = self._exec(charm, ["", self.CURRENT])
+
+        charm.charm._ensure_database_schema()
+
+        assert self._commands(exec_mock) == [
+            ["python3", "-c", SCHEMA_CURRENT_SNIPPET],
+            ["mlflow", "db", "upgrade"],
+            ["python3", "-c", AUTH_SCHEMA_MIGRATION_SNIPPET],
+            ["python3", "-c", SCHEMA_CURRENT_SNIPPET],
+        ]
+        peers = charm.model.get_relation(PEER_RELATION_NAME)
+        assert peers.data[charm.charm.app][SCHEMA_REVISIONS_KEY] == "tracking-head auth-head"
+
+    def test_leader_does_not_migrate_a_current_schema(self, charm: Harness):
+        charm.begin()
+        exec_mock = self._exec(charm, [self.CURRENT])
+
+        charm.charm._ensure_database_schema()
+
+        assert self._commands(exec_mock) == [["python3", "-c", SCHEMA_CURRENT_SNIPPET]]
+
+    def test_leader_blocks_when_the_schema_is_not_current_after_migrating(self, charm: Harness):
+        charm.begin()
+        self._exec(charm, ["", ""])
+
+        with pytest.raises(ErrorWithStatus) as error:
+            charm.charm._ensure_database_schema()
+
+        assert isinstance(error.value.status, BlockedStatus)
+
+    def test_other_units_wait_and_do_not_migrate(self, charm: Harness):
+        charm.set_leader(False)
+        charm.begin()
+        exec_mock = self._exec(charm, [""])
+
+        with pytest.raises(ErrorWithStatus) as error:
+            charm.charm._ensure_database_schema()
+
+        assert error.value.status == WaitingStatus(
+            "Waiting for the leader to create or migrate the database schema"
+        )
+        assert self._commands(exec_mock) == [["python3", "-c", SCHEMA_CURRENT_SNIPPET]]
+
+    def test_other_units_start_on_a_current_schema_without_publishing(self, charm: Harness):
+        charm.set_leader(False)
+        charm.begin()
+        self._exec(charm, [self.CURRENT])
+
+        charm.charm._ensure_database_schema()
+
+        peers = charm.model.get_relation(PEER_RELATION_NAME)
+        assert SCHEMA_REVISIONS_KEY not in peers.data[charm.charm.app]
+
+    def test_a_running_server_is_not_checked(self, charm: Harness):
+        charm.begin()
+        charm.charm.container.add_layer(
+            WORKLOAD_CONTAINER_NAME,
+            {"services": {PEBBLE_SERVICE_NAME: {"override": "replace", "command": "mlflow"}}},
+        )
+        charm.charm.container.start(PEBBLE_SERVICE_NAME)
+        exec_mock = self._exec(charm, [])
+
+        charm.charm._ensure_database_schema()
+
+        exec_mock.assert_not_called()
+
+    def test_waits_when_the_schema_cannot_be_checked(self, charm: Harness):
+        charm.begin()
+        charm.charm.container.exec = MagicMock(
+            side_effect=ExecError(["python3"], 1, "", "unreachable")
+        )
+
+        with pytest.raises(ErrorWithStatus) as error:
+            charm.charm._ensure_database_schema()
+
+        assert isinstance(error.value.status, WaitingStatus)
+
+    def test_a_waiting_unit_gets_the_readiness_check_but_no_server(
+        self, charm: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """A unit waiting for the schema is reported not ready instead of receiving requests."""
+        on_event_step_mocks["_ensure_database_schema"].side_effect = ErrorWithStatus(
+            "Waiting for the leader to create or migrate the database schema", WaitingStatus
+        )
+        charm.begin()
+
+        charm.charm._on_event(None)
+
+        plan = charm.charm.container.get_plan()
+        assert TRACKING_SERVER_READY_CHECK in plan.checks
+        assert PEBBLE_SERVICE_NAME not in plan.services
+
+    def test_the_leaders_schema_revisions_wake_the_other_units(self, harness: Harness):
+        """A change in the peer data, where the leader publishes the schema revisions, reconciles
+        the other units, so they start their servers once the schema is current."""
+        harness.set_leader(False)
+        relation_id = harness.add_relation(PEER_RELATION_NAME, DEFAULT_JUJU_APP_NAME)
+        with patch.object(MlflowCharm, "_on_event", autospec=True) as on_event:
+            harness.begin()
+            harness.update_relation_data(
+                relation_id, DEFAULT_JUJU_APP_NAME, {SCHEMA_REVISIONS_KEY: "tracking auth"}
+            )
+
+        on_event.assert_called_once()
