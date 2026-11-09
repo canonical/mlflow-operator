@@ -129,7 +129,6 @@ except Exception as exc:
 # rendered basic_auth.ini and the custom authentication module's files - NOTE: under Pebble's home
 # directory, writable by the non-root user:
 AUTH_CONFIG_DIR = "/var/lib/pebble/default/auth"
-# name of the Pebble check that tells Kubernetes whether this unit's tracking server is ready:
 TRACKING_SERVER_READY_CHECK = "mlflow-server-ready"
 AUTH_CONFIG_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/basic_auth.ini"
 AUTH_MODULE_NAME = "custom_userid_header_auth"
@@ -208,8 +207,7 @@ class MlflowCharm(CharmBase):
         self._create_service()
 
         self.framework.observe(self.on.update_status, self._on_event)
-        # a unit that becomes the leader takes over the leader-only work without waiting for the
-        # next update-status:
+        # a new leader takes over the leader-only work at once:
         self.framework.observe(self.on.leader_elected, self._on_event)
         self.framework.observe(self.backend_store_database.on.database_created, self._on_event)
         self.framework.observe(self.backend_store_database.on.endpoints_changed, self._on_event)
@@ -436,10 +434,7 @@ class MlflowCharm(CharmBase):
                     "environment": self.service_environment,  # defaults `mlflow server` CLI options
                 }
             },
-            # Juju maps "ready" checks to the pod's readiness probe, so a unit whose tracking server
-            # is not answering, while it starts, restarts or waits for a schema migration, is taken
-            # out of the Kubernetes Service instead of receiving a share of the requests. A "ready"
-            # check does not restart anything:
+            # Juju maps "ready" checks to the pod's readiness probe, and they restart nothing:
             "checks": {
                 TRACKING_SERVER_READY_CHECK: {
                     "override": "replace",
@@ -1338,11 +1333,7 @@ class MlflowCharm(CharmBase):
     def _on_event(self, event) -> None:
         """Perform all required actions for the Charm."""
         try:
-            # NOTE: every unit runs the tracking server, so the application can be scaled out
-            # behind its Kubernetes Service. Only what exists once per application is left to the
-            # leader: the RBAC credentials, the workspace grants, the Kubernetes resources and the
-            # ingress configuration, each guarded in its own method, and the schema migration on
-            # upgrade-charm:
+            # every unit runs the server, and leader-only work is guarded where it happens:
             self._check_service_mesh_configured()
 
             self._ensure_bucket_exists()
