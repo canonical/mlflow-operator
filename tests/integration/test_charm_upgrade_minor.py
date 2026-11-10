@@ -16,14 +16,11 @@ import subprocess
 import time
 from pathlib import Path
 
-import lightkube
 import pytest
 import requests
 import yaml
-from charmed_kubeflow_chisme.kubernetes import KubernetesResourceHandler
 from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_integrator
 from charms_dependencies import POSTGRESQL_K8S, S3_INTEGRATOR
-from lightkube.generic_resource import load_in_cluster_generic_resources
 from mlflow.tracking import MlflowClient
 from pytest_operator.plugin import OpsTest
 from tenacity import retry, stop_after_delay, wait_fixed
@@ -36,7 +33,6 @@ logger = logging.getLogger(__name__)
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 CHARM_NAME = METADATA["name"]
 
-PODDEFAULTS_CRD_TEMPLATE = "./tests/integration/crds/poddefaults.yaml"
 
 OLD_CHANNEL = "3.15/stable"
 
@@ -51,16 +47,6 @@ POSTUPGRADE_RUN_METRIC = "loss"
 POSTUPGRADE_RUN_METRIC_VALUE = 0.13
 POSTUPGRADE_RUN_PARAM = "batch_size"
 POSTUPGRADE_RUN_PARAM_VALUE = "32"
-
-
-def deploy_k8s_resources(template_files: str):
-    """Apply the given Kubernetes resource templates (e.g. the PodDefaults CRD)."""
-    lightkube_client = lightkube.Client(field_manager=CHARM_NAME)
-    k8s_resource_handler = KubernetesResourceHandler(
-        field_manager=CHARM_NAME, template_files=template_files, context={}
-    )
-    load_in_cluster_generic_resources(lightkube_client)
-    k8s_resource_handler.apply()
 
 
 def _built_charm(ops_test: OpsTest, request) -> str:
@@ -120,8 +106,6 @@ class TestMinorUpgrade:
     @pytest.mark.abort_on_fail
     async def test_deploy_old_version(self, ops_test: OpsTest):
         """Deploy the older charm version with its backend and artifact stores."""
-        deploy_k8s_resources([PODDEFAULTS_CRD_TEMPLATE])
-
         await ops_test.model.deploy(
             CHARM_NAME,
             channel=OLD_CHANNEL,

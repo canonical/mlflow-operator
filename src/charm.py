@@ -2,7 +2,6 @@
 # Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-import base64
 import json
 import logging
 import secrets
@@ -53,10 +52,6 @@ from charms.kubeflow_dashboard.v0.kubeflow_dashboard_links import (
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.observability_libs.v1.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
-from charms.resource_dispatcher.v0.kubernetes_manifests import (
-    KubernetesManifest,
-    KubernetesManifestRequirerWrapper,
-)
 from dpcharmlibs.interfaces import (
     RequirerCommonModel,
     ResourceProviderEventHandler,
@@ -82,13 +77,6 @@ INGRESS_PATH_MATCHED_PREFIX = "/"
 INGRESS_PATH_REWRITTEN_PREFIX = "/"
 METRICS_RELATION_NAME = "metrics-endpoint"
 METRICS_PATH = "/metrics"
-PODDEFAULTS_FILES = [
-    "src/poddefaults/poddefault-s3.yaml.j2",
-    "src/poddefaults/poddefault-mlflow.yaml.j2",
-]
-SECRETS_FILES = [
-    "src/secrets/mlflow-s3-artifact.j2",
-]
 SERVICE_MESH_RELATION_NAME = "service-mesh"
 SERVICE_MESH_RELATION_REQUIRED_MESSAGE = (
     f"Missing {SERVICE_MESH_RELATION_NAME} relation. "
@@ -209,9 +197,6 @@ class MlflowCharm(CharmBase):
             relation_name=RELATION_ENDPOINT_FOR_BACKEND_STORE_DB,
             database_name=self._backend_store_database_name,
         )
-
-        self._secrets_manifests_wrapper = None
-        self._poddefaults_manifests_wrapper = None
 
         self.framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
         self.framework.observe(self.on.config_changed, self._on_event)
@@ -406,22 +391,6 @@ class MlflowCharm(CharmBase):
             logger=self.logger,
         )
 
-    @property
-    def secrets_manifests_wrapper(self):
-        if not self._secrets_manifests_wrapper:
-            self._secrets_manifests_wrapper = KubernetesManifestRequirerWrapper(
-                charm=self, relation_name="secrets"
-            )
-        return self._secrets_manifests_wrapper
-
-    @property
-    def poddefaults_manifests_wrapper(self):
-        if not self._poddefaults_manifests_wrapper:
-            self._poddefaults_manifests_wrapper = KubernetesManifestRequirerWrapper(
-                charm=self, relation_name="pod-defaults"
-            )
-        return self._poddefaults_manifests_wrapper
-
     def _create_service(self):
         """Create k8s service based on charm's config."""
         tracking_server_port_definition = ServicePort(
@@ -490,48 +459,6 @@ class MlflowCharm(CharmBase):
         }
 
         return Layer(layer_config)
-
-    @property
-    def secrets_context(self) -> dict:
-        try:
-            artifact_store_data = self._get_artifact_store_data()
-        except ErrorWithStatus as error:
-            self.logger.error("Failed to generate container configuration.")
-            raise error
-        tls_ca_chain = artifact_store_data["tls_ca_chain"]
-        secrets_context = {
-            "app_name": self.app.name,
-            "access_key": artifact_store_data["access_key"],
-            "secret_access_key": artifact_store_data["secret_key"],
-            "is_proxy_mode_enabled": self.proxy_mode,
-            # base64-encoded S3 CA bundle for clients to directly trust the artifact store when in
-            # no proxy mode and when private TLS certificates are used:
-            "s3_ca_bundle_b64": (
-                base64.b64encode("\n".join(tls_ca_chain).encode()).decode() if tls_ca_chain else ""
-            ),
-        }
-        return secrets_context
-
-    @property
-    def poddefaults_context(self) -> dict:
-        try:
-            artifact_store_data = self._get_artifact_store_data()
-        except ErrorWithStatus as error:
-            self.logger.error("Failed to generate container configuration.")
-            raise error
-        poddefaults_context = {
-            "app_name": self.app.name,
-            "s3_endpoint": self._extract_s3_endpoint(artifact_store_data),
-            "mlflow_endpoint": (
-                f"http://{self.app.name}.{self._namespace}.svc.cluster.local:"
-                f"{self._tracking_server_port}"
-            ),
-            "is_proxy_mode_enabled": self.proxy_mode,
-            # whether to mount the S3 CA bundle into client pods and point AWS_CA_BUNDLE at it, so
-            # their direct (no-proxy mode) connections trust the artifact store's TLS certificate:
-            "s3_ca_bundle_present": bool(artifact_store_data["tls_ca_chain"]),
-        }
-        return poddefaults_context
 
     @property
     def proxy_mode(self) -> bool:
@@ -1400,27 +1327,6 @@ class MlflowCharm(CharmBase):
             f"Please add the relation {RELATION_ENDPOINT_FOR_BACKEND_STORE_DB}"
         )
 
-    def _send_manifests(
-        self, context, manifest_files, relation_requirer: KubernetesManifestRequirerWrapper
-    ):
-        """Send manifests from folder to desired relation."""
-        manifests = self._create_manifests(manifest_files, context)
-        relation_requirer.send_data(manifests)
-
-    def _create_manifests(self, manifest_files, context):
-        """Create manifests string for given folder and context."""
-        manifests = []
-        for file in manifest_files:
-            template = Template(Path(file).read_text())
-            rendered_template = template.render(**context)
-            manifest = KubernetesManifest(rendered_template)
-            # skipping templates that render to an empty document, such as parametrized resources
-            # that are intentionally omitted when in proxy mode, so they are not sent as null:
-            if manifest.manifest is None:
-                continue
-            manifests.append(manifest)
-        return manifests
-
     def _on_event(self, event) -> None:
         """Perform all required actions for the Charm."""
         try:
@@ -1458,13 +1364,6 @@ class MlflowCharm(CharmBase):
                 self.exporter_container,
                 self._mlflow_exporter_layer,
                 self.logger,
-            )
-
-            self._send_manifests(
-                self.secrets_context, SECRETS_FILES, self.secrets_manifests_wrapper
-            )
-            self._send_manifests(
-                self.poddefaults_context, PODDEFAULTS_FILES, self.poddefaults_manifests_wrapper
             )
 
             # NOTE: MLflow clients' workspace grants are reconciled here, on every holistic charm

@@ -1,7 +1,6 @@
 # Copyright 2021 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-import base64
 import json
 import logging
 from collections.abc import Iterator
@@ -17,7 +16,6 @@ from charmlibs.interfaces.istio_ingress_route import (
     ProtocolType,
 )
 from charmlibs.interfaces.service_mesh import UnitPolicy
-from charms.resource_dispatcher.v0.kubernetes_manifests import KUBERNETES_MANIFESTS_FIELD
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Service
 from ops.testing import Harness
@@ -29,10 +27,8 @@ from charm import (
     MLFLOW_CLIENT_DEFAULT_TIER,
     MLFLOW_CLIENT_RELATION_ENDPOINT,
     MLFLOW_SUPER_ADMIN_USERNAME,
-    PODDEFAULTS_FILES,
     S3_CA_BUNDLE_CONTAINER_PATH,
     SCHEMA_OUT_OF_DATE_MARKER,
-    SECRETS_FILES,
     SERVICE_MESH_RELATION_REQUIRED_MESSAGE,
     SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE,
     SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
@@ -63,7 +59,6 @@ ON_EVENT_STEPS = [
     "_reconcile_s3_ca_bundle",
     "_reconcile_policy_resource_manager",
     "_reconcile_identity_traffic_extension",
-    "_send_manifests",
 ]
 
 
@@ -85,9 +80,6 @@ S3_TLS_CA_CHAIN = [
     "-----BEGIN CERTIFICATE-----\nZmFrZS1pbnRlcm1lZGlhdGU=\n-----END CERTIFICATE-----",
 ]
 
-# The same CA chain as embedded (joined + base64-encoded) into the artifact-store Secret's data.
-EXPECTED_S3_CA_BUNDLE_B64 = base64.b64encode("\n".join(S3_TLS_CA_CHAIN).encode()).decode()
-
 S3_DATA = {
     "access-key": "test-access-key",
     "secret-key": "test-secret-key",
@@ -105,8 +97,6 @@ BACKEND_STORE_DB_DATA = {
     "port": "port",
 }
 BACKEND_STORE_URI = "postgresql://u:p@h:3306/mlflow"
-
-SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 
 EXPECTED_SERVER_HOST = "0.0.0.0"
 EXPECTED_SERVER_METRICS_PATH = "/metrics"
@@ -185,135 +175,7 @@ EXPECTED_INGRESS_PATH_REWRITTEN_PREFIX = "/"
 EXPECTED_K8S_SERVICE_HTTP_PORT = EXPECTED_SERVER_PORT
 RELATION_ENDPOINT_FOR_INGRESS_IN_AMBIENT_MODE = "istio-ingress-route"
 RELATION_ENDPOINT_FOR_SERVICE_MESH = "service-mesh"
-RELATION_ENDPOINT_FOR_SECRETS = "secrets"
-RELATION_ENDPOINT_FOR_PODDEFAULTS = "pod-defaults"
 RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "relational-db"
-
-ACCESS_S3_PODDEFAULT_NAME = f"{CHARM_NAME}-access-s3"
-ACCESS_S3_PODDEFAULT_SELECTOR_LABEL = "access-s3"
-MLFLOW_PODDEFAULT_NAME = f"{CHARM_NAME}-mlflow"
-MLFLOW_PODDEFAULT_SELECTOR_LABEL = "mlflow-client"
-SECRET_NAME = f"{CHARM_NAME}-s3-artifact"
-
-# Rendered manifests expected from the SECRETS_FILES and PODDEFAULTS_FILES templates:
-EXPECTED_MLFLOW_ENDPOINT = (
-    f"http://{CHARM_NAME}.{MODEL_NAME}.svc.cluster.local:{EXPECTED_K8S_SERVICE_HTTP_PORT}"
-)
-EXPECTED_SECRET_MANIFEST = {
-    "apiVersion": "v1",
-    "kind": "Secret",
-    "metadata": {"name": SECRET_NAME},
-    "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"},
-}
-# Secret variant for a TLS artifact store: the CA bundle is embedded (base64) under `data`.
-EXPECTED_SECRET_MANIFEST_WITH_CA = {
-    **EXPECTED_SECRET_MANIFEST,
-    "data": {"ca-bundle.pem": EXPECTED_S3_CA_BUNDLE_B64},
-}
-EXPECTED_S3_PODDEFAULT_MANIFEST = {
-    "apiVersion": "kubeflow.org/v1alpha1",
-    "kind": "PodDefault",
-    "metadata": {"name": ACCESS_S3_PODDEFAULT_NAME},
-    "spec": {
-        "desc": "Allow access to S3",
-        "selector": {"matchLabels": {ACCESS_S3_PODDEFAULT_SELECTOR_LABEL: "true"}},
-        "env": [
-            {
-                "name": "AWS_ACCESS_KEY_ID",
-                "valueFrom": {
-                    "secretKeyRef": {
-                        "name": SECRET_NAME,
-                        "key": "AWS_ACCESS_KEY_ID",
-                        "optional": False,
-                    }
-                },
-            },
-            {
-                "name": "AWS_SECRET_ACCESS_KEY",
-                "valueFrom": {
-                    "secretKeyRef": {
-                        "name": SECRET_NAME,
-                        "key": "AWS_SECRET_ACCESS_KEY",
-                        "optional": False,
-                    }
-                },
-            },
-            {"name": "S3_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
-        ],
-    },
-}
-# access-s3 PodDefault variant for a TLS artifact store: the CA bundle Secret key is mounted
-# read-only into client pods and AWS_CA_BUNDLE points boto3 at it.
-EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA = {
-    **EXPECTED_S3_PODDEFAULT_MANIFEST,
-    "spec": {
-        **EXPECTED_S3_PODDEFAULT_MANIFEST["spec"],
-        "env": [
-            *EXPECTED_S3_PODDEFAULT_MANIFEST["spec"]["env"],
-            {"name": "AWS_CA_BUNDLE", "value": "/etc/mlflow/certs/ca-bundle.pem"},
-        ],
-        "volumeMounts": [
-            {"name": "s3-ca-bundle", "mountPath": "/etc/mlflow/certs", "readOnly": True},
-        ],
-        "volumes": [
-            {
-                "name": "s3-ca-bundle",
-                "secret": {
-                    "secretName": SECRET_NAME,
-                    "items": [{"key": "ca-bundle.pem", "path": "ca-bundle.pem"}],
-                },
-            },
-        ],
-    },
-}
-EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE = {
-    "apiVersion": "kubeflow.org/v1alpha1",
-    "kind": "PodDefault",
-    "metadata": {"name": MLFLOW_PODDEFAULT_NAME},
-    "spec": {
-        "desc": "Allow access to MLflow",
-        "env": [
-            {"name": "MLFLOW_S3_ENDPOINT_URL", "value": EXPECTED_S3_ENDPOINT},
-            {"name": "MLFLOW_TRACKING_URI", "value": EXPECTED_MLFLOW_ENDPOINT},
-        ],
-        "selector": {"matchLabels": {MLFLOW_PODDEFAULT_SELECTOR_LABEL: "true"}},
-    },
-}
-EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE = {
-    **EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
-    "spec": {
-        **EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE["spec"],
-        "env": [
-            {"name": "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD", "value": "false"},
-            {"name": "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD", "value": "false"},
-            {"name": "MLFLOW_TRACKING_URI", "value": EXPECTED_MLFLOW_ENDPOINT},
-        ],
-    },
-}
-
-
-def build_secrets_context(is_proxy_mode_enabled: bool, s3_ca_bundle_b64: str = "") -> dict:
-    """Build a rendering context with only the keys the secrets templates require."""
-    return {
-        "app_name": CHARM_NAME,
-        "access_key": "a",
-        "secret_access_key": "s",
-        "is_proxy_mode_enabled": is_proxy_mode_enabled,
-        "s3_ca_bundle_b64": s3_ca_bundle_b64,
-    }
-
-
-def build_poddefaults_context(
-    is_proxy_mode_enabled: bool, s3_ca_bundle_present: bool = False
-) -> dict:
-    """Build a rendering context with only the keys the poddefaults templates require."""
-    return {
-        "app_name": CHARM_NAME,
-        "s3_endpoint": EXPECTED_S3_ENDPOINT,
-        "mlflow_endpoint": EXPECTED_MLFLOW_ENDPOINT,
-        "is_proxy_mode_enabled": is_proxy_mode_enabled,
-        "s3_ca_bundle_present": s3_ca_bundle_present,
-    }
 
 
 @pytest.fixture(scope="function")
@@ -961,207 +823,6 @@ class TestCharm:
             f"{expected_scheme}://"
             f"{OBJECT_STORAGE_DATA_NORMALIZED['host']}:{OBJECT_STORAGE_DATA_NORMALIZED['port']}"
         )
-
-    @patch("charm.MlflowCharm._get_artifact_store_data")
-    @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
-    @pytest.mark.parametrize(
-        "tls_ca_chain, expected_ca_bundle_b64",
-        [(None, ""), (S3_TLS_CA_CHAIN, EXPECTED_S3_CA_BUNDLE_B64)],
-        ids=["without-tls", "with-tls"],
-    )
-    def test_secrets_context(
-        self,
-        mock_get_artifact_store_data: MagicMock,
-        harness: Harness,
-        serve_artifacts,
-        tls_ca_chain,
-        expected_ca_bundle_b64,
-    ):
-        """Test that the context for secrets carries the expected data."""
-        mock_get_artifact_store_data.return_value = {
-            **OBJECT_STORAGE_DATA_NORMALIZED,
-            "tls_ca_chain": tls_ca_chain,
-        }
-        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
-        harness.begin()
-        context = harness.charm.secrets_context
-        assert context["app_name"] == DEFAULT_JUJU_APP_NAME
-        assert context["access_key"] == OBJECT_STORAGE_DATA_NORMALIZED["access_key"]
-        assert context["secret_access_key"] == OBJECT_STORAGE_DATA_NORMALIZED["secret_key"]
-        assert context["is_proxy_mode_enabled"] is serve_artifacts
-        assert context["s3_ca_bundle_b64"] == expected_ca_bundle_b64
-
-    @patch("charm.MlflowCharm._get_artifact_store_data")
-    @pytest.mark.parametrize("serve_artifacts", [True, False], ids=["proxy-mode", "no-proxy-mode"])
-    @pytest.mark.parametrize(
-        "tls_ca_chain, expected_ca_bundle_present",
-        [(None, False), (S3_TLS_CA_CHAIN, True)],
-        ids=["without-tls", "with-tls"],
-    )
-    def test_poddefaults_context(
-        self,
-        mock_get_artifact_store_data: MagicMock,
-        harness: Harness,
-        serve_artifacts,
-        tls_ca_chain,
-        expected_ca_bundle_present,
-    ):
-        """Test that the context for poddefaults carries the expected data."""
-        mock_get_artifact_store_data.return_value = {
-            **OBJECT_STORAGE_DATA_NORMALIZED,
-            "tls_ca_chain": tls_ca_chain,
-        }
-        harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
-        harness.begin()
-        context = harness.charm.poddefaults_context
-        assert context["app_name"] == DEFAULT_JUJU_APP_NAME
-        assert context["s3_endpoint"] == EXPECTED_S3_ENDPOINT
-        assert context["mlflow_endpoint"] == EXPECTED_MLFLOW_ENDPOINT
-        assert context["is_proxy_mode_enabled"] is serve_artifacts
-        assert context["s3_ca_bundle_present"] is expected_ca_bundle_present
-
-    def test_create_manifests(self, harness: Harness):
-        secrets_context = {
-            "access_key": "a",
-            "secret_access_key": "s",
-        }
-        harness.begin()
-        manifests_items = harness.charm._create_manifests(SECRETS_TEST_FILES, secrets_context)
-        manifests_as_json = json.dumps([item.manifest for item in manifests_items])
-        assert (
-            manifests_as_json
-            == '[{"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "mlpipeline-s3-artifact"}, "stringData": {"AWS_ACCESS_KEY_ID": "a", "AWS_SECRET_ACCESS_KEY": "s"}}]'  # noqa: E501
-        )
-
-    @pytest.mark.parametrize(
-        "manifest_files, context, expected_manifests",
-        [
-            (
-                SECRETS_FILES,
-                build_secrets_context(is_proxy_mode_enabled=False),
-                [EXPECTED_SECRET_MANIFEST],
-            ),
-            (
-                SECRETS_FILES,
-                build_secrets_context(
-                    is_proxy_mode_enabled=False, s3_ca_bundle_b64=EXPECTED_S3_CA_BUNDLE_B64
-                ),
-                [EXPECTED_SECRET_MANIFEST_WITH_CA],
-            ),
-            (SECRETS_FILES, build_secrets_context(is_proxy_mode_enabled=True), []),
-            (
-                PODDEFAULTS_FILES,
-                build_poddefaults_context(is_proxy_mode_enabled=False),
-                [
-                    EXPECTED_S3_PODDEFAULT_MANIFEST,
-                    EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
-                ],
-            ),
-            (
-                PODDEFAULTS_FILES,
-                build_poddefaults_context(is_proxy_mode_enabled=False, s3_ca_bundle_present=True),
-                [
-                    EXPECTED_S3_PODDEFAULT_MANIFEST_WITH_CA,
-                    EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
-                ],
-            ),
-            (
-                PODDEFAULTS_FILES,
-                build_poddefaults_context(is_proxy_mode_enabled=True),
-                [EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE],
-            ),
-        ],
-        ids=[
-            "secrets-proxy-disabled-renders-secret",
-            "secrets-proxy-disabled-with-tls-embeds-ca-bundle",
-            "secrets-proxy-enabled-skips-empty-document",
-            "poddefaults-proxy-disabled-renders-both",
-            "poddefaults-proxy-disabled-with-tls-mounts-ca-bundle",
-            "poddefaults-proxy-enabled-skips-s3-poddefault",
-        ],
-    )
-    def test_create_manifests_skips_empty_documents(
-        self, harness: Harness, manifest_files, context, expected_manifests
-    ):
-        """Test that templates rendering to empty documents are skipped."""
-        harness.begin()
-        manifests_items = harness.charm._create_manifests(manifest_files, context)
-        assert [item.manifest for item in manifests_items] == expected_manifests
-
-    @patch("charm.MlflowCharm._create_manifests")
-    @patch("charm.MlflowCharm.secrets_manifests_wrapper")
-    def test_send_manifests(
-        self, secrets_manifests_wrapper: MagicMock, create_manifests: MagicMock, harness: Harness
-    ):
-        tmp_manifests = "[]"
-        create_manifests.return_value = tmp_manifests
-        secrets_manifests_wrapper = MagicMock()
-        harness.begin()
-        harness.charm._send_manifests({}, [""], secrets_manifests_wrapper)
-        secrets_manifests_wrapper.send_data.assert_called_once()
-
-    @pytest.mark.parametrize(
-        "relation_endpoint, wrapper_attribute, manifest_files, context, expected_manifests",
-        [
-            (
-                RELATION_ENDPOINT_FOR_SECRETS,
-                "secrets_manifests_wrapper",
-                SECRETS_FILES,
-                build_secrets_context(is_proxy_mode_enabled=False),
-                [EXPECTED_SECRET_MANIFEST],
-            ),
-            (
-                RELATION_ENDPOINT_FOR_SECRETS,
-                "secrets_manifests_wrapper",
-                SECRETS_FILES,
-                build_secrets_context(is_proxy_mode_enabled=True),
-                [],
-            ),
-            (
-                RELATION_ENDPOINT_FOR_PODDEFAULTS,
-                "poddefaults_manifests_wrapper",
-                PODDEFAULTS_FILES,
-                build_poddefaults_context(is_proxy_mode_enabled=False),
-                [
-                    EXPECTED_S3_PODDEFAULT_MANIFEST,
-                    EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_NON_PROXY_MODE,
-                ],
-            ),
-            (
-                RELATION_ENDPOINT_FOR_PODDEFAULTS,
-                "poddefaults_manifests_wrapper",
-                PODDEFAULTS_FILES,
-                build_poddefaults_context(is_proxy_mode_enabled=True),
-                [EXPECTED_MLFLOW_PODDEFAULT_MANIFEST_PROXY_MODE],
-            ),
-        ],
-        ids=[
-            "secrets-proxy-disabled-applies-secret",
-            "secrets-proxy-enabled-applies-nothing",
-            "poddefaults-proxy-disabled-applies-both",
-            "poddefaults-proxy-enabled-applies-mlflow-poddefault-only",
-        ],
-    )
-    def test_send_manifests_applies_rendered_manifests_to_relation(
-        self,
-        harness: Harness,
-        relation_endpoint,
-        wrapper_attribute,
-        manifest_files,
-        context,
-        expected_manifests,
-    ):
-        """Test that the rendered manifests are written verbatim to the relation databag."""
-        relation_id, _ = add_relation(harness, relation_endpoint=relation_endpoint)
-        harness.begin()
-
-        harness.charm._send_manifests(
-            context, manifest_files, getattr(harness.charm, wrapper_attribute)
-        )
-
-        application_databag = harness.get_relation_data(relation_id, harness.charm.app.name)
-        applied_manifests = json.loads(application_databag[KUBERNETES_MANIFESTS_FIELD])
-        assert applied_manifests == expected_manifests
 
     def test_check_service_mesh_configured_blocks_when_relation_missing(
         self, harness: Harness, caplog
