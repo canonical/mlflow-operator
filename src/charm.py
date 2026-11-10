@@ -126,10 +126,54 @@ except Exception as exc:
     raise
 """
 
+SCHEMA_CURRENT_MARKER = "MLFLOW_SCHEMA_CURRENT"
+# read-only snippet printing the marker and the revisions of the tracking and the auth schemas,
+# only when both are at the head revision of the deployed MLflow version, so that a tracking server
+# never starts on an empty or outdated database, which it would otherwise create or migrate itself,
+# racing every other unit doing the same:
+SCHEMA_CURRENT_SNIPPET = f"""\
+import sys
+
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from mlflow.server.auth.db.utils import _get_alembic_config as auth_alembic_config
+from mlflow.store.db.utils import _get_alembic_config, create_sqlalchemy_engine_with_retry
+
+uri = sys.argv[1]
+engine = create_sqlalchemy_engine_with_retry(uri)
+revisions = []
+for config, version_table in (
+    (_get_alembic_config(uri), "alembic_version"),
+    (auth_alembic_config(uri), "alembic_version_auth"),
+):
+    head = ScriptDirectory.from_config(config).get_current_head()
+    with engine.connect() as connection:
+        context = MigrationContext.configure(connection, opts={{"version_table": version_table}})
+        current = context.get_current_revision()
+    if current != head:
+        sys.exit(0)
+    revisions.append(current)
+print("{SCHEMA_CURRENT_MARKER}", *revisions)
+"""
+# snippet creating or migrating the auth schema the way the tracking server does when it starts:
+AUTH_SCHEMA_MIGRATION_SNIPPET = """\
+import sys
+
+from mlflow.server.auth.db.utils import migrate_if_needed
+from mlflow.store.db.utils import create_sqlalchemy_engine_with_retry
+
+migrate_if_needed(create_sqlalchemy_engine_with_retry(sys.argv[1]), "head")
+"""
+PEER_RELATION_NAME = "mlflow-peers"
+# key of the peer application data where the leader publishes the current schema revisions, which
+# wakes the units waiting for them:
+SCHEMA_REVISIONS_KEY = "schema-revisions"
+
 # directory inside the workload container where the charm writes the RBAC/auth files it owns: the
 # rendered basic_auth.ini and the custom authentication module's files - NOTE: under Pebble's home
 # directory, writable by the non-root user:
 AUTH_CONFIG_DIR = "/var/lib/pebble/default/auth"
+TRACKING_SERVER_READY_CHECK = "mlflow-server-ready"
 AUTH_CONFIG_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/basic_auth.ini"
 AUTH_MODULE_NAME = "custom_userid_header_auth"
 AUTH_MODULE_CONTAINER_PATH = f"{AUTH_CONFIG_DIR}/{AUTH_MODULE_NAME}.py"
@@ -207,6 +251,8 @@ class MlflowCharm(CharmBase):
         self._create_service()
 
         self.framework.observe(self.on.update_status, self._on_event)
+        # a new leader takes over the leader-only work at once:
+        self.framework.observe(self.on.leader_elected, self._on_event)
         self.framework.observe(self.backend_store_database.on.database_created, self._on_event)
         self.framework.observe(self.backend_store_database.on.endpoints_changed, self._on_event)
         self.framework.observe(
@@ -431,6 +477,18 @@ class MlflowCharm(CharmBase):
                     "startup": "enabled",
                     "environment": self.service_environment,  # defaults `mlflow server` CLI options
                 }
+            },
+            # Kubernetes sends requests only to units whose "ready" checks pass. A failing check
+            # takes the unit out of rotation and does not restart the server:
+            "checks": {
+                TRACKING_SERVER_READY_CHECK: {
+                    "override": "replace",
+                    "level": "ready",
+                    "http": {"url": f"http://localhost:{self._tracking_server_port}/health"},
+                    "period": "10s",
+                    "timeout": "3s",
+                    "threshold": 3,
+                },
             },
         }
 
@@ -785,12 +843,6 @@ class MlflowCharm(CharmBase):
             self.container.push(
                 S3_CA_BUNDLE_CONTAINER_PATH, "\n".join(tls_ca_chain), make_dirs=True
             )
-
-    def _check_leader(self):
-        """Check if this unit is a leader."""
-        if not self.unit.is_leader():
-            self.logger.info("Not a leader, skipping setup")
-            raise ErrorWithStatus("Waiting for leadership", WaitingStatus)
 
     def _check_service_mesh_configured(self) -> None:
         """Block when service-mesh relation is missing or when service mesh is enabled without a
@@ -1330,8 +1382,6 @@ class MlflowCharm(CharmBase):
     def _on_event(self, event) -> None:
         """Perform all required actions for the Charm."""
         try:
-            self._check_leader()
-
             self._check_service_mesh_configured()
 
             self._ensure_bucket_exists()
@@ -1345,6 +1395,8 @@ class MlflowCharm(CharmBase):
             # authentication module, into the workload:
             self._reconcile_auth_config()
 
+            self._reconcile_server_checks()
+            self._ensure_database_schema()
             update_layer(
                 self._container_name, self._container, self._mlflow_server_layer, self.logger
             )
@@ -1386,6 +1438,106 @@ class MlflowCharm(CharmBase):
             return
 
         self.model.unit.status = ActiveStatus()
+
+    def _reconcile_server_checks(self) -> None:
+        """Add the tracking server's health checks to the plan when they differ from it.
+
+        `update_layer` only compares services, so a unit whose services are unchanged, such as one
+        deployed before the checks existed, would otherwise never receive them. Pebble runs a check
+        as soon as it is in the plan, so there is no replan, which would start the service that the
+        workload image defines before the charm's layer has replaced it. A unit waiting for the
+        database schema is thus reported not ready without a server being started.
+        """
+        checks = self._mlflow_server_layer.to_dict()["checks"]
+        if self.container.get_plan().to_dict().get("checks", {}) != checks:
+            self.container.add_layer(self._container_name, Layer({"checks": checks}), combine=True)
+
+    def _ensure_database_schema(self) -> None:
+        """Make sure the database schema is current before the tracking server starts.
+
+        A tracking server creates or migrates an empty or outdated schema itself when it starts,
+        so servers starting together race and all but one fail. The leader creates or migrates the
+        schema instead, and the other units wait until it is current. A running server needs no
+        check: its schema was current when it started, and a refresh replaces its pod.
+
+        Raises:
+            ErrorWithStatus(..., Waiting) on a non-leader unit while the schema is not current, or
+                when the schema could not be checked.
+            ErrorWithStatus(..., Blocked) when a migration fails.
+        """
+        service = self.container.get_services(self._container_name).get(self._container_name)
+        if service and service.is_running():
+            return
+
+        backend_store_uri = self._get_backend_store_uri()
+        revisions = self._get_current_schema_revisions(backend_store_uri)
+        if revisions is None:
+            if not self.unit.is_leader():
+                raise ErrorWithStatus(
+                    "Waiting for the leader to create or migrate the database schema",
+                    WaitingStatus,
+                )
+            self.unit.status = MaintenanceStatus("Creating or migrating the database schema")
+            self._run_database_migration(backend_store_uri)
+            self._run_auth_database_migration(backend_store_uri)
+            revisions = self._get_current_schema_revisions(backend_store_uri)
+            if revisions is None:
+                raise ErrorWithStatus(
+                    "The database schema is not current after migrating it", BlockedStatus
+                )
+
+        peers = self.model.get_relation(PEER_RELATION_NAME)
+        if self.unit.is_leader() and peers:
+            peers.data[self.app][SCHEMA_REVISIONS_KEY] = " ".join(revisions)
+
+    def _get_current_schema_revisions(self, backend_store_uri: str) -> Optional[list[str]]:
+        """Return the tracking and auth schema revisions, or None unless both are current.
+
+        Raises:
+            ErrorWithStatus(..., Waiting) when the check could not be completed, for example
+                because the database is not reachable yet.
+        """
+        try:
+            process = self.container.exec(
+                ["python3", "-c", SCHEMA_CURRENT_SNIPPET, backend_store_uri]
+            )
+            stdout, _ = process.wait_output()
+        except ExecError as error:
+            self.logger.warning(
+                f"Could not check whether the database schema is current: exit code "
+                f"{error.exit_code}"
+            )
+            raise ErrorWithStatus(
+                "The database is not yet reachable, or its schema could not be checked; "
+                "will retry.",
+                WaitingStatus,
+            )
+
+        for line in stdout.splitlines():
+            if line.startswith(SCHEMA_CURRENT_MARKER):
+                return line.split()[1:]
+        return None
+
+    def _run_auth_database_migration(self, database_uri: str) -> None:
+        """Create or migrate the auth schema, as the tracking server would when it starts.
+
+        Raises:
+            ErrorWithStatus(..., Blocked) if the migration fails.
+        """
+        try:
+            process = self.container.exec(
+                ["python3", "-c", AUTH_SCHEMA_MIGRATION_SNIPPET, database_uri]
+            )
+            process.wait_output()
+        except ExecError as error:
+            # NOTE: stderr is not logged as it can embed the database credentials:
+            self.logger.error(
+                f"Auth database schema migration failed with exit code {error.exit_code}."
+            )
+            raise ErrorWithStatus(
+                "Auth database schema migration failed. Check the unit logs and act accordingly.",
+                BlockedStatus,
+            )
 
     def _on_ambient_mode_ingress_ready(self, _):
         """Configure the ingess for ambient mode."""

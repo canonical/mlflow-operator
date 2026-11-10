@@ -16,22 +16,34 @@ from charmlibs.interfaces.istio_ingress_route import (
     ProtocolType,
 )
 from charmlibs.interfaces.service_mesh import UnitPolicy
-from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
+from ops.model import (
+    ActiveStatus,
+    BlockedStatus,
+    MaintenanceStatus,
+    SecretNotFoundError,
+    WaitingStatus,
+)
 from ops.pebble import ExecError, Service
 from ops.testing import Harness
 
 from charm import (
     AUTH_CONFIG_CONTAINER_PATH,
     AUTH_MODULE_CONTAINER_PATH,
+    AUTH_SCHEMA_MIGRATION_SNIPPET,
+    AUTH_SECRET_LABEL,
     METRICS_RELATION_NAME,
     MLFLOW_CLIENT_DEFAULT_TIER,
     MLFLOW_CLIENT_RELATION_ENDPOINT,
     MLFLOW_SUPER_ADMIN_USERNAME,
+    PEER_RELATION_NAME,
     S3_CA_BUNDLE_CONTAINER_PATH,
+    SCHEMA_CURRENT_SNIPPET,
     SCHEMA_OUT_OF_DATE_MARKER,
+    SCHEMA_REVISIONS_KEY,
     SERVICE_MESH_RELATION_REQUIRED_MESSAGE,
     SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_LOG_MESSAGE,
     SERVICE_MESH_WAYPOINT_PRINCIPAL_REQUIRED_STATUS_MESSAGE,
+    TRACKING_SERVER_READY_CHECK,
     MeshType,
     MlflowCharm,
 )
@@ -50,11 +62,11 @@ CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS = "serve_artifacts"
 # Charm methods called inside `_on_event`'s try block, in call order.
 # Keep in sync with `_on_event`: the stops-on-failing-step test relies on this order.
 ON_EVENT_STEPS = [
-    "_check_leader",
     "_check_service_mesh_configured",
     "_ensure_bucket_exists",
     "_reconcile_auth_config",
     "_generate_environment",  # Called when accessing self._mlflow_server_layer
+    "_ensure_database_schema",
     "_get_artifact_store_data",
     "_reconcile_s3_ca_bundle",
     "_reconcile_policy_resource_manager",
@@ -249,14 +261,85 @@ class TestCharm:
             harness.begin()
             mock_logging.assert_called_once_with(charm=harness.charm)
 
-    def test_check_leader_failure(self, harness: Harness):
-        harness.set_leader(False)
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status == WaitingStatus("Waiting for leadership")
+    @pytest.mark.parametrize("is_leader", [True, False], ids=["leader", "non-leader"])
+    def test_every_unit_runs_the_tracking_server(
+        self, is_leader: bool, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """Leader or not, a unit plans the tracking server and becomes active, so that the
+        application can be scaled out."""
+        harness.set_leader(is_leader)
+        harness.begin()
+        harness.charm._on_event(None)
 
-    def test_check_leader_success(self, harness: Harness):
-        harness.begin_with_initial_hooks()
-        assert harness.charm.model.unit.status != WaitingStatus("Waiting for leadership")
+        assert harness.charm.model.unit.status == ActiveStatus()
+        assert PEBBLE_SERVICE_NAME in harness.charm.container.get_plan().services
+
+    def test_leader_elected_reconciles(self, harness: Harness):
+        """A unit that becomes the leader reconciles at once, to take over the leader-only work."""
+        harness.set_leader(False)
+        with patch.object(MlflowCharm, "_on_event", autospec=True) as on_event:
+            harness.begin()
+            harness.set_leader(True)
+
+        on_event.assert_called_once()
+
+    def test_tracking_server_layer_has_a_readiness_check(
+        self, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """The tracking server's layer has a "ready" check on its health endpoint, which Juju maps
+        to the pod's readiness probe."""
+        harness.begin()
+        checks = harness.charm._mlflow_server_layer.to_dict()["checks"]
+
+        assert checks == {
+            TRACKING_SERVER_READY_CHECK: {
+                "override": "replace",
+                "level": "ready",
+                "http": {"url": f"http://localhost:{EXPECTED_SERVER_PORT}/health"},
+                "period": "10s",
+                "timeout": "3s",
+                "threshold": 3,
+            }
+        }
+
+    def test_reconcile_server_checks_adds_missing_checks(
+        self, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """A unit whose plan has the tracking server but not its checks, such as one deployed
+        before they existed, receives them although its services are unchanged."""
+        harness.begin()
+        layer = harness.charm._mlflow_server_layer.to_dict()
+        layer.pop("checks")
+        harness.charm.container.add_layer(PEBBLE_SERVICE_NAME, layer, combine=True)
+        assert not harness.charm.container.get_plan().checks
+
+        harness.charm._on_event(None)
+
+        assert TRACKING_SERVER_READY_CHECK in harness.charm.container.get_plan().checks
+
+    def test_reconcile_server_checks_starts_no_service(
+        self, harness: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """Adding the checks does not start the service that the workload image defines, which
+        Juju holds until the charm's own layer replaces it."""
+        harness.begin()
+        harness.charm.container.add_layer(
+            "image",
+            {
+                "services": {
+                    PEBBLE_SERVICE_NAME: {
+                        "override": "replace",
+                        "command": "mlflow",
+                        "startup": "enabled",
+                    }
+                }
+            },
+        )
+
+        harness.charm._reconcile_server_checks()
+
+        assert TRACKING_SERVER_READY_CHECK in harness.charm.container.get_plan().checks
+        assert not harness.charm.container.get_service(PEBBLE_SERVICE_NAME).is_running()
 
     def tests_on_pebble_ready_failure(self, harness: Harness):
         harness.set_can_connect(WORKLOAD_CONTAINER_NAME, False)
@@ -1862,3 +1945,227 @@ class TestMlflowClientProvider:
         harness.remove_relation(relation_id)
 
         reconcile_mock.assert_called_once_with(exclude_relation_id=relation_id)
+
+
+class TestLeaderOnlyWork:
+    """Every unit runs the same reconcile, so what exists once per application is written by the
+    leader alone. Each test runs the same reconcile on the leader and on another unit."""
+
+    @pytest.mark.parametrize("is_leader", [True, False], ids=["leader", "non-leader"])
+    @patch("charm.ServiceMeshConsumer")
+    def test_only_the_leader_writes_what_exists_once(
+        self, _: MagicMock, is_leader: bool, harness: Harness
+    ):
+        """Only the leader reconciles the Kubernetes resources and the client grants, while both
+        units plan the tracking server."""
+        harness.update_config({CONFIG_OPTION_NAME_FOR_WAYPOINT_PRINCIPAL: WAYPOINT_PRINCIPAL})
+        policy_manager = MagicMock()
+        traffic_extension_manager = MagicMock()
+        with (
+            patch.object(
+                MlflowCharm,
+                "_policy_resource_manager",
+                new_callable=PropertyMock,
+                return_value=policy_manager,
+            ),
+            patch.object(
+                MlflowCharm,
+                "_traffic_extension_resource_manager",
+                new_callable=PropertyMock,
+                return_value=traffic_extension_manager,
+            ),
+            patch.object(MlflowCharm, "_ensure_bucket_exists"),
+            patch.object(
+                MlflowCharm,
+                "_get_artifact_store_data",
+                return_value=OBJECT_STORAGE_DATA_NORMALIZED,
+            ),
+            patch.object(MlflowCharm, "_get_backend_store_uri", return_value=BACKEND_STORE_URI),
+            patch.object(MlflowCharm, "_exec_mlflow_client_reconcile") as exec_grants,
+            patch.object(
+                MlflowCharm, "_get_current_schema_revisions", return_value=["tracking", "auth"]
+            ),
+        ):
+            harness.begin()
+            add_relation(harness, RELATION_ENDPOINT_FOR_SERVICE_MESH)
+            add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
+            # the leader has created the shared credentials before the other unit reconciles:
+            harness.charm._get_or_create_auth_secrets()
+            harness.set_leader(is_leader)
+
+            request = TestMlflowClientProvider._request(
+                "alice", [TestMlflowClientProvider._permission("workspace", "team", ["admin"])]
+            )
+            provider = TestMlflowClientProvider._provider(harness, [request])
+            policy_manager.reset_mock()
+            traffic_extension_manager.reset_mock()
+            exec_grants.reset_mock()
+
+            harness.charm._on_event(None)
+
+        assert harness.charm.model.unit.status == ActiveStatus()
+        assert PEBBLE_SERVICE_NAME in harness.charm.container.get_plan().services
+        assert policy_manager.reconcile.called is is_leader
+        assert traffic_extension_manager.reconcile.called is is_leader
+        assert exec_grants.called is is_leader
+        assert provider.set_response.called is is_leader
+
+    @pytest.mark.parametrize("is_leader", [True, False], ids=["leader", "non-leader"])
+    def test_only_the_leader_creates_the_shared_credentials(
+        self, is_leader: bool, harness: Harness
+    ):
+        """Without the credentials secret, the leader creates it and another unit waits for it."""
+        harness.set_leader(is_leader)
+        harness.begin()
+
+        if is_leader:
+            harness.charm._get_or_create_auth_secrets()
+            assert harness.model.get_secret(label=AUTH_SECRET_LABEL)
+        else:
+            with pytest.raises(ErrorWithStatus) as error:
+                harness.charm._get_or_create_auth_secrets()
+            assert error.value.status == WaitingStatus(
+                "Waiting for the leader to generate the RBAC credentials"
+            )
+            with pytest.raises(SecretNotFoundError):
+                harness.model.get_secret(label=AUTH_SECRET_LABEL)
+
+
+class TestDatabaseSchema:
+    """Only the leader creates or migrates the database schema, and no tracking server starts
+    before it is current."""
+
+    CURRENT = "MLFLOW_SCHEMA_CURRENT tracking-head auth-head\n"
+
+    @staticmethod
+    def _exec(harness: Harness, schema_check_outputs: list[str]) -> MagicMock:
+        """Replace the workload exec: each schema check prints the next given output, and every
+        other command succeeds."""
+        outputs = iter(schema_check_outputs)
+
+        def run(command, **_):
+            process = MagicMock()
+            is_check = command[:3] == ["python3", "-c", SCHEMA_CURRENT_SNIPPET]
+            process.wait_output.return_value = (next(outputs) if is_check else "", "")
+            return process
+
+        exec_mock = MagicMock(side_effect=run)
+        harness.charm.container.exec = exec_mock
+        return exec_mock
+
+    @staticmethod
+    def _commands(exec_mock: MagicMock) -> list[list[str]]:
+        return [call.args[0][:3] for call in exec_mock.call_args_list]
+
+    @pytest.fixture
+    def charm(self, harness: Harness) -> Iterator[Harness]:
+        harness.add_relation(PEER_RELATION_NAME, DEFAULT_JUJU_APP_NAME)
+        with patch.object(MlflowCharm, "_get_backend_store_uri", return_value=BACKEND_STORE_URI):
+            yield harness
+
+    def test_leader_creates_the_schema_and_publishes_it(self, charm: Harness):
+        charm.begin()
+        exec_mock = self._exec(charm, ["", self.CURRENT])
+
+        charm.charm._ensure_database_schema()
+
+        assert self._commands(exec_mock) == [
+            ["python3", "-c", SCHEMA_CURRENT_SNIPPET],
+            ["mlflow", "db", "upgrade"],
+            ["python3", "-c", AUTH_SCHEMA_MIGRATION_SNIPPET],
+            ["python3", "-c", SCHEMA_CURRENT_SNIPPET],
+        ]
+        peers = charm.model.get_relation(PEER_RELATION_NAME)
+        assert peers.data[charm.charm.app][SCHEMA_REVISIONS_KEY] == "tracking-head auth-head"
+
+    def test_leader_does_not_migrate_a_current_schema(self, charm: Harness):
+        charm.begin()
+        exec_mock = self._exec(charm, [self.CURRENT])
+
+        charm.charm._ensure_database_schema()
+
+        assert self._commands(exec_mock) == [["python3", "-c", SCHEMA_CURRENT_SNIPPET]]
+
+    def test_leader_blocks_when_the_schema_is_not_current_after_migrating(self, charm: Harness):
+        charm.begin()
+        self._exec(charm, ["", ""])
+
+        with pytest.raises(ErrorWithStatus) as error:
+            charm.charm._ensure_database_schema()
+
+        assert isinstance(error.value.status, BlockedStatus)
+
+    def test_other_units_wait_and_do_not_migrate(self, charm: Harness):
+        charm.set_leader(False)
+        charm.begin()
+        exec_mock = self._exec(charm, [""])
+
+        with pytest.raises(ErrorWithStatus) as error:
+            charm.charm._ensure_database_schema()
+
+        assert error.value.status == WaitingStatus(
+            "Waiting for the leader to create or migrate the database schema"
+        )
+        assert self._commands(exec_mock) == [["python3", "-c", SCHEMA_CURRENT_SNIPPET]]
+
+    def test_other_units_start_on_a_current_schema_without_publishing(self, charm: Harness):
+        charm.set_leader(False)
+        charm.begin()
+        self._exec(charm, [self.CURRENT])
+
+        charm.charm._ensure_database_schema()
+
+        peers = charm.model.get_relation(PEER_RELATION_NAME)
+        assert SCHEMA_REVISIONS_KEY not in peers.data[charm.charm.app]
+
+    def test_a_running_server_is_not_checked(self, charm: Harness):
+        charm.begin()
+        charm.charm.container.add_layer(
+            WORKLOAD_CONTAINER_NAME,
+            {"services": {PEBBLE_SERVICE_NAME: {"override": "replace", "command": "mlflow"}}},
+        )
+        charm.charm.container.start(PEBBLE_SERVICE_NAME)
+        exec_mock = self._exec(charm, [])
+
+        charm.charm._ensure_database_schema()
+
+        exec_mock.assert_not_called()
+
+    def test_waits_when_the_schema_cannot_be_checked(self, charm: Harness):
+        charm.begin()
+        charm.charm.container.exec = MagicMock(
+            side_effect=ExecError(["python3"], 1, "", "unreachable")
+        )
+
+        with pytest.raises(ErrorWithStatus) as error:
+            charm.charm._ensure_database_schema()
+
+        assert isinstance(error.value.status, WaitingStatus)
+
+    def test_a_waiting_unit_gets_the_readiness_check_but_no_server(
+        self, charm: Harness, on_event_step_mocks: dict[str, MagicMock]
+    ):
+        """A unit waiting for the schema is reported not ready instead of receiving requests."""
+        on_event_step_mocks["_ensure_database_schema"].side_effect = ErrorWithStatus(
+            "Waiting for the leader to create or migrate the database schema", WaitingStatus
+        )
+        charm.begin()
+
+        charm.charm._on_event(None)
+
+        plan = charm.charm.container.get_plan()
+        assert TRACKING_SERVER_READY_CHECK in plan.checks
+        assert PEBBLE_SERVICE_NAME not in plan.services
+
+    def test_the_leaders_schema_revisions_wake_the_other_units(self, harness: Harness):
+        """A change in the peer data, where the leader publishes the schema revisions, reconciles
+        the other units, so they start their servers once the schema is current."""
+        harness.set_leader(False)
+        relation_id = harness.add_relation(PEER_RELATION_NAME, DEFAULT_JUJU_APP_NAME)
+        with patch.object(MlflowCharm, "_on_event", autospec=True) as on_event:
+            harness.begin()
+            harness.update_relation_data(
+                relation_id, DEFAULT_JUJU_APP_NAME, {SCHEMA_REVISIONS_KEY: "tracking auth"}
+            )
+
+        on_event.assert_called_once()
