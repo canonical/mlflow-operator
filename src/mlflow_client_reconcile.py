@@ -13,7 +13,11 @@ JSON argument in the following format:
     - "username":          the requested username
     - "is_super_admin":    whether the requested username is to be promoted to a global super-admin
     - "workspace_grants":  a list of [workspace, tier] pairs representing the user's grants in each
-                           workspace
+                           workspace, or a mapping {"*": tier} granting that tier in every
+                           workspace existing at reconcile time
+    - "password":          (optional) the password to (re)set for the user, for the charm's own
+                           in-pod Basic-auth users (e.g., the metrics reader) - when absent, a
+                           new user gets a random, never-used password
 - "protected_admin": the reserved username for the charm's super-admin, to never demote
 
 For each user requested, it get-or-creates the corresponding user and either promotes it to a
@@ -139,6 +143,9 @@ wanted_roles = {}
 wanted_super_admin_roles = set()
 for entry in payload["users"]:
     user = _get_or_create_user(entry["username"])
+    password = entry.get("password")
+    if password and not store.authenticate_user(entry["username"], password):
+        store.update_user(entry["username"], password=password)
     if entry["is_super_admin"]:
         store.update_user(entry["username"], is_admin=True)
         _tolerate_already_exists(
@@ -150,7 +157,14 @@ for entry in payload["users"]:
         wanted_super_admin_roles.add(marker_name)
         continue
     role_name = ROLE_PREFIX_FOR_WORKSPACE_WIDE + str(user.id)
-    for workspace, tier in entry["workspace_grants"]:
+    workspace_grants = entry["workspace_grants"]
+    if isinstance(workspace_grants, dict):
+        # expanding a {"*": tier} grant to every workspace existing at reconcile time:
+        workspace_grants = [
+            [workspace.name, workspace_grants["*"]]
+            for workspace in workspace_store.list_workspaces()
+        ]
+    for workspace, tier in workspace_grants:
         _tolerate_already_exists(
             workspace_store.create_workspace, Workspace(name=workspace, description=None)
         )
