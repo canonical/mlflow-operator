@@ -603,6 +603,28 @@ class TestCharm:
     )
     @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
     @patch("charm.MlflowCharm._get_artifact_store_data")
+    def test_generate_environment_passes_the_model_proxy_settings(
+        self, mock_get_artifact_store_data, harness: Harness, monkeypatch
+    ):
+        """The model's juju-*-proxy settings reach the server as HTTP(S)_PROXY and NO_PROXY."""
+        monkeypatch.setenv("JUJU_CHARM_HTTPS_PROXY", "http://egress.internal:3128")
+        monkeypatch.setenv("JUJU_CHARM_NO_PROXY", ".svc,10.0.0.0/8")
+        mock_get_artifact_store_data.return_value = {
+            **OBJECT_STORAGE_DATA_NORMALIZED,
+            "bucket": "",
+            "tls_ca_chain": None,
+        }
+        harness.begin()
+        envs = harness.charm._generate_environment()
+        assert envs["HTTPS_PROXY"] == envs["https_proxy"] == "http://egress.internal:3128"
+        assert envs["NO_PROXY"] == envs["no_proxy"] == ".svc,10.0.0.0/8"
+        assert "HTTP_PROXY" not in envs
+
+    @patch(
+        "charm.MlflowCharm._get_backend_store_db_data", lambda *args, **kw: BACKEND_STORE_DB_DATA
+    )
+    @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
+    @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
         "serve_artifacts, tls_ca_chain, expected_environment",
         [

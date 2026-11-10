@@ -68,6 +68,7 @@ from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.pebble import ExecError, Layer
 
+from services.proxy import proxies_for, proxy_environment
 from services.s3 import S3BucketWrapper
 
 INGRESS_RELATION_NAME = "istio-ingress-route"
@@ -739,6 +740,7 @@ class MlflowCharm(CharmBase):
             secure=artifact_store_data["secure"],
             region=artifact_store_data["region"],
             tls_ca_chain=artifact_store_data.get("tls_ca_chain"),
+            proxies=proxies_for(self._extract_s3_endpoint(artifact_store_data)),
         )
 
         bucket_name = self._resolve_bucket_name(artifact_store_data)
@@ -852,6 +854,9 @@ class MlflowCharm(CharmBase):
             # prompt optimization): a tracking server does not need it, and it otherwise spawns
             # several extra worker processes that each open database connections:
             "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
+            # the model's juju-http-proxy, juju-https-proxy and juju-no-proxy settings, for the
+            # server's connections to the artifact store and other external services:
+            **proxy_environment(),
         }
         if self.proxy_mode:
             proxy_environment_variables = {
