@@ -44,11 +44,14 @@ RELATIONAL_DB_DATA = {
 SECRETS_TEST_FILES = ["tests/test_data/secret.yaml.j2"]
 
 EXPECTED_ENVIRONMENT = {
+    "AWS_ACCESS_KEY_ID": "minio-access-key",
+    "AWS_SECRET_ACCESS_KEY": "minio-super-secret-key",
     "MLFLOW_BACKEND_STORE_URI": "mysql+pymysql://username:lorem-ipsum@host:port/mlflow",
     "MLFLOW_DEFAULT_ARTIFACT_ROOT": f"s3://{BUCKET_NAME}",
     "MLFLOW_EXPOSE_PROMETHEUS": "/metrics",
     "MLFLOW_HOST": "0.0.0.0",
     "MLFLOW_PORT": 5000,
+    "MLFLOW_S3_ENDPOINT_URL": "http://service.namespace:1234",
     "MLFLOW_SERVE_ARTIFACTS": "False",
 }
 EXPECTED_SERVICE = {
