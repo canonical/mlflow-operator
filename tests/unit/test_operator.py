@@ -626,7 +626,7 @@ class TestCharm:
         """AWS_CA_BUNDLE is exposed only when TLS is expected but in all artifact serving modes."""
         expected_environment = {
             **expected_base_environment,
-            **({"AWS_CA_BUNDLE": S3_CA_BUNDLE_PATH} if tls_ca_chain is not None else {})
+            **({"AWS_CA_BUNDLE": S3_CA_BUNDLE_PATH} if tls_ca_chain is not None else {}),
         }
         mock_get_artifact_store_data.return_value = {
             **OBJECT_STORAGE_DATA_NORMALIZED,
