@@ -602,11 +602,18 @@ class TestCharm:
         "serve_artifacts, tls_ca_chain, expected_environment",
         [
             (True, None, EXPECTED_ENVIRONMENT_PROXY_MODE),
+            (True, S3_TLS_CA_CHAIN, EXPECTED_ENVIRONMENT_PROXY_MODE),
+            (False, None, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
             (False, S3_TLS_CA_CHAIN, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
         ],
-        ids=["proxy-mode-without-tls", "tls-without-proxy-mode"],
+        ids=[
+            "proxy-mode-without-tls",
+            "tls-without-proxy-mode",
+            "non-proxy-without-tls",
+            "non-proxy-with-tls",
+        ],
     )
-    def test_generate_environment_omits_ca_bundle_when_not_needed(
+    def test_generate_environment_omits_ca_bundle_only_when_tls_off(
         self,
         mock_get_artifact_store_data,
         harness: Harness,
@@ -614,7 +621,7 @@ class TestCharm:
         tls_ca_chain,
         expected_environment,
     ):
-        """AWS_CA_BUNDLE is only exposed for a TLS artifact store in proxy mode."""
+        """AWS_CA_BUNDLE is exposed only when TLS is expected but in all artifact serving modes."""
         mock_get_artifact_store_data.return_value = {
             **OBJECT_STORAGE_DATA_NORMALIZED,
             "bucket": "",
@@ -623,7 +630,7 @@ class TestCharm:
         harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
         harness.begin()
         envs = harness.charm._generate_environment()
-        assert "AWS_CA_BUNDLE" not in envs
+        assert ("AWS_CA_BUNDLE" in envs) == (tls_ca_chain is not None)
         assert envs == expected_environment
 
     @pytest.mark.parametrize(
@@ -733,16 +740,22 @@ class TestCharm:
     @pytest.mark.parametrize(
         "serve_artifacts, tls_ca_chain",
         [
+            (True, S3_TLS_CA_CHAIN),
             (True, None),
             (False, S3_TLS_CA_CHAIN),
             (False, None),
         ],
-        ids=["proxy-mode-without-tls", "tls-without-proxy-mode", "neither"],
+        ids=[
+            "proxy-mode-with-tls",
+            "proxy-mode-without-tls",
+            "non-proxy-mode-with-tls",
+            "non-proxy-mode-without-tls",
+        ],
     )
     def test_reconcile_s3_ca_bundle_skips_push_when_not_needed(
         self, harness: Harness, serve_artifacts, tls_ca_chain
     ):
-        """The CA bundle is only pushed in proxy mode against a TLS store."""
+        """The CA bundle is only pushed against a TLS store but in both modes."""
         harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
         harness.begin()
         harness.charm._container.push = MagicMock()
@@ -751,7 +764,10 @@ class TestCharm:
             {**OBJECT_STORAGE_DATA_NORMALIZED, "tls_ca_chain": tls_ca_chain}
         )
 
-        harness.charm._container.push.assert_not_called()
+        if tls_ca_chain is not None:
+            harness.charm._container.push.assert_called_once()
+        else:
+            harness.charm._container.push.assert_not_called()
 
     @patch("charm.S3BucketWrapper")
     @patch(
