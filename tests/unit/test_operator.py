@@ -452,7 +452,11 @@ class TestCharm:
         harness: Harness,
     ):
         harness.begin()
-        envs = harness.charm._get_mlflow_serve_env_vars(RELATIONAL_DB_DATA, BUCKET_NAME)
+        envs = harness.charm._get_mlflow_serve_env_vars(
+            RELATIONAL_DB_DATA,
+            OBJECT_STORAGE_DATA,
+            BUCKET_NAME,
+        )
         assert envs == EXPECTED_ENVIRONMENT
 
     @patch(
