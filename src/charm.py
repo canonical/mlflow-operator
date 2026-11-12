@@ -778,7 +778,7 @@ class MlflowCharm(CharmBase):
         This is necessary also when the tracking server is in non-proxy mode for the UI to work
         when inspecting artifacts, because in that case the tracking server has to directly access
         the artifact store regardless of the artifact serving mode.
-         
+
         This is not necessary when the artifact store does not have a private CA chain.
         """
         tls_ca_chain = artifact_store_data["tls_ca_chain"]
