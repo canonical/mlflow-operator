@@ -89,6 +89,8 @@ S3_DATA = {
     "tls-ca-chain": json.dumps(S3_TLS_CA_CHAIN),
 }
 
+S3_CA_BUNDLE_PATH = "/var/lib/pebble/default/s3-ca-bundle.pem"
+
 BACKEND_STORE_DB_DATA = {
     "database": "mlflow",
     "host": "host",
@@ -599,7 +601,7 @@ class TestCharm:
     @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
-        "serve_artifacts, tls_ca_chain, expected_environment",
+        "serve_artifacts, tls_ca_chain, expected_base_environment",
         [
             (True, None, EXPECTED_ENVIRONMENT_PROXY_MODE),
             (True, S3_TLS_CA_CHAIN, EXPECTED_ENVIRONMENT_PROXY_MODE),
@@ -608,9 +610,9 @@ class TestCharm:
         ],
         ids=[
             "proxy-mode-without-tls",
-            "tls-without-proxy-mode",
-            "non-proxy-without-tls",
-            "non-proxy-with-tls",
+            "proxy-mode-with-tls",
+            "non-proxy-mode-without-tls",
+            "non-proxy-mode-with-tls",
         ],
     )
     def test_generate_environment_omits_ca_bundle_only_when_tls_off(
@@ -619,9 +621,13 @@ class TestCharm:
         harness: Harness,
         serve_artifacts,
         tls_ca_chain,
-        expected_environment,
+        expected_base_environment,
     ):
         """AWS_CA_BUNDLE is exposed only when TLS is expected but in all artifact serving modes."""
+        expected_environment = {
+            **expected_base_environment,
+            **({"AWS_CA_BUNDLE": S3_CA_BUNDLE_PATH} if tls_ca_chain is not None else {})
+        }
         mock_get_artifact_store_data.return_value = {
             **OBJECT_STORAGE_DATA_NORMALIZED,
             "bucket": "",
