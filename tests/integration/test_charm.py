@@ -413,8 +413,7 @@ class TestCharm:
         metric_lines = response.text.splitlines()
 
         # the counts per workspace are reported, proving that the exporter authenticates as the
-        # metrics reader and that the latter can list the workspaces (with none listed, the
-        # deployment-level totals would also be reported, but trivially as zeros):
+        # metrics reader and that the latter can list the workspaces
         for metric_name in EXPORTER_METRIC_NAMES:
             assert any(
                 line.startswith(f'mlflow_workspace_metric{{metric_name="{metric_name}",')
@@ -422,7 +421,7 @@ class TestCharm:
             ), f"No per-workspace {metric_name} reported"
 
         # the deployment-level totals are reported, which only happens for a count successfully
-        # collected in every workspace, proving that the metrics reader can read all of them:
+        # collected in every workspace, proving that the metrics reader can read all of them
         for metric_name in EXPORTER_METRIC_NAMES:
             assert any(
                 line.startswith(f'mlflow_metric{{metric_name="{metric_name}"}} ')
@@ -431,7 +430,7 @@ class TestCharm:
         for metric_name in EXPORTER_METRIC_NAMES_WITHOUT_DEFAULT_RESOURCES:
             assert f'mlflow_metric{{metric_name="{metric_name}"}} 0.0' in metric_lines
 
-        # the tracking server's traffic metrics are re-exposed:
+        # the tracking server's traffic metrics are re-exposed
         assert any(line.startswith("mlflow_http_request_total{") for line in metric_lines)
 
     @pytest.mark.abort_on_fail
