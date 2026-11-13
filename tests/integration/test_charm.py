@@ -357,6 +357,37 @@ class TestCharm:
         mlflow_subprocess.terminate()
 
     @pytest.mark.abort_on_fail
+    async def test_tracking_server_lists_artifacts(self, ops_test: OpsTest):
+        """The tracking server lists run artifacts for the UI by accessing the artifact store."""
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        mlflow_port = config["mlflow_port"]["value"]
+        mlflow_subprocess = subprocess.Popen(
+            [
+                "kubectl",
+                "-n",
+                f"{ops_test.model_name}",
+                "port-forward",
+                f"svc/{CHARM_NAME}",
+                f"{mlflow_port}:{mlflow_port}",
+            ]
+        )
+        time.sleep(10)  # Must wait for port-forward
+
+        url = f"http://localhost:{mlflow_port}"
+        client = MlflowClient(tracking_uri=url)
+        experiment_id = client.create_experiment(f"{TEST_EXPERIMENT_NAME}-artifacts")
+        run = client.create_run(experiment_id)
+        # a non-proxied artifact URI, which the tracking server accesses directly:
+        assert run.info.artifact_uri.startswith("s3://"), run.info.artifact_uri
+
+        response = requests.get(
+            f"{url}/ajax-api/2.0/mlflow/artifacts/list", params={"run_id": run.info.run_id}
+        )
+        assert response.status_code == 200, response.text
+
+        mlflow_subprocess.terminate()
+
+    @pytest.mark.abort_on_fail
     async def test_deploy_resource_dispatcher(self, ops_test: OpsTest):
         await ops_test.model.deploy(
             entity_url=METACONTROLLER_OPERATOR.charm,
