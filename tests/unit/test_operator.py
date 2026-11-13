@@ -26,6 +26,7 @@ from charm import (
     METRICS_RELATION_NAME,
     MLFLOW_CLIENT_DEFAULT_TIER,
     MLFLOW_CLIENT_RELATION_ENDPOINT,
+    MLFLOW_METRICS_READER_USERNAME,
     MLFLOW_SUPER_ADMIN_USERNAME,
     S3_CA_BUNDLE_CONTAINER_PATH,
     SCHEMA_OUT_OF_DATE_MARKER,
@@ -59,6 +60,7 @@ ON_EVENT_STEPS = [
     "_reconcile_s3_ca_bundle",
     "_reconcile_policy_resource_manager",
     "_reconcile_identity_traffic_extension",
+    "_reconcile_mlflow_client_grants",
 ]
 
 
@@ -910,6 +912,43 @@ class TestCharm:
             harness.charm._get_or_create_auth_secrets()
         assert exc_info.value.status_type is WaitingStatus
 
+    def test_get_or_create_auth_metric_secrets_generates_and_persists(self, harness: Harness):
+        """The leader generates the metrics reader credentials once and reuses them later."""
+        harness.begin()
+
+        first = harness.charm._get_or_create_auth_metric_secrets()
+        second = harness.charm._get_or_create_auth_metric_secrets()
+
+        assert first["username"] == MLFLOW_METRICS_READER_USERNAME
+        assert first["password"]
+        # kept apart from the super-admin's credentials:
+        assert first["password"] != harness.charm._get_or_create_auth_secrets()["admin_password"]
+        # the credentials are persisted in a Juju secret, so a later call returns the same values:
+        assert first == second
+
+    def test_get_or_create_auth_metric_secrets_waits_when_missing_and_not_leader(
+        self, harness: Harness
+    ):
+        """A non-leader defers until the leader has generated the metrics reader credentials."""
+        harness.set_leader(False)
+        harness.begin()
+
+        with pytest.raises(ErrorWithStatus) as exc_info:
+            harness.charm._get_or_create_auth_metric_secrets()
+        assert exc_info.value.status_type is WaitingStatus
+
+    def test_exporter_layer_authenticates_as_metrics_reader(self, harness: Harness):
+        """The exporter gets the metrics reader credentials via the MLflow client env vars."""
+        harness.begin()
+        credentials = harness.charm._get_or_create_auth_metric_secrets()
+
+        service = harness.charm._mlflow_exporter_layer.services[EXPORTER_CONTAINER_NAME]
+
+        assert service.environment == {
+            "MLFLOW_TRACKING_USERNAME": MLFLOW_METRICS_READER_USERNAME,
+            "MLFLOW_TRACKING_PASSWORD": credentials["password"],
+        }
+
     def test_reconcile_auth_config_pushes_module_and_rendered_config(self, harness: Harness):
         """The custom auth module and the rendered basic_auth.ini are pushed to the workload."""
         mocker_backend_store_uri = "postgresql://u:p@h:5432/mlflow"
@@ -1621,6 +1660,17 @@ class TestMlflowClientProvider:
         """Return the JSON-decoded reconcile payload the workload exec was called with."""
         return json.loads(exec_mock.call_args.args[0][3])
 
+    @staticmethod
+    def _metrics_entry(harness):
+        """Return the charm's own metrics reader entry, always leading the reconcile payload."""
+        credentials = harness.charm._get_or_create_auth_metric_secrets()
+        return {
+            "username": MLFLOW_METRICS_READER_USERNAME,
+            "password": credentials["password"],
+            "is_super_admin": False,
+            "workspace_grants": {"*": "read-only"},
+        }
+
     def test_reconcile_provisions_workspace_grants_and_responds(self, harness: Harness):
         harness.begin()
         relation_id, _ = add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
@@ -1643,11 +1693,12 @@ class TestMlflowClientProvider:
         assert exec_mock.call_args.args[0][:2] == ["python3", "-c"]
         assert self._payload(exec_mock) == {
             "users": [
+                self._metrics_entry(harness),
                 {
                     "username": "alice",
                     "is_super_admin": False,
                     "workspace_grants": [["analytics-team", "admin"], ["data-team", "read-only"]],
-                }
+                },
             ],
             "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
         }
@@ -1672,7 +1723,8 @@ class TestMlflowClientProvider:
         harness.charm._reconcile_mlflow_client_grants()
 
         assert self._payload(exec_mock)["users"] == [
-            {"username": "root", "is_super_admin": True, "workspace_grants": []}
+            self._metrics_entry(harness),
+            {"username": "root", "is_super_admin": True, "workspace_grants": []},
         ]
         provider.set_response.assert_called_once()
 
@@ -1687,11 +1739,12 @@ class TestMlflowClientProvider:
         harness.charm._reconcile_mlflow_client_grants()
 
         assert self._payload(exec_mock)["users"] == [
+            self._metrics_entry(harness),
             {
                 "username": "alice",
                 "is_super_admin": False,
                 "workspace_grants": [["team-a", MLFLOW_CLIENT_DEFAULT_TIER]],
-            }
+            },
         ]
 
     def test_reconcile_skips_unknown_resource_type(self, harness: Harness):
@@ -1705,7 +1758,7 @@ class TestMlflowClientProvider:
 
         harness.charm._reconcile_mlflow_client_grants()
 
-        exec_mock.assert_not_called()
+        assert self._payload(exec_mock)["users"] == [self._metrics_entry(harness)]
         provider.set_response.assert_not_called()
 
     def test_reconcile_skips_unknown_tier(self, harness: Harness):
@@ -1718,7 +1771,7 @@ class TestMlflowClientProvider:
 
         harness.charm._reconcile_mlflow_client_grants()
 
-        exec_mock.assert_not_called()
+        assert self._payload(exec_mock)["users"] == [self._metrics_entry(harness)]
         provider.set_response.assert_not_called()
 
     def test_reconcile_skips_super_admin_mixed_with_grants(self, harness: Harness):
@@ -1737,24 +1790,25 @@ class TestMlflowClientProvider:
 
         harness.charm._reconcile_mlflow_client_grants()
 
-        exec_mock.assert_not_called()
+        assert self._payload(exec_mock)["users"] == [self._metrics_entry(harness)]
         provider.set_response.assert_not_called()
 
-    def test_reconcile_skips_reserved_super_admin_username(self, harness: Harness):
+    @pytest.mark.parametrize(
+        "reserved_username", [MLFLOW_SUPER_ADMIN_USERNAME, MLFLOW_METRICS_READER_USERNAME]
+    )
+    def test_reconcile_skips_reserved_usernames(self, harness: Harness, reserved_username):
         harness.begin()
         add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
-        request = self._request(
-            MLFLOW_SUPER_ADMIN_USERNAME, [self._permission("super-admin", "*")]
-        )
+        request = self._request(reserved_username, [self._permission("super-admin", "*")])
         provider = self._provider(harness, [request])
         exec_mock = self._stub_exec(harness)
 
         harness.charm._reconcile_mlflow_client_grants()
 
-        # a request claiming the charm's own super-admin username is refused: never reaching the
-        # workload nor being acknowledged:
-        exec_mock.assert_not_called()
+        # a request claiming one of the charm's own reserved usernames is refused: never reaching
+        # the workload (which only gets the charm's metrics reader) nor being acknowledged:
+        assert self._payload(exec_mock)["users"] == [self._metrics_entry(harness)]
         provider.set_response.assert_not_called()
 
     def test_reconcile_skips_when_not_leader(self, harness: Harness):
@@ -1772,21 +1826,21 @@ class TestMlflowClientProvider:
         exec_mock.assert_not_called()
         provider.set_response.assert_not_called()
 
-    def test_reconcile_skips_exec_when_empty_and_no_exclusion(self, harness: Harness):
+    def test_reconcile_provisions_metrics_reader_without_relations(self, harness: Harness):
         harness.begin()
-        add_relation(harness, MLFLOW_CLIENT_RELATION_ENDPOINT)
 
-        provider = MagicMock()
-        provider.requests.return_value = []
-        harness.charm.mlflow_client_provider = provider
-        exec_mock = MagicMock()
-        harness.charm.container.exec = exec_mock
+        provider = self._provider(harness, [])
+        exec_mock = self._stub_exec(harness)
 
         harness.charm._reconcile_mlflow_client_grants()
 
-        # an empty desired set without a removal in progress must not run the snippet, so that a
-        # transient empty request set never prunes roles that are still in use:
-        exec_mock.assert_not_called()
+        # the charm's metrics reader is always provisioned, read-only across every workspace and
+        # with its password from the Juju secret, even without any mlflow-client relation:
+        exec_mock.assert_called_once()
+        assert self._payload(exec_mock) == {
+            "users": [self._metrics_entry(harness)],
+            "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
+        }
         provider.set_response.assert_not_called()
 
     def test_reconcile_prunes_on_exclusion_even_when_empty(self, harness: Harness):
@@ -1805,7 +1859,7 @@ class TestMlflowClientProvider:
         # a removal reconcile runs even with an empty desired set, so departed grants are pruned:
         exec_mock.assert_called_once()
         assert self._payload(exec_mock) == {
-            "users": [],
+            "users": [self._metrics_entry(harness)],
             "protected_admin": MLFLOW_SUPER_ADMIN_USERNAME,
         }
 
@@ -1820,8 +1874,8 @@ class TestMlflowClientProvider:
         harness.charm._reconcile_mlflow_client_grants(exclude_relation_id=relation_id)
 
         # the departing relation is skipped, so nothing is provisioned or returned for it and the
-        # script runs with an empty desired set to prune its grants:
-        assert self._payload(exec_mock)["users"] == []
+        # script runs with only the charm's metrics reader to prune its grants:
+        assert self._payload(exec_mock)["users"] == [self._metrics_entry(harness)]
         provider.set_response.assert_not_called()
 
     def test_exec_reconcile_raises_waiting_on_exec_error(self, harness: Harness, caplog):

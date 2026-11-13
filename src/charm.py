@@ -140,11 +140,18 @@ AUTHORIZATION_FUNCTION = f"{AUTH_MODULE_NAME}:authenticate_request"
 # contain any "@" so that it can never collide with a K8s namespace name (DNS-1123) or an IAM
 # email, which are the possible identity value kinds set by external entities:
 MLFLOW_SUPER_ADMIN_USERNAME = "mlflow_charm_super_admin"
+# username of the charm's read-only MLflow user, used by the Prometheus exporter to collect metrics
+# from the tracking server (same reserved-naming rationale as the super-admin's):
+MLFLOW_METRICS_READER_USERNAME = "mlflow_charm_metrics_reader"
+MLFLOW_METRICS_READER_TIER = "read-only"
 
 # label of the application-scoped Juju secret holding the auto-generated RBAC credentials (the
 # Flask secret key and the super-admin password), kept stable across restarts and identical across
 # replicas:
 AUTH_SECRET_LABEL = "mlflow-auth-credentials"
+# label of the application-scoped Juju secret holding the auto-generated credentials of the
+# read-only metrics reader user, used by the Prometheus exporter:
+AUTH_METRICS_SECRET_LABEL = "mlflow-metrics-auth-credentials"
 S3_RELATION_NAME = "s3-credentials"
 
 RELATION_ENDPOINT_FOR_BACKEND_STORE_DB = "relational-db"
@@ -231,22 +238,16 @@ class MlflowCharm(CharmBase):
         self._logging = LogForwarder(charm=self)
 
         # Prometheus related config
+        # NOTE: only the exporter is scraped, as it also re-exposes the tracking server's traffic
+        # metrics, whose own `/metrics` endpoint requires authentication and is not reachable by
+        # the metrics consumer through the service mesh:
         self.prometheus_provider = MetricsEndpointProvider(
             charm=self,
             relation_name="metrics-endpoint",
             jobs=[
                 {
                     "metrics_path": METRICS_PATH,
-                    "static_configs": [
-                        {
-                            "targets": [
-                                "*:{}".format(self._tracking_server_port),
-                                "*:{}".format(
-                                    self.model.config["mlflow_prometheus_exporter_port"]
-                                ),
-                            ]
-                        }
-                    ],
+                    "static_configs": [{"targets": ["*:{}".format(self._exporter_port)]}],
                 }
             ],
         )
@@ -438,6 +439,10 @@ class MlflowCharm(CharmBase):
     @property
     def _mlflow_exporter_layer(self) -> Layer:
         """Create and return Pebble framework layer."""
+        # the exporter queries the tracking server over in-pod localhost, without the identity
+        # header, so it authenticates via Basic auth as the charm's read-only metrics reader, whose
+        # credentials the MLflow client reads from these environment variables:
+        metrics_credentials = self._get_or_create_auth_metric_secrets()
 
         layer_config = {
             "summary": "mlflow-prometheus-exporter layer",
@@ -453,6 +458,10 @@ class MlflowCharm(CharmBase):
                         f"--mlflowurl http://localhost:{self._tracking_server_port}/"
                     ),
                     "startup": "enabled",
+                    "environment": {
+                        "MLFLOW_TRACKING_USERNAME": metrics_credentials["username"],
+                        "MLFLOW_TRACKING_PASSWORD": metrics_credentials["password"],
+                    },
                 },
             },
         }
@@ -919,6 +928,36 @@ class MlflowCharm(CharmBase):
             "admin_password": content["admin-password"],
         }
 
+    def _get_or_create_auth_metric_secrets(self) -> dict:
+        """Return the read-only metrics reader credentials, generating them on first use.
+
+        These credentials authenticate the mlflow-prometheus-exporter (over in-pod localhost Basic
+        auth) to the tracking server, so that it can collect metrics with read-only grants across
+        every workspace. The username is fixed and reserved, while the password is generated once
+        by the leader and stored in an application-scoped Juju secret, readable by every unit.
+
+        Raises:
+            ErrorWithStatus(..., Waiting) if the credentials have not been generated yet (a
+            non-leader unit observed before the leader created them), so the caller can defer.
+        """
+        try:
+            content = self.model.get_secret(label=AUTH_METRICS_SECRET_LABEL).get_content()
+        except SecretNotFoundError:
+            if not self.unit.is_leader():
+                raise ErrorWithStatus(
+                    "Waiting for the leader to generate the metrics credentials", WaitingStatus
+                )
+            content = {
+                "metrics-username": MLFLOW_METRICS_READER_USERNAME,
+                "metrics-password": secrets.token_urlsafe(32),
+            }
+            self.app.add_secret(content, label=AUTH_METRICS_SECRET_LABEL)
+
+        return {
+            "username": content["metrics-username"],
+            "password": content["metrics-password"],
+        }
+
     def _get_identity_aliases(self) -> dict[str, str]:
         """Return the validated flat ``{secondary-identity: primary-identity}`` alias map.
 
@@ -1020,7 +1059,17 @@ class MlflowCharm(CharmBase):
         if not self.unit.is_leader():
             return
 
-        users_grants_across_workspaces = []
+        # the charm's own read-only metrics reader is always part of the desired set, granted the
+        # read-only tier across every workspace, with its password (re)set from the Juju secret:
+        metrics_credentials = self._get_or_create_auth_metric_secrets()
+        users_grants_across_workspaces = [
+            {
+                "username": metrics_credentials["username"],
+                "password": metrics_credentials["password"],
+                "is_super_admin": False,
+                "workspace_grants": {"*": MLFLOW_METRICS_READER_TIER},
+            }
+        ]
         relation_responses_to_requirers = []
         for relation in self.model.relations[MLFLOW_CLIENT_RELATION_ENDPOINT]:
             if relation.id == exclude_relation_id:
@@ -1044,11 +1093,9 @@ class MlflowCharm(CharmBase):
                     )
                 )
 
-        # NOTE: an empty reconcile is skipped only as long as a relation removal is not being
-        # processed, so that transient empty requests do not prune grants that are still in use:
-        if users_grants_across_workspaces or exclude_relation_id is not None:
-            # reconciling user grants across workspaces:
-            self._exec_mlflow_client_reconcile(users_grants_across_workspaces)
+        # NOTE: the desired set always contains at least the charm's metrics reader, so the
+        # reconcile always runs, which also prunes the grants of removed or emptied requests:
+        self._exec_mlflow_client_reconcile(users_grants_across_workspaces)
 
         # communicating reconcile results to requirers:
         for relation_id, response in relation_responses_to_requirers:
@@ -1072,9 +1119,9 @@ class MlflowCharm(CharmBase):
             self.logger.warning("Ignoring mlflow-client request with empty username.")
             return None
 
-        if username == MLFLOW_SUPER_ADMIN_USERNAME:
+        if username in (MLFLOW_SUPER_ADMIN_USERNAME, MLFLOW_METRICS_READER_USERNAME):
             self.logger.warning(
-                "Ignoring mlflow-client request claiming the charm's reserved super-admin username."
+                "Ignoring mlflow-client request claiming one of the charm's reserved usernames."
             )
             return None
 
@@ -1374,7 +1421,8 @@ class MlflowCharm(CharmBase):
                 self.logger,
             )
 
-            # NOTE: MLflow clients' workspace grants are reconciled here, on every holistic charm
+            # NOTE: MLflow clients' workspace grants, as well as the charm's own metrics reader's,
+            # are reconciled here, on every holistic charm
             # reconcile with an idempotent approach, rather than by observing the provider
             # library's per-request events, because:
             # - the library splits the request lifecycle across three mutually-exclusive events,
@@ -1385,8 +1433,7 @@ class MlflowCharm(CharmBase):
             # - this ensures workspace grants are re-provisioned even after events unrelated to the
             # mlflow_client relation, such as workload restarts or backend-store re-relations,
             # which avoids drifts in MLflow's auth state (which lives in the backend store)
-            if self.model.relations[MLFLOW_CLIENT_RELATION_ENDPOINT]:
-                self._reconcile_mlflow_client_grants()
+            self._reconcile_mlflow_client_grants()
 
         except ErrorWithStatus as err:
             self.model.unit.status = err.status
