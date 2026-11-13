@@ -238,22 +238,16 @@ class MlflowCharm(CharmBase):
         self._logging = LogForwarder(charm=self)
 
         # Prometheus related config
+        # NOTE: only the exporter is scraped, as it also re-exposes the tracking server's traffic
+        # metrics, whose own `/metrics` endpoint requires authentication and is not reachable by
+        # the metrics consumer through the service mesh:
         self.prometheus_provider = MetricsEndpointProvider(
             charm=self,
             relation_name="metrics-endpoint",
             jobs=[
                 {
                     "metrics_path": METRICS_PATH,
-                    "static_configs": [
-                        {
-                            "targets": [
-                                "*:{}".format(self._tracking_server_port),
-                                "*:{}".format(
-                                    self.model.config["mlflow_prometheus_exporter_port"]
-                                ),
-                            ]
-                        }
-                    ],
+                    "static_configs": [{"targets": ["*:{}".format(self._exporter_port)]}],
                 }
             ],
         )

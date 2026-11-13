@@ -59,6 +59,20 @@ CHARM_NAME = METADATA["name"]
 CONTAINERS_SECURITY_CONTEXT_MAP = generate_container_securitycontext_map(METADATA)
 HTTP_PATH = "/"
 TEST_EXPERIMENT_NAME = "test-experiment"
+
+# the MLflow resources counted by the Prometheus exporter:
+EXPORTER_METRIC_NAMES = (
+    "num_experiments",
+    "num_runs",
+    "num_registered_models",
+    "num_prompts",
+    "num_model_versions",
+    "num_logged_models",
+)
+# Only experiments should have populated resources by default
+EXPORTER_METRIC_NAMES_WITHOUT_DEFAULT_RESOURCES = tuple(
+    name for name in EXPORTER_METRIC_NAMES if name != "num_experiments"
+)
 SPOOFED_IDENTITY = "spoofed-user-identity"
 S3_RELATION_NAME = "s3-credentials"
 # label enrolling a namespace's workloads in the Istio ambient mesh:
@@ -366,17 +380,16 @@ class TestCharm:
         logger.info("found dashboards: %s", dashboards)
         await assert_grafana_dashboards(app, dashboards)
 
-    # TODO: remove once multi-tenancy is completed:
-    @pytest.mark.skip(reason="WIP: /metrics now behind RBAC and exporter not yet credentialed")
-    async def test_metrics_enpoint(self, ops_test: OpsTest):
+    async def test_metrics_endpoint(self, ops_test: OpsTest):
         """Test metrics_endpoints are defined in relation data bag and their accessibility.
 
         This function gets all the metrics_endpoints from the relation data bag, checks if
         they are available from the grafana-agent-k8s charm and finally compares them with the
         ones provided to the function.
+
+        Only the exporter is scraped, as it also re-exposes the tracking server's traffic metrics.
         """
         app = ops_test.model.applications[CHARM_NAME]
-        await assert_metrics_endpoint(app, metrics_port=5000, metrics_path="/metrics")
         await assert_metrics_endpoint(app, metrics_port=8000, metrics_path="/metrics")
 
     async def test_logging(self, ops_test: OpsTest):
@@ -384,22 +397,42 @@ class TestCharm:
         app = ops_test.model.applications[CHARM_NAME]
         await assert_logging(app)
 
-    # TODO: remove once multi-tenancy is completed:
-    @pytest.mark.skip(reason="WIP: /metrics now behind RBAC and exporter not yet credentialed")
     @retry(stop=stop_after_delay(300), wait=wait_fixed(10))
     @pytest.mark.abort_on_fail
     async def test_can_connect_exporter_and_get_metrics(self, ops_test: OpsTest):
+        """The exporter serves the MLflow resource counts and the tracking server's traffic metrics.
+
+        At this point no MLflow resource has been created yet, apart from the default experiment.
+        """
         config = await ops_test.model.applications[CHARM_NAME].get_config()
         exporter_port = config["mlflow_prometheus_exporter_port"]["value"]
         # while port-forwarding the metrics exporter for ease of access:
         with _PortForward(ops_test.model_name, exporter_port) as metrics_exporter_url:
-            url = f"{metrics_exporter_url}/metrics"
-            response = requests.get(url)
-            assert response.status_code == 200
-            metrics_text = response.text
-            assert 'mlflow_metric{metric_name="num_experiments"} 1.0' in metrics_text
-            assert 'mlflow_metric{metric_name="num_registered_models"} 0.0' in metrics_text
-            assert 'mlflow_metric{metric_name="num_runs"} 0' in metrics_text
+            response = requests.get(f"{metrics_exporter_url}/metrics")
+        assert response.status_code == 200
+        metric_lines = response.text.splitlines()
+
+        # the counts per workspace are reported, proving that the exporter authenticates as the
+        # metrics reader and that the latter can list the workspaces (with none listed, the
+        # deployment-level totals would also be reported, but trivially as zeros):
+        for metric_name in EXPORTER_METRIC_NAMES:
+            assert any(
+                line.startswith(f'mlflow_workspace_metric{{metric_name="{metric_name}",')
+                for line in metric_lines
+            ), f"No per-workspace {metric_name} reported"
+
+        # the deployment-level totals are reported, which only happens for a count successfully
+        # collected in every workspace, proving that the metrics reader can read all of them:
+        for metric_name in EXPORTER_METRIC_NAMES:
+            assert any(
+                line.startswith(f'mlflow_metric{{metric_name="{metric_name}"}} ')
+                for line in metric_lines
+            ), f"No deployment-level {metric_name} reported"
+        for metric_name in EXPORTER_METRIC_NAMES_WITHOUT_DEFAULT_RESOURCES:
+            assert f'mlflow_metric{{metric_name="{metric_name}"}} 0.0' in metric_lines
+
+        # the tracking server's traffic metrics are re-exposed:
+        assert any(line.startswith("mlflow_http_request_total{") for line in metric_lines)
 
     @pytest.mark.abort_on_fail
     async def test_deploy_data_integrator(self, ops_test: OpsTest):
