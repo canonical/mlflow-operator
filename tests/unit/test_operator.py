@@ -91,6 +91,8 @@ S3_DATA = {
     "tls-ca-chain": json.dumps(S3_TLS_CA_CHAIN),
 }
 
+S3_CA_BUNDLE_PATH = "/var/lib/pebble/default/s3-ca-bundle.pem"
+
 BACKEND_STORE_DB_DATA = {
     "database": "mlflow",
     "host": "host",
@@ -120,39 +122,34 @@ AUTH_SECRETS = {
     "flask_secret_key": EXPECTED_FLASK_SECRET_KEY,
     "admin_password": EXPECTED_ADMIN_PASSWORD,
 }
-EXPECTED_AUTH_ENVIRONMENT = {
-    "MLFLOW_ENABLE_WORKSPACES": "true",
-    "MLFLOW_RBAC_SEED_DEFAULT_ROLES": "false",
-    "MLFLOW_AUTH_CONFIG_PATH": "/var/lib/pebble/default/auth/basic_auth.ini",
-    "MLFLOW_FLASK_SERVER_SECRET_KEY": EXPECTED_FLASK_SECRET_KEY,
-    "IDENTITY_HEADER_NAME": "kubeflow-userid",
-    "IDENTITY_ALIASES": "{}",
-    "PYTHONPATH": "/var/lib/pebble/default/auth",
-    "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
-}
-EXPECTED_ENVIRONMENT_NON_PROXY_MODE = {
-    "MLFLOW_BACKEND_STORE_URI": "postgresql://username:lorem-ipsum@host:port/mlflow",
-    "MLFLOW_DEFAULT_ARTIFACT_ROOT": EXPECTED_S3_URI,
-    "MLFLOW_EXPOSE_PROMETHEUS": EXPECTED_SERVER_METRICS_PATH,
-    "MLFLOW_HOST": EXPECTED_SERVER_HOST,
-    "MLFLOW_PORT": EXPECTED_SERVER_PORT,
-    "MLFLOW_SERVE_ARTIFACTS": "False",
-    "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
-    **EXPECTED_AUTH_ENVIRONMENT,
-}
-EXPECTED_ENVIRONMENT_PROXY_MODE = {
-    "MLFLOW_BACKEND_STORE_URI": "postgresql://username:lorem-ipsum@host:port/mlflow",
-    "MLFLOW_EXPOSE_PROMETHEUS": EXPECTED_SERVER_METRICS_PATH,
-    "MLFLOW_HOST": EXPECTED_SERVER_HOST,
-    "MLFLOW_PORT": EXPECTED_SERVER_PORT,
+EXPECTED_COMMON_ENVIRONMENT = {
     "AWS_ACCESS_KEY_ID": OBJECT_STORAGE_DATA_NORMALIZED["access_key"],
     "AWS_SECRET_ACCESS_KEY": OBJECT_STORAGE_DATA_NORMALIZED["secret_key"],
+    "IDENTITY_ALIASES": "{}",
+    "IDENTITY_HEADER_NAME": "kubeflow-userid",
+    "MLFLOW_AUTH_CONFIG_PATH": "/var/lib/pebble/default/auth/basic_auth.ini",
+    "MLFLOW_BACKEND_STORE_URI": "postgresql://username:lorem-ipsum@host:port/mlflow",
+    "MLFLOW_ENABLE_WORKSPACES": "true",
+    "MLFLOW_EXPOSE_PROMETHEUS": EXPECTED_SERVER_METRICS_PATH,
+    "MLFLOW_FLASK_SERVER_SECRET_KEY": EXPECTED_FLASK_SECRET_KEY,
+    "MLFLOW_HOST": EXPECTED_SERVER_HOST,
+    "MLFLOW_PORT": EXPECTED_SERVER_PORT,
+    "MLFLOW_RBAC_SEED_DEFAULT_ROLES": "false",
+    "MLFLOW_S3_ENDPOINT_URL": EXPECTED_S3_ENDPOINT,
+    "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
+    "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
+    "PYTHONPATH": "/var/lib/pebble/default/auth",
+}
+EXPECTED_ENVIRONMENT_NON_PROXY_MODE = {
+    "MLFLOW_SERVE_ARTIFACTS": "False",
+    "MLFLOW_DEFAULT_ARTIFACT_ROOT": EXPECTED_S3_URI,
+    **EXPECTED_COMMON_ENVIRONMENT,
+}
+EXPECTED_ENVIRONMENT_PROXY_MODE = {
+    "MLFLOW_SERVE_ARTIFACTS": "True",
     "MLFLOW_ARTIFACTS_DESTINATION": EXPECTED_S3_URI,
     "MLFLOW_DEFAULT_ARTIFACT_ROOT": "mlflow-artifacts:/",
-    "MLFLOW_S3_ENDPOINT_URL": EXPECTED_S3_ENDPOINT,
-    "MLFLOW_SERVE_ARTIFACTS": "True",
-    "MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE": "true",
-    **EXPECTED_AUTH_ENVIRONMENT,
+    **EXPECTED_COMMON_ENVIRONMENT,
 }
 
 
@@ -606,22 +603,33 @@ class TestCharm:
     @patch("charm.MlflowCharm._get_or_create_auth_secrets", lambda *args, **kw: AUTH_SECRETS)
     @patch("charm.MlflowCharm._get_artifact_store_data")
     @pytest.mark.parametrize(
-        "serve_artifacts, tls_ca_chain, expected_environment",
+        "serve_artifacts, tls_ca_chain, expected_base_environment",
         [
             (True, None, EXPECTED_ENVIRONMENT_PROXY_MODE),
+            (True, S3_TLS_CA_CHAIN, EXPECTED_ENVIRONMENT_PROXY_MODE),
+            (False, None, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
             (False, S3_TLS_CA_CHAIN, EXPECTED_ENVIRONMENT_NON_PROXY_MODE),
         ],
-        ids=["proxy-mode-without-tls", "tls-without-proxy-mode"],
+        ids=[
+            "proxy-mode-without-tls",
+            "proxy-mode-with-tls",
+            "non-proxy-mode-without-tls",
+            "non-proxy-mode-with-tls",
+        ],
     )
-    def test_generate_environment_omits_ca_bundle_when_not_needed(
+    def test_generate_environment_omits_ca_bundle_only_when_tls_off(
         self,
         mock_get_artifact_store_data,
         harness: Harness,
         serve_artifacts,
         tls_ca_chain,
-        expected_environment,
+        expected_base_environment,
     ):
-        """AWS_CA_BUNDLE is only exposed for a TLS artifact store in proxy mode."""
+        """AWS_CA_BUNDLE is exposed only when TLS is expected but in all artifact serving modes."""
+        expected_environment = {
+            **expected_base_environment,
+            **({"AWS_CA_BUNDLE": S3_CA_BUNDLE_PATH} if tls_ca_chain is not None else {}),
+        }
         mock_get_artifact_store_data.return_value = {
             **OBJECT_STORAGE_DATA_NORMALIZED,
             "bucket": "",
@@ -630,7 +638,7 @@ class TestCharm:
         harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
         harness.begin()
         envs = harness.charm._generate_environment()
-        assert "AWS_CA_BUNDLE" not in envs
+        assert ("AWS_CA_BUNDLE" in envs) == (tls_ca_chain is not None)
         assert envs == expected_environment
 
     @pytest.mark.parametrize(
@@ -740,16 +748,22 @@ class TestCharm:
     @pytest.mark.parametrize(
         "serve_artifacts, tls_ca_chain",
         [
+            (True, S3_TLS_CA_CHAIN),
             (True, None),
             (False, S3_TLS_CA_CHAIN),
             (False, None),
         ],
-        ids=["proxy-mode-without-tls", "tls-without-proxy-mode", "neither"],
+        ids=[
+            "proxy-mode-with-tls",
+            "proxy-mode-without-tls",
+            "non-proxy-mode-with-tls",
+            "non-proxy-mode-without-tls",
+        ],
     )
     def test_reconcile_s3_ca_bundle_skips_push_when_not_needed(
         self, harness: Harness, serve_artifacts, tls_ca_chain
     ):
-        """The CA bundle is only pushed in proxy mode against a TLS store."""
+        """The CA bundle is only pushed against a TLS store but in both modes."""
         harness.update_config({CONFIG_OPTION_NAME_FOR_SERVE_ARTIFACTS: serve_artifacts})
         harness.begin()
         harness.charm._container.push = MagicMock()
@@ -758,7 +772,10 @@ class TestCharm:
             {**OBJECT_STORAGE_DATA_NORMALIZED, "tls_ca_chain": tls_ca_chain}
         )
 
-        harness.charm._container.push.assert_not_called()
+        if tls_ca_chain is not None:
+            harness.charm._container.push.assert_called_once()
+        else:
+            harness.charm._container.push.assert_not_called()
 
     @patch("charm.S3BucketWrapper")
     @patch(

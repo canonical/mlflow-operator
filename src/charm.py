@@ -784,11 +784,14 @@ class MlflowCharm(CharmBase):
         environment variable set in `_generate_environment`, a variable that the boto3 client that
         the tracking server relies on behind the scenes.
 
-        When the tracking server is not in proxy mode or when the artifact store does not have a
-        private CA chain, this is not necessary.
+        This is necessary also when the tracking server is in non-proxy mode for the UI to work
+        when inspecting artifacts, because in that case the tracking server has to directly access
+        the artifact store regardless of the artifact serving mode.
+
+        This is not necessary when the artifact store does not have a private CA chain.
         """
         tls_ca_chain = artifact_store_data["tls_ca_chain"]
-        if self.proxy_mode and tls_ca_chain:
+        if tls_ca_chain:
             self.container.push(
                 S3_CA_BUNDLE_CONTAINER_PATH, "\n".join(tls_ca_chain), make_dirs=True
             )
@@ -862,20 +865,30 @@ class MlflowCharm(CharmBase):
             # several extra worker processes that each open database connections:
             "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false",
         }
+
+        # NOTE: the following environment variables for direct artifact store access are necessary
+        # also when the tracking server is in non-proxy mode for the UI to work when inspecting
+        # artifacts, because in that case the tracking server has to directly access the artifact
+        # store regardless of the artifact serving mode:
+        artifact_store_access_variables = {
+            "MLFLOW_S3_ENDPOINT_URL": self._extract_s3_endpoint(artifact_store_data),
+            "AWS_ACCESS_KEY_ID": artifact_store_data["access_key"],
+            "AWS_SECRET_ACCESS_KEY": artifact_store_data["secret_key"],
+        }
+        if artifact_store_data["tls_ca_chain"]:
+            artifact_store_access_variables["AWS_CA_BUNDLE"] = S3_CA_BUNDLE_CONTAINER_PATH
+        if artifact_store_data["region"]:
+            artifact_store_access_variables["AWS_DEFAULT_REGION"] = artifact_store_data["region"]
+        environment_variables.update(artifact_store_access_variables)
+
         if self.proxy_mode:
-            proxy_environment_variables = {
-                "AWS_ACCESS_KEY_ID": artifact_store_data["access_key"],
-                "AWS_SECRET_ACCESS_KEY": artifact_store_data["secret_key"],
-                "MLFLOW_ARTIFACTS_DESTINATION": s3_bucket_uri,
-                "MLFLOW_DEFAULT_ARTIFACT_ROOT": "mlflow-artifacts:/",
-                "MLFLOW_S3_ENDPOINT_URL": self._extract_s3_endpoint(artifact_store_data),
-                "MLFLOW_SERVE_ARTIFACTS": "True",
-            }
-            if artifact_store_data["tls_ca_chain"]:
-                proxy_environment_variables["AWS_CA_BUNDLE"] = S3_CA_BUNDLE_CONTAINER_PATH
-            if artifact_store_data["region"]:
-                proxy_environment_variables["AWS_DEFAULT_REGION"] = artifact_store_data["region"]
-            environment_variables.update(proxy_environment_variables)
+            environment_variables.update(
+                {
+                    "MLFLOW_ARTIFACTS_DESTINATION": s3_bucket_uri,
+                    "MLFLOW_DEFAULT_ARTIFACT_ROOT": "mlflow-artifacts:/",
+                    "MLFLOW_SERVE_ARTIFACTS": "True",
+                }
+            )
         else:
             environment_variables.update(
                 {

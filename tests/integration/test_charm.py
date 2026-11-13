@@ -1052,6 +1052,43 @@ class TestCharm:
         await assert_ui_is_accessible(ops_test)
 
     @pytest.mark.abort_on_fail
+    async def test_server_can_access_artifacts_in_non_proxy_mode_for_ui(self, ops_test: OpsTest):
+        """The tracking server can access artifacts also in non-proxy mode for calls by the UI."""
+        config = await ops_test.model.applications[CHARM_NAME].get_config()
+        tracking_server_port = config["mlflow_port"]["value"]
+        experiment_name = f"{TEST_EXPERIMENT_NAME}-non-proxy-{self.generate_random_string(6)}"
+        request_headers = {
+            UPSTREAM_WORKSPACE_HEADER_NAME: WORKSPACE_WITH_ADMIN_ACCESS_FINAL,
+            # TODO: remove if authentication via IAM charms is implemented in integration tests:
+            IDENTITY_HEADER_NAME: TEST_IDENTITY,
+        }
+
+        # while port-forwarding the tracking server for ease of access:
+        with _PortForward(ops_test.model_name, tracking_server_port) as tracking_server_url:
+            experiment = requests.post(
+                f"{tracking_server_url}/api/2.0/mlflow/experiments/create",
+                json={"name": experiment_name},
+                headers=request_headers,
+            )
+            assert experiment.status_code == 200, experiment.text
+            run = requests.post(
+                f"{tracking_server_url}/api/2.0/mlflow/runs/create",
+                json={"experiment_id": experiment.json()["experiment_id"]},
+                headers=request_headers,
+            )
+            assert run.status_code == 200, run.text
+            run_info = run.json()["run"]["info"]
+            assert run_info["artifact_uri"].startswith("s3://"), run_info["artifact_uri"]
+
+            artifacts = requests.get(
+                # NOTE: this endpoint is called (only) by the UI:
+                f"{tracking_server_url}/ajax-api/2.0/mlflow/artifacts/list",
+                params={"run_id": run_info["run_id"]},
+                headers=request_headers,
+            )
+            assert artifacts.status_code == 200, artifacts.text
+
+    @pytest.mark.abort_on_fail
     async def test_enable_proxy_mode_expect_active(self, ops_test: OpsTest):
         """Enabling serve_artifacts (proxy mode) must keep the charm active."""
         await ops_test.model.applications[CHARM_NAME].set_config({"serve_artifacts": "true"})
