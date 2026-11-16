@@ -159,6 +159,12 @@ for entry in payload["users"]:
     role_name = ROLE_PREFIX_FOR_WORKSPACE_WIDE + str(user.id)
     workspace_grants = entry["workspace_grants"]
     if isinstance(workspace_grants, dict):
+        # We're expecting a single {"*": tier} mapping, raise an error otherwise
+        if workspace_grants.keys() != {"*"}:
+            raise ValueError(
+                f"Unsupported workspace_grants mapping for user {entry['username']!r}: expected "
+                f'exactly {{"*": tier}}, got {workspace_grants!r}'
+            )
         # expanding a {"*": tier} grant to every workspace existing at reconcile time:
         workspace_grants = [
             [workspace.name, workspace_grants["*"]]
