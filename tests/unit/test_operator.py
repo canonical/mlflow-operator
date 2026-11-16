@@ -1806,8 +1806,9 @@ class TestMlflowClientProvider:
 
         harness.charm._reconcile_mlflow_client_grants()
 
-        # a request claiming one of the charm's own reserved usernames is refused: never reaching
-        # the workload (which only gets the charm's metrics reader) nor being acknowledged:
+        # a request claiming one of the charm's own reserved usernames is refused: only reaching
+        # the workload if it's the charm's metrics reader, and never being acknowledged in the
+        # data-integrator relation response:
         assert self._payload(exec_mock)["users"] == [self._metrics_entry(harness)]
         provider.set_response.assert_not_called()
 
