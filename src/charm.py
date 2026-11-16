@@ -933,8 +933,9 @@ class MlflowCharm(CharmBase):
 
         These credentials authenticate the mlflow-prometheus-exporter (over in-pod localhost Basic
         auth) to the tracking server, so that it can collect metrics with read-only grants across
-        every workspace. The username is fixed and reserved, while the password is generated once
-        by the leader and stored in an application-scoped Juju secret, readable by every unit.
+        every workspace. The username defined in MLFLOW_METRICS_READER_USERNAME,
+        while the password is generated once by the leader and stored in an
+        application-scoped Juju secret, readable by every unit.
 
         Raises:
             ErrorWithStatus(..., Waiting) if the credentials have not been generated yet (a
@@ -947,14 +948,11 @@ class MlflowCharm(CharmBase):
                 raise ErrorWithStatus(
                     "Waiting for the leader to generate the metrics credentials", WaitingStatus
                 )
-            content = {
-                "metrics-username": MLFLOW_METRICS_READER_USERNAME,
-                "metrics-password": secrets.token_urlsafe(32),
-            }
+            content = {"metrics-password": secrets.token_urlsafe(32)}
             self.app.add_secret(content, label=AUTH_METRICS_SECRET_LABEL)
 
         return {
-            "username": content["metrics-username"],
+            "username": MLFLOW_METRICS_READER_USERNAME,
             "password": content["metrics-password"],
         }
 
