@@ -903,15 +903,6 @@ class TestCharm:
         # the credentials are persisted in a Juju secret, so a later call returns the same values:
         assert first == second
 
-    def test_get_or_create_auth_secrets_waits_when_missing_and_not_leader(self, harness: Harness):
-        """A non-leader defers until the leader has generated the shared RBAC credentials."""
-        harness.set_leader(False)
-        harness.begin()
-
-        with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._get_or_create_auth_secrets()
-        assert exc_info.value.status_type is WaitingStatus
-
     def test_get_or_create_auth_metric_secrets_generates_and_persists(self, harness: Harness):
         """The leader generates the metrics reader credentials once and reuses them later."""
         harness.begin()
@@ -925,17 +916,6 @@ class TestCharm:
         assert first["password"] != harness.charm._get_or_create_auth_secrets()["admin_password"]
         # the credentials are persisted in a Juju secret, so a later call returns the same values:
         assert first == second
-
-    def test_get_or_create_auth_metric_secrets_waits_when_missing_and_not_leader(
-        self, harness: Harness
-    ):
-        """A non-leader defers until the leader has generated the metrics reader credentials."""
-        harness.set_leader(False)
-        harness.begin()
-
-        with pytest.raises(ErrorWithStatus) as exc_info:
-            harness.charm._get_or_create_auth_metric_secrets()
-        assert exc_info.value.status_type is WaitingStatus
 
     def test_exporter_layer_authenticates_as_metrics_reader(self, harness: Harness):
         """The exporter gets the metrics reader credentials via the MLflow client env vars."""

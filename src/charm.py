@@ -906,17 +906,11 @@ class MlflowCharm(CharmBase):
         and stored in an application-scoped Juju secret, so they stay stable across restarts and
         identical across replicas (the auth app requires a consistent Flask secret key).
 
-        Raises:
-            ErrorWithStatus(..., Waiting) if the credentials have not been generated yet (a
-            non-leader unit observed before the leader created them), so the caller can defer.
+        Must only be called by the leader unit.
         """
         try:
             content = self.model.get_secret(label=AUTH_SECRET_LABEL).get_content()
         except SecretNotFoundError:
-            if not self.unit.is_leader():
-                raise ErrorWithStatus(
-                    "Waiting for the leader to generate the RBAC credentials", WaitingStatus
-                )
             content = {
                 "flask-secret-key": secrets.token_urlsafe(32),
                 "admin-password": secrets.token_urlsafe(32),
@@ -935,19 +929,13 @@ class MlflowCharm(CharmBase):
         auth) to the tracking server, so that it can collect metrics with read-only grants across
         every workspace. The username defined in MLFLOW_METRICS_READER_USERNAME,
         while the password is generated once by the leader and stored in an
-        application-scoped Juju secret, readable by every unit.
+        application-scoped Juju secret.
 
-        Raises:
-            ErrorWithStatus(..., Waiting) if the credentials have not been generated yet (a
-            non-leader unit observed before the leader created them), so the caller can defer.
+        Must only be called by the leader unit.
         """
         try:
             content = self.model.get_secret(label=AUTH_METRICS_SECRET_LABEL).get_content()
         except SecretNotFoundError:
-            if not self.unit.is_leader():
-                raise ErrorWithStatus(
-                    "Waiting for the leader to generate the metrics credentials", WaitingStatus
-                )
             content = {"metrics-password": secrets.token_urlsafe(32)}
             self.app.add_secret(content, label=AUTH_METRICS_SECRET_LABEL)
 
