@@ -24,17 +24,18 @@ from charmed_kubeflow_chisme.testing import (
     ISTIO_BEACON_K8S_APP,
     ISTIO_INGRESS_K8S_APP,
     ISTIO_INGRESS_ROUTE_ENDPOINT,
+    ISTIO_K8S_APP,
     assert_alert_rules,
     assert_grafana_dashboards,
     assert_logging,
     assert_metrics_endpoint,
     assert_path_reachable_through_ingress,
     assert_security_context,
-    deploy_and_integrate_service_mesh_charms,
     generate_container_securitycontext_map,
     get_alert_rules,
     get_grafana_dashboards,
     get_pod_names,
+    integrate_with_service_mesh,
 )
 from charmed_kubeflow_chisme.testing.s3_integration import deploy_and_assert_s3_integrator
 from charms_dependencies import DATA_INTEGRATOR, POSTGRESQL_K8S, S3_INTEGRATOR
@@ -84,7 +85,33 @@ MISSING_S3_CREDENTIALS_STATUS_MESSAGE = (
 # A second istio-ingress-k8s instance used to verify multiple-ingress support.
 SECOND_INGRESS_APP = "istio-ingress-k8s-alt"
 ISTIO_K8S_CHANNEL = "1.31/stable"
-INGRESS_CHANNEL = ISTIO_K8S_CHANNEL
+
+
+async def deploy_istio_charm(
+    ops_test: OpsTest, charm: str, *options: str, application_name: str | None = None
+):
+    """Deploy an Istio charm with the Juju CLI; python-libjuju can't deploy Ubuntu 26.04."""
+    app_name = application_name or charm
+    name_args = (application_name,) if application_name else ()
+    await ops_test.juju(
+        "deploy",
+        charm,
+        *name_args,
+        "--channel",
+        ISTIO_K8S_CHANNEL,
+        "--trust",
+        *options,
+        check=True,
+    )
+    await ops_test.model.wait_for_idle(
+        apps=[app_name],
+        raise_on_blocked=False,
+        raise_on_error=False,
+        wait_for_active=True,
+        timeout=60 * 15,
+    )
+
+
 # Name of the HTTPRoute submitted by mlflow (see charm._ingress_config).
 INGRESS_ROUTE_NAME = "http-route"
 # Gateway listener section for cleartext HTTP on port 80.
@@ -233,9 +260,10 @@ class TestCharm:
         The tracking server is also restricted to in-mesh source principals here, so the rest of
         the ambient suite exercises the charm under that authorization policy.
         """
-        await deploy_and_integrate_service_mesh_charms(
-            CHARM_NAME, ops_test.model, channel=ISTIO_K8S_CHANNEL
-        )
+        await deploy_istio_charm(ops_test, ISTIO_K8S_APP, "--config", "platform=")
+        await deploy_istio_charm(ops_test, ISTIO_INGRESS_K8S_APP)
+        await deploy_istio_charm(ops_test, ISTIO_BEACON_K8S_APP, "--config", "model-on-mesh=true")
+        await integrate_with_service_mesh(CHARM_NAME, ops_test.model)
         # restrict the tracking server to the platform waypoint's identity (in-mesh traffic); the
         # ingress gateway is allowed separately by istio-ingress-k8s's own L4 policy:
         await ops_test.model.applications[CHARM_NAME].set_config(
@@ -926,18 +954,8 @@ class TestCharm:
         mlflow must accept more than one istio-ingress-route relation without
         erroring, so it should remain active after the second ingress is related.
         """
-        await ops_test.model.deploy(
-            ISTIO_INGRESS_K8S_APP,
-            application_name=SECOND_INGRESS_APP,
-            channel=INGRESS_CHANNEL,
-            trust=True,
-        )
-        await ops_test.model.wait_for_idle(
-            [SECOND_INGRESS_APP],
-            raise_on_blocked=False,
-            raise_on_error=False,
-            wait_for_active=True,
-            timeout=60 * 15,
+        await deploy_istio_charm(
+            ops_test, ISTIO_INGRESS_K8S_APP, application_name=SECOND_INGRESS_APP
         )
 
         await ops_test.model.integrate(
