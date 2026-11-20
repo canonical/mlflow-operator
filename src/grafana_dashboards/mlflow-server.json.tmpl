@@ -194,7 +194,7 @@
         "type": "prometheus",
         "uid": "${prometheusds}"
       },
-      "description": "Number of MLflow experiments across all workspaces. The total is only reported when it could be counted in every workspace.",
+      "description": "Number of MLflow experiments across all workspaces. Unavailable when it could not be counted in every workspace (see the mlflow-prometheus-exporter logs), or when the exporter is not being scraped (see MLflow up).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -213,7 +213,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "Unavailable"
         },
         "overrides": []
       },
@@ -260,7 +261,7 @@
         "type": "prometheus",
         "uid": "${prometheusds}"
       },
-      "description": "Number of MLflow runs across all workspaces. The total is only reported when it could be counted in every workspace.",
+      "description": "Number of MLflow runs across all workspaces. Unavailable when it could not be counted in every workspace (see the mlflow-prometheus-exporter logs), or when the exporter is not being scraped (see MLflow up).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -279,7 +280,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "Unavailable"
         },
         "overrides": []
       },
@@ -326,7 +328,7 @@
         "type": "prometheus",
         "uid": "${prometheusds}"
       },
-      "description": "Number of MLflow registered models (excluding prompts) across all workspaces. The total is only reported when it could be counted in every workspace.",
+      "description": "Number of MLflow registered models (excluding prompts) across all workspaces. Unavailable when it could not be counted in every workspace (see the mlflow-prometheus-exporter logs), or when the exporter is not being scraped (see MLflow up).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -345,7 +347,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "Unavailable"
         },
         "overrides": []
       },
@@ -392,7 +395,7 @@
         "type": "prometheus",
         "uid": "${prometheusds}"
       },
-      "description": "Number of MLflow model versions (excluding prompt versions) across all workspaces. The total is only reported when it could be counted in every workspace.",
+      "description": "Number of MLflow model versions (excluding prompt versions) across all workspaces. Unavailable when it could not be counted in every workspace (see the mlflow-prometheus-exporter logs), or when the exporter is not being scraped (see MLflow up).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -411,7 +414,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "Unavailable"
         },
         "overrides": []
       },
@@ -458,7 +462,7 @@
         "type": "prometheus",
         "uid": "${prometheusds}"
       },
-      "description": "Number of MLflow logged models across all workspaces. The total is only reported when it could be counted in every workspace.",
+      "description": "Number of MLflow logged models across all workspaces. Unavailable when it could not be counted in every workspace (see the mlflow-prometheus-exporter logs), or when the exporter is not being scraped (see MLflow up).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -477,7 +481,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "Unavailable"
         },
         "overrides": []
       },
@@ -524,7 +529,7 @@
         "type": "prometheus",
         "uid": "${prometheusds}"
       },
-      "description": "Number of MLflow prompts across all workspaces. The total is only reported when it could be counted in every workspace.",
+      "description": "Number of MLflow prompts across all workspaces. Unavailable when it could not be counted in every workspace (see the mlflow-prometheus-exporter logs), or when the exporter is not being scraped (see MLflow up).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -543,7 +548,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "Unavailable"
         },
         "overrides": []
       },
