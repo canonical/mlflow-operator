@@ -39,7 +39,7 @@
       },
       "id": 1,
       "panels": [],
-      "title": "Overview",
+      "title": "Overview (all workspaces)",
       "type": "row"
     },
     {
@@ -87,7 +87,7 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 4,
+        "w": 3,
         "x": 0,
         "y": 1
       },
@@ -115,8 +115,9 @@
           "editorMode": "code",
           "expr": "up{juju_charm=\"mlflow-server\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_application=~\"$juju_application\",juju_unit=~\"$juju_unit\"}",
           "legendFormat": "{{juju_unit}}",
-          "range": true,
-          "refId": "A"
+          "range": false,
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "MLflow up",
@@ -131,7 +132,8 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "fixedColor": "text",
+            "mode": "fixed"
           },
           "decimals": 0,
           "min": 0,
@@ -151,8 +153,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 4,
-        "x": 4,
+        "w": 3,
+        "x": 3,
         "y": 1
       },
       "id": 3,
@@ -179,8 +181,9 @@
           "editorMode": "code",
           "expr": "count(count by (workspace) (mlflow_workspace_metric{juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_application=~\"$juju_application\",juju_unit=~\"$juju_unit\"}))",
           "legendFormat": "Workspaces",
-          "range": true,
-          "refId": "A"
+          "range": false,
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Workspaces",
@@ -191,11 +194,12 @@
         "type": "prometheus",
         "uid": "${prometheusds}"
       },
-      "description": "Number of MLflow resources across all workspaces. A total is only reported when its resources could be counted in every workspace.",
+      "description": "Number of MLflow experiments across all workspaces. The total is only reported when it could be counted in every workspace.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "fixedColor": "text",
+            "mode": "fixed"
           },
           "decimals": 0,
           "min": 0,
@@ -215,8 +219,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 16,
-        "x": 8,
+        "w": 3,
+        "x": 6,
         "y": 1
       },
       "id": 4,
@@ -232,7 +236,7 @@
           "fields": "",
           "values": false
         },
-        "textMode": "value_and_name"
+        "textMode": "auto"
       },
       "targets": [
         {
@@ -243,9 +247,64 @@
           "editorMode": "code",
           "expr": "max(mlflow_metric{juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_application=~\"$juju_application\",juju_unit=~\"$juju_unit\",metric_name=\"num_experiments\"})",
           "legendFormat": "Experiments",
-          "range": true,
-          "refId": "A"
+          "range": false,
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Experiments",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheusds}"
+      },
+      "description": "Number of MLflow runs across all workspaces. The total is only reported when it could be counted in every workspace.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "decimals": 0,
+          "min": 0,
+          "unit": "none",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
         },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 3,
+        "x": 9,
+        "y": 1
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
         {
           "datasource": {
             "type": "prometheus",
@@ -254,9 +313,64 @@
           "editorMode": "code",
           "expr": "max(mlflow_metric{juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_application=~\"$juju_application\",juju_unit=~\"$juju_unit\",metric_name=\"num_runs\"})",
           "legendFormat": "Runs",
-          "range": true,
-          "refId": "B"
+          "range": false,
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Runs",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheusds}"
+      },
+      "description": "Number of MLflow registered models (excluding prompts) across all workspaces. The total is only reported when it could be counted in every workspace.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "decimals": 0,
+          "min": 0,
+          "unit": "none",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
         },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 3,
+        "x": 12,
+        "y": 1
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
         {
           "datasource": {
             "type": "prometheus",
@@ -265,9 +379,64 @@
           "editorMode": "code",
           "expr": "max(mlflow_metric{juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_application=~\"$juju_application\",juju_unit=~\"$juju_unit\",metric_name=\"num_registered_models\"})",
           "legendFormat": "Registered models",
-          "range": true,
-          "refId": "C"
+          "range": false,
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Registered models",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheusds}"
+      },
+      "description": "Number of MLflow model versions (excluding prompt versions) across all workspaces. The total is only reported when it could be counted in every workspace.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "decimals": 0,
+          "min": 0,
+          "unit": "none",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
         },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 3,
+        "x": 15,
+        "y": 1
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
         {
           "datasource": {
             "type": "prometheus",
@@ -276,9 +445,64 @@
           "editorMode": "code",
           "expr": "max(mlflow_metric{juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_application=~\"$juju_application\",juju_unit=~\"$juju_unit\",metric_name=\"num_model_versions\"})",
           "legendFormat": "Model versions",
-          "range": true,
-          "refId": "D"
+          "range": false,
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Model versions",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheusds}"
+      },
+      "description": "Number of MLflow logged models across all workspaces. The total is only reported when it could be counted in every workspace.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "decimals": 0,
+          "min": 0,
+          "unit": "none",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
         },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 3,
+        "x": 18,
+        "y": 1
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
         {
           "datasource": {
             "type": "prometheus",
@@ -287,9 +511,64 @@
           "editorMode": "code",
           "expr": "max(mlflow_metric{juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_application=~\"$juju_application\",juju_unit=~\"$juju_unit\",metric_name=\"num_logged_models\"})",
           "legendFormat": "Logged models",
-          "range": true,
-          "refId": "E"
+          "range": false,
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Logged models",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheusds}"
+      },
+      "description": "Number of MLflow prompts across all workspaces. The total is only reported when it could be counted in every workspace.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "decimals": 0,
+          "min": 0,
+          "unit": "none",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
         },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 3,
+        "x": 21,
+        "y": 1
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
         {
           "datasource": {
             "type": "prometheus",
@@ -298,11 +577,12 @@
           "editorMode": "code",
           "expr": "max(mlflow_metric{juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_application=~\"$juju_application\",juju_unit=~\"$juju_unit\",metric_name=\"num_prompts\"})",
           "legendFormat": "Prompts",
-          "range": true,
-          "refId": "F"
+          "range": false,
+          "refId": "A",
+          "instant": true
         }
       ],
-      "title": "Deployment totals",
+      "title": "Prompts",
       "type": "stat"
     },
     {
@@ -313,7 +593,7 @@
         "x": 0,
         "y": 6
       },
-      "id": 5,
+      "id": 10,
       "panels": [],
       "title": "Per workspace",
       "type": "row"
@@ -355,7 +635,7 @@
         "x": 0,
         "y": 7
       },
-      "id": 6,
+      "id": 11,
       "options": {
         "showHeader": true,
         "sortBy": [
@@ -532,7 +812,7 @@
         "x": 0,
         "y": 15
       },
-      "id": 7,
+      "id": 12,
       "options": {
         "legend": {
           "calcs": [
@@ -617,7 +897,7 @@
         "x": 8,
         "y": 15
       },
-      "id": 8,
+      "id": 13,
       "options": {
         "legend": {
           "calcs": [
@@ -702,7 +982,7 @@
         "x": 16,
         "y": 15
       },
-      "id": 9,
+      "id": 14,
       "options": {
         "legend": {
           "calcs": [
@@ -787,7 +1067,7 @@
         "x": 0,
         "y": 23
       },
-      "id": 10,
+      "id": 15,
       "options": {
         "legend": {
           "calcs": [
@@ -872,7 +1152,7 @@
         "x": 8,
         "y": 23
       },
-      "id": 11,
+      "id": 16,
       "options": {
         "legend": {
           "calcs": [
@@ -957,7 +1237,7 @@
         "x": 16,
         "y": 23
       },
-      "id": 12,
+      "id": 17,
       "options": {
         "legend": {
           "calcs": [
@@ -998,7 +1278,7 @@
         "x": 0,
         "y": 31
       },
-      "id": 13,
+      "id": 18,
       "panels": [],
       "title": "Tracking server traffic",
       "type": "row"
@@ -1054,7 +1334,7 @@
         "x": 0,
         "y": 32
       },
-      "id": 14,
+      "id": 19,
       "options": {
         "legend": {
           "calcs": [],
@@ -1178,7 +1458,7 @@
         "x": 12,
         "y": 32
       },
-      "id": 15,
+      "id": 20,
       "options": {
         "legend": {
           "calcs": [],
