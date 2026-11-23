@@ -48,7 +48,7 @@ After the `mlflow-server` charm upgrade, the tracking server is expected not to 
 
        pebble exec --context mlflow-server -- env | grep MLFLOW_BACKEND_STORE_URI
 
-3. Run database migrations via `MLflow's own CLI utility <https://mlflow.org/docs/2.22.1/api_reference/cli.html#mlflow-db-upgrade>`:
+3. Run database migrations via `MLflow's own CLI utility <https://mlflow.org/docs/2.22.1/api_reference/cli.html#mlflow-db-upgrade>`_:
 
    .. code-block:: bash
 
