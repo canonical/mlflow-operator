@@ -21,7 +21,7 @@
       }
     ]
   },
-  "description": "MLflow resources, deployment-wide and per workspace, and tracking server traffic",
+  "description": "Counts of the MLflow resources exported by the mlflow-prometheus-exporter, deployment-wide and per workspace, and tracking server traffic",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -609,7 +609,7 @@
         "type": "prometheus",
         "uid": "${prometheusds}"
       },
-      "description": "Number of MLflow resources in each of the selected workspaces.",
+      "description": "Number of MLflow experiments, runs, registered models (excluding prompts), model versions (excluding prompt versions), logged models and prompts in each of the selected workspaces: only the resource types counted by the mlflow-prometheus-exporter, not all MLflow resource types (e.g. scorers, gateway resources and MCP servers are not counted).",
       "fieldConfig": {
         "defaults": {
           "color": {
