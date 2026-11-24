@@ -53,3 +53,5 @@ After the `mlflow-server` charm upgrade, the tracking server is expected not to 
    .. code-block:: bash
 
        mlflow db upgrade <your-backend-store-uri>
+
+4. Wait for the step above running database migrations to complete, making sure they run successfully and the tracking server successfully restarts.
