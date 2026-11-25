@@ -9,8 +9,8 @@ Requirements
 * You have deployed MLflow version 2.15.
 * You have Command Line Interface (CLI) access to the machine where the Juju controller is deployed. All commands in this guide are executed from it.
 
-.. tip:: 
-    Before proceeding, you might want to backup MinIO data including your experiments and models. See :ref:`backup` for more details.
+.. warning:: 
+    Before proceeding, we strongly recommend you back up all your MLflow data, meaning both your backend store and your artifact store, in case anything goes unexpectedly wrong and data is lost. See :ref:`backup` for more details.
 
 Upgrade dependencies
 ---------------------
@@ -33,3 +33,25 @@ To upgrade MLflow from 2.15 to 2.22, run the following commands:
 
     juju refresh mlflow-minio --channel=ckf-1.10/stable
     juju refresh mlflow-server --channel=2.22/stable
+
+After the `mlflow-server` charm upgrade, the tracking server is expected not to be able to start, because database migrations are to be run after the schema change that comes with the tracking server's upgrade, for the new version of the application to start successfully. While the newer Charmed MLflow 3 takes care of running database migrations for you on charm upgrades, Charmed MLflow 2 does not and you are expected to manually migrate the database. To achieve that:
+
+1. Connect to one of the containers of the tracking server, for example to the one from pod `mlflow-server-0` in the `kubeflow` namespace:
+
+   .. code-block:: bash
+
+       kubectl exec -it -n kubeflow pods/mlflow-server-0 -c mlflow-server -- /bin/bash
+
+2. Get the backend store URI, for example by reading the corresponding environment variable set by the charm for the tracking server:
+
+   .. code-block:: bash
+
+       pebble exec --context mlflow-server -- env | grep MLFLOW_BACKEND_STORE_URI
+
+3. Run database migrations via `MLflow's own CLI utility <https://mlflow.org/docs/2.22.1/api_reference/cli.html#mlflow-db-upgrade>`_:
+
+   .. code-block:: bash
+
+       mlflow db upgrade <your-backend-store-uri>
+
+4. Wait for the step above running database migrations to complete, making sure they run successfully and the tracking server successfully restarts.
